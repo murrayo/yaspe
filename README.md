@@ -49,5 +49,5 @@ docker run -v "/path/to/folder/with html file":/data --rm --name yaspe yaspe ./y
 
 ![alt text][logo]
 
-[logo]: https://github.com/adam-p/markdown-here/raw/master/src/common/images/icon48.png "Example"
+[logo]: https://github.com/murrayo/yaspe/blob/main/yaspe.gif "Example"
 
