@@ -45,7 +45,7 @@ docker run -v "/path/to/folder/with html file":/data --rm --name yaspe yaspe ./y
 ## Output files
 
 - An sqlite database file `SystemPerformance.sqlite` stores extracted metrics for further processing (TBA)
-- HTML charts for all columns in mgstat and vmstat or windows perfmon a output to folders under `./metrics`
+- HTML charts for all columns in mgstat and vmstat or windows perfmon and output to folders under `./metrics`
 - It is optional to create charts for iostat as this can take a long time if there is a big disk list
 
 *Example output*
