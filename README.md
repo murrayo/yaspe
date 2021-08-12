@@ -40,11 +40,15 @@ For example, change to the folder with a SystemPerformance html file and run the
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
 ```
 
+<hr>
+
 Or put the path to the folder with the html file in the docker volume parameter and put the html file name after `-i /data/` 
 
 ```plaintext
 docker run -v "/path/to/folder/with html file":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
 ```
+
+<hr>
 
 To run _yaspe_ over multiple input files, for example a few days or a week, use the following steps:
 
@@ -53,9 +57,9 @@ To run _yaspe_ over multiple input files, for example a few days or a week, use 
 - Use the `-e` (existing database option) to chart the appended database
 
 __Note:__ This works by appending data to database that contains extracted SystemPerformance data.
-If the SystemPerformance files have a short sample period this can result in long run times and large output files with many data points. It will work, but may be a bit clunky to work with.
+If the SystemPerformance files have a short sample period this can result in long run times and large output files with many data points. It may be a bit clunky to work with in the browser.
 
-For example, change to the folder with the html file and run the commands:
+For example, change to the folder with the html files and run the commands:
 
 ```plaintext
 for i in `ls *.html`;do docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/"${i}" -a; done
@@ -64,6 +68,8 @@ for i in `ls *.html`;do docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./y
 ```plaintext
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/SystemPerformance.sqlite
 ```
+
+<hr>
 
 ## Output files
 
