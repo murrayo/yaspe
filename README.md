@@ -3,6 +3,9 @@ Parse and chart pButtons and SystemPerformance files
 
 # Yet Another System Performance Extractor
 
+This will replace `yape`. I will add functionality as I need it. e.g. I expect to create charts with multiple interesting metrics. If you would like to see specific combinations let me know e.g. glorefs with CPU 
+
+
 ## Create docker container image
 
 - download the source files
@@ -83,8 +86,11 @@ docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/SystemP
 
 <hr>
 
-This will replace `yape`. I will add functionality as I need it. e.g. I expect to create charts with multiple interesting metrics. If you would like to see specific combinations let me know e.g. glorefs with CPU 
+# Updates
 
+Remove the old image and create a new one with updated source code
+
+`docker rmi yaspe`
 
 [logo]: https://github.com/murrayo/yaspe/blob/main/yaspe.gif "Example"
 
