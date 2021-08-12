@@ -37,7 +37,12 @@ def execute_simple_query(connection, query):
         cursor.execute(query)
         connection.commit()
     except Error as e:
-        print(f"The error '{e}' occurred")
+        if "duplicate column name" in str(e):
+            # A bit of a kludge, there are cases where mgstat adds columns on different days
+            # So if append option dont assume all the columns exist
+            pass
+        else:
+            print(f"The error '{e}' occurred")
 
 
 def execute_read_query(connection, query):
@@ -83,6 +88,7 @@ def create_generic_table(connection, table_name, df):
 
     columns = list(df)
     row = 0
+
     for column in columns:
         if data_types[row] == "int64":
             q = f"ALTER TABLE {table_name} ADD COLUMN '{column}' INTEGER;"
@@ -118,7 +124,7 @@ def get_number_type(s):
             return s
 
 
-def create_sections(connection, input_file):
+def create_sections(connection, input_file, include_iostat):
 
     vmstat_processing = False
     vmstat_header = ""
@@ -207,7 +213,7 @@ def create_sections(connection, input_file):
                     perfmon_columns = [i.strip() for i in perfmon_columns]  # strip off carriage return etc
 
             # iostat has a lot of variations, start as needed
-            if operating_system == "Linux":
+            if operating_system == "Linux" and include_iostat:
                 if "<div" in line:  # there can be no end to iostat
                     iostat_processing = False
                 if "id=iostat" in line:
@@ -514,7 +520,7 @@ def linked_chart(data, column_name, title, max_y, filepath):
 
 def chart_vmstat(connection, filepath):
 
-    print(f"vmstat...")
+    # print(f"vmstat...")
     # Get useful
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
     number_cpus = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'number cpus';")[2]
@@ -571,7 +577,7 @@ def chart_vmstat(connection, filepath):
 
 def chart_mgstat(connection, filepath):
 
-    print(f"mgstat...")
+    # print(f"mgstat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
@@ -611,7 +617,7 @@ def chart_mgstat(connection, filepath):
 
 def chart_perfmon(connection, filepath):
 
-    print(f"perfmon...")
+    # print(f"perfmon...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
     number_cpus = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'number cpus';")[2]
@@ -665,7 +671,7 @@ def chart_perfmon(connection, filepath):
 
 def chart_iostat(connection, filepath, operating_system):
 
-    print(f"iostat...")
+    # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
@@ -712,64 +718,94 @@ def chart_iostat(connection, filepath, operating_system):
                 linked_chart(data, column_name, title, max_y, filepath)
 
 
-def mainline(input_file, include_iostat):
+def mainline(input_file, include_iostat, append_to_database, existing_database):
+
+    input_error = False
+
+    # What are we doing?
+    if append_to_database:
+        database_action = "Append only"
+    elif existing_database:
+        database_action = "Chart only"
+    else:
+        database_action = "Create and Chart"
+
+    print(f"{database_action}")
 
     # get the path
-    head_tail = os.path.split(input_file)
+    if existing_database:
+        head_tail = os.path.split(existing_database)
+    else:
+        head_tail = os.path.split(input_file)
     filepath = head_tail[0]
     # filename = head_tail[1]
 
     # Delete the database and recreate
-    if os.path.exists(f"{filepath}/SystemPerformance.sqlite"):
-        os.remove(f"{filepath}/SystemPerformance.sqlite")
+    if database_action == "Create and Chart":
+        if os.path.exists(f"{filepath}/SystemPerformance.sqlite"):
+            os.remove(f"{filepath}/SystemPerformance.sqlite")
 
-    # Create database file if it does not exist already
+    # Connect to database (Create database file if it does not exist already)
     connection = create_connection(f"{filepath}/SystemPerformance.sqlite")
 
-    # Populate database file
-    print(f"Create database file...")
-    create_overview(connection, input_file)
-    create_sections(connection, input_file)
+    # Is this the first time in?
+    cursor = connection.cursor()
+    cursor.execute(''' SELECT count(name) FROM sqlite_master WHERE type='table' AND name='overview' ''')
+
+    # if the count is 1, then table exists
+    if cursor.fetchone()[0] == 1:
+        if database_action != "Chart only":
+            create_sections(connection, input_file, include_iostat)
+
+    else:
+        if database_action == "Chart only":
+            input_error = True
+            print(f"No data to chart")
+        else:
+            create_overview(connection, input_file)
+            create_sections(connection, input_file, include_iostat)
 
     connection.close()
 
-    # Write to database and read database Kept separate as a POC
+    # Charting is separate
 
-    output_file_path = f"{filepath}/metrics/"
-    if not os.path.isdir(output_file_path):
-        os.mkdir(output_file_path)
+    if "Chart" in database_action and not input_error:
 
-    connection = create_connection(f"{filepath}/SystemPerformance.sqlite")
-
-    operating_system = execute_single_read_query(
-        connection, "SELECT * FROM overview WHERE field = 'operating system';"
-    )[2]
-
-    output_file_path = f"{filepath}/metrics/mgstat/"
-    if not os.path.isdir(output_file_path):
-        os.mkdir(output_file_path)
-    chart_mgstat(connection, output_file_path)
-
-    if operating_system == "Linux":
-
-        output_file_path = f"{filepath}/metrics/vmstat/"
+        output_file_path = f"{filepath}/metrics/"
         if not os.path.isdir(output_file_path):
             os.mkdir(output_file_path)
-        chart_vmstat(connection, output_file_path)
 
-        if include_iostat:
-            output_file_path = f"{filepath}/metrics/iostat/"
+        connection = create_connection(f"{filepath}/SystemPerformance.sqlite")
+
+        operating_system = execute_single_read_query(
+            connection, "SELECT * FROM overview WHERE field = 'operating system';"
+        )[2]
+
+        output_file_path = f"{filepath}/metrics/mgstat/"
+        if not os.path.isdir(output_file_path):
+            os.mkdir(output_file_path)
+        chart_mgstat(connection, output_file_path)
+
+        if operating_system == "Linux":
+
+            output_file_path = f"{filepath}/metrics/vmstat/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
-            chart_iostat(connection, output_file_path, operating_system)
+            chart_vmstat(connection, output_file_path)
 
-    if operating_system == "Windows":
-        output_file_path = f"{filepath}/metrics/perfmon/"
-        if not os.path.isdir(output_file_path):
-            os.mkdir(output_file_path)
-        chart_perfmon(connection, output_file_path)
+            if include_iostat:
+                output_file_path = f"{filepath}/metrics/iostat/"
+                if not os.path.isdir(output_file_path):
+                    os.mkdir(output_file_path)
+                chart_iostat(connection, output_file_path, operating_system)
 
-    connection.close()
+        if operating_system == "Windows":
+            output_file_path = f"{filepath}/metrics/perfmon/"
+            if not os.path.isdir(output_file_path):
+                os.mkdir(output_file_path)
+            chart_perfmon(connection, output_file_path)
+
+        connection.close()
 
     return
 
@@ -778,19 +814,35 @@ def mainline(input_file, include_iostat):
 
 if __name__ == "__main__":
 
+    input_file = ""
+    existing_database = ""
+
     parser = argparse.ArgumentParser(
         prog="yaspe", description="Performance file review", epilog='Be safe, "quote the path"'
     )
+
     parser.add_argument(
         "-i",
         "--input_file",
         help="Input html filename with full path",
         action="store",
-        required=True,
         metavar='"/path/file.html"',
     )
+
     parser.add_argument(
-        "--iostat", dest="include_iostat", help="Also plot iostat data (can take a long time)", action="store_true"
+        "-x", "--iostat", dest="include_iostat", help="Also plot iostat data (can take a long time)", action="store_true"
+    )
+
+    parser.add_argument(
+        "-a", "--append", dest="append_to_database", help="Do not overwrite database, append to existing database", action="store_true"
+    )
+
+    parser.add_argument(
+        "-e",
+        "--existing_database",
+        help="Chart existing database, database name with full path",
+        action="store",
+        metavar='"/path/SystemPerformance.sqlite"',
     )
 
     args = parser.parse_args()
@@ -800,17 +852,28 @@ if __name__ == "__main__":
             if os.path.getsize(args.input_file) > 0:
                 input_file = args.input_file
             else:
-                print('Error: -i "Input html filename with full path"')
+                print('Error: -i "Input html filename with full path required"')
                 sys.exit()
         except OSError as e:
             print("Could not process files because: {}".format(str(e)))
             sys.exit()
 
     else:
-        print('Error: -i "Input html filename with full path"')
-        sys.exit()
+        if args.existing_database is None:
+            print('Error: -i "Input html filename with full path required"')
+            sys.exit()
+        else:
+            try:
+                if os.path.getsize(args.existing_database) > 0:
+                    existing_database = args.existing_database
+                else:
+                    print('Error: -i "Existing database filename with full path required"')
+                    sys.exit()
+            except OSError as e:
+                print("Could not process files because: {}".format(str(e)))
+                sys.exit()
 
     try:
-        mainline(input_file, args.include_iostat)
+        mainline(input_file, args.include_iostat, args.append_to_database, existing_database)
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
