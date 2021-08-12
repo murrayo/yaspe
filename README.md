@@ -1,10 +1,16 @@
 # yaspe
+
 Parse and chart pButtons and SystemPerformance files
 
 # Yet Another System Performance Extractor
 
 This will replace `yape`. I will add functionality as I need it. e.g. I expect to create charts with multiple interesting metrics. If you would like to see specific combinations let me know e.g. glorefs with CPU 
 
+:: **NOTE:** Currently only supports ::
+
+- IRIS/Caché (mgstat)
+- Linux (vmstat, iostat)
+- Windows (Perfmon)
 
 ## Create docker container image
 
