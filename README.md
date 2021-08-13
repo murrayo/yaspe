@@ -62,13 +62,16 @@ docker run -v "/path/to/folder/with html file":/data --rm --name yaspe yaspe ./y
 To run _yaspe_ over multiple input files, for example a few days or a week, use the following steps:
 
 - Copy all the SystemPerformance html files to one folder
-- Use the `-a` (append) option to put all the metrics in the database
-- Use the `-e` (existing database option) to chart the appended database
+- Use the `-a` (append) option to put all the metrics in the database (also `-x` if you want iostat)
+- Use the `-e` (existing database option) to chart the appended database (also `-x` if you want iostat)
 
 __Note:__ This works by appending data to database that contains extracted SystemPerformance data.
-If the SystemPerformance files have a short sample period this can result in long run times and large output files with many data points. It may be a bit clunky to work with in the browser.
+If the SystemPerformance files have a short sample period this can result in long run times and large output files with many data points. 
+It may be a bit clunky to work with in the browser.
+I suggest you run over a week without iostat (`-x`), then use the method above to deep dive on a day or couple of days.
 
-For example, change to the folder with the html files and run the commands:
+Example of running over multiple days;
+- change to the folder with the html files and run the commands, run:
 
 ```plaintext
 for i in `ls *.html`;do docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/"${i}" -a; done
