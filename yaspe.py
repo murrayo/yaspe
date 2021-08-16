@@ -467,7 +467,11 @@ def create_overview(connection, input_file):
     return
 
 
-def linked_chart(data, column_name, title, max_y, filepath):
+def linked_chart(data, column_name, title, max_y, filepath, **kwargs):
+
+    file_prefix = kwargs.get("file_prefix", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
 
     # # A simple png - note for this to work in a container Chrome must be installed in the container
     # chart = (
@@ -517,7 +521,7 @@ def linked_chart(data, column_name, title, max_y, filepath):
 
     output_name = column_name.replace("/", "_")
 
-    (upper & lower).save(f"{filepath}html_{output_name}.html")
+    (upper & lower).save(f"{filepath}{file_prefix}{output_name}.html")
 
 
 def chart_vmstat(connection, filepath):
@@ -717,7 +721,7 @@ def chart_iostat(connection, filepath, operating_system):
 
                 data = to_chart_df
 
-                linked_chart(data, column_name, title, max_y, filepath)
+                linked_chart(data, column_name, title, max_y, filepath, file_prefix=device)
 
 
 def mainline(input_file, include_iostat, append_to_database, existing_database):
