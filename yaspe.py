@@ -469,7 +469,7 @@ def create_overview(connection, input_file):
 
 def linked_chart(data, column_name, title, max_y, filepath):
 
-    # # A simple png
+    # # A simple png - note for this to work in a container Chrome must be installed in the container
     # chart = (
     #     alt.Chart(data)
     #     .mark_point(filled=True, size=25)
@@ -515,7 +515,9 @@ def linked_chart(data, column_name, title, max_y, filepath):
         strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
     )
 
-    (upper & lower).save(f"{filepath}html_{column_name}.html")
+    output_name = column_name.replace("/", "_")
+
+    (upper & lower).save(f"{filepath}html_{output_name}.html")
 
 
 def chart_vmstat(connection, filepath):
@@ -840,9 +842,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "-e",
         "--existing_database",
-        help="Chart existing database, database name with full path",
+        help="Chart existing database, full path to existing database directory",
         action="store",
-        metavar='"/path/SystemPerformance.sqlite"',
+        metavar='"/path"',
     )
 
     args = parser.parse_args()
@@ -865,7 +867,7 @@ if __name__ == "__main__":
         else:
             try:
                 if os.path.getsize(args.existing_database) > 0:
-                    existing_database = args.existing_database
+                    existing_database = f"{args.existing_database}/SystemPerformance.sqlite"
                 else:
                     print('Error: -i "Existing database filename with full path required"')
                     sys.exit()

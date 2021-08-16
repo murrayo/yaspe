@@ -26,8 +26,7 @@ See the help text:
 
 ```plaintext
 $ docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h
-usage: yaspe [-h] [-i "/path/file.html"] [-x] [-a]
-             [-e "/path/SystemPerformance.sqlite"]
+usage: yaspe [-h] [-i "/path/file.html"] [-x] [-a] [-e "/path"]
 
 Performance file review
 
@@ -37,8 +36,8 @@ optional arguments:
                         Input html filename with full path
   -x, --iostat          Also plot iostat data (can take a long time)
   -a, --append          Do not overwrite database, append to existing database
-  -e "/path/SystemPerformance.sqlite", --existing_database "/path/SystemPerformance.sqlite"
-                        Chart existing database, database name with full path
+  -e "/path", --existing_database "/path"
+                        Chart existing database, full path to existing database directory
 
 Be safe, "quote the path"
 ```
@@ -78,7 +77,7 @@ for i in `ls *.html`;do docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./y
 ```
 
 ```plaintext
-docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/SystemPerformance.sqlite
+docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data
 ```
 
 <hr>
