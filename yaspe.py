@@ -134,6 +134,7 @@ def create_sections(connection, input_file, include_iostat):
     iostat_header = ""
     iostat_rows_list = []
     iostat_start_block = False
+    iostat_am_pm = False
 
     mgstat_processing = False
     mgstat_header = ""
@@ -218,13 +219,23 @@ def create_sections(connection, input_file, include_iostat):
                     iostat_processing = False
                 if "id=iostat" in line:
                     iostat_processing = True
-                if iostat_processing and (len(line.split()) == 2 or len(line.split()) == 3):  # date time AM
+                if iostat_processing and len(line.split()) == 2:
                     date_time = line.strip()
                     iostat_start_block = False
+                if iostat_processing and len(line.split()) == 3:  # date time AM
+                    date_time = line.strip()
+                    iostat_start_block = False
+                    iostat_am_pm = True
                 if iostat_processing and iostat_start_block and iostat_header != "":
                     iostat_row_dict = {}
-                    line = date_time.split()[0] + " " + date_time.split()[1] + " " + line
-                    values = line.split()
+                    # get rid of multiple whitespaces, then use comma separator so the AM/PM is preserved if its there
+                    line = " ".join(line.split())
+                    line = line.replace(" ", ",")
+                    if iostat_am_pm:
+                        line = date_time.split()[0] + "," + date_time.split()[1] + " " + date_time.split()[2] + "," + line
+                    else:
+                        line = date_time.split()[0] + "," + str(date_time.split()[1]) + "," + line
+                    values = line.split(",")
                     values = [i.strip() for i in values]  # strip off carriage return etc
                     values_converted = [get_number_type(v) for v in values]
                     iostat_row_dict = dict(zip(iostat_columns, values_converted))
