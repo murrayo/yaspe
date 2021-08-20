@@ -77,7 +77,6 @@ def data_types_map(df):
 
 
 def create_generic_table(connection, table_name, df):
-
     # Build the table, headings can vary depending on OS or Caché or IRIS version or other reasons.
     create_table = f"CREATE TABLE IF NOT EXISTS {table_name} (id_key INTEGER PRIMARY KEY AUTOINCREMENT);"
     execute_simple_query(connection, create_table)
@@ -125,7 +124,6 @@ def get_number_type(s):
 
 
 def create_sections(connection, input_file, include_iostat):
-
     vmstat_processing = False
     vmstat_header = ""
     vmstat_rows_list = []
@@ -133,8 +131,9 @@ def create_sections(connection, input_file, include_iostat):
     iostat_processing = False
     iostat_header = ""
     iostat_rows_list = []
-    iostat_start_block = False
+    iostat_device_block_processing = False
     iostat_am_pm = False
+    iostat_date_included = False
 
     mgstat_processing = False
     mgstat_header = ""
@@ -169,7 +168,7 @@ def create_sections(connection, input_file, include_iostat):
                 mgstat_columns = mgstat_header.split(",")
                 mgstat_columns = [i.strip() for i in mgstat_columns]  # strip off carriage return etc
 
-            if operating_system == "Linux":
+            if operating_system == "Linux" or operating_system == "Ubuntu":
                 if "<!-- beg_vmstat -->" in line:
                     vmstat_processing = True
                 if "<!-- end_vmstat -->" in line:
@@ -214,39 +213,67 @@ def create_sections(connection, input_file, include_iostat):
                     perfmon_columns = [i.strip() for i in perfmon_columns]  # strip off carriage return etc
 
             # iostat has a lot of variations, start as needed
-            if operating_system == "Linux" and include_iostat:
-                if "<div" in line:  # there can be no end to iostat
+            if (operating_system == "Linux" or operating_system == "Ubuntu") and include_iostat:
+
+                if iostat_processing and "<div" in line:  # iostat does not flag end
                     iostat_processing = False
-                if "id=iostat" in line:
-                    iostat_processing = True
-                if iostat_processing and len(line.split()) == 2:
-                    date_time = line.strip()
-                    iostat_start_block = False
-                if iostat_processing and len(line.split()) == 3:  # date time AM
-                    date_time = line.strip()
-                    iostat_start_block = False
-                    iostat_am_pm = True
-                if iostat_processing and iostat_start_block and iostat_header != "":
-                    iostat_row_dict = {}
-                    # get rid of multiple whitespaces, then use comma separator so the AM/PM is preserved if its there
-                    line = " ".join(line.split())
-                    line = line.replace(" ", ",")
-                    if iostat_am_pm:
-                        line = date_time.split()[0] + "," + date_time.split()[1] + " " + date_time.split()[2] + "," + line
-                    else:
-                        line = date_time.split()[0] + "," + str(date_time.split()[1]) + "," + line
-                    values = line.split(",")
-                    values = [i.strip() for i in values]  # strip off carriage return etc
-                    values_converted = [get_number_type(v) for v in values]
-                    iostat_row_dict = dict(zip(iostat_columns, values_converted))
-                    iostat_rows_list.append(iostat_row_dict)
-                if "Device" in line:
-                    iostat_start_block = True
-                if iostat_processing and iostat_header == "" and "Device" in line:
-                    iostat_header = f"Date Time {line}"
-                    iostat_header = iostat_header.replace(":", "")  # "Device:"
-                    iostat_columns = iostat_header.split()
-                    iostat_columns = [i.strip() for i in iostat_columns]  # strip off carriage return etc
+                else:
+                    # Found iostat
+                    if "id=iostat" in line:
+                        iostat_processing = True
+                    # Is there a date and time line (not in some cases)
+                    if iostat_processing and len(line.split()) == 2:
+                        # If a date is found then device block ended
+                        iostat_device_block_processing = False
+                        iostat_date_included = True
+                        date_time = line.strip()
+                    if iostat_processing and len(line.split()) == 3:  # date time AM
+                        iostat_am_pm = True
+                        # If a date is found then device block ended
+                        iostat_device_block_processing = False
+                        iostat_date_included = True
+                        date_time = line.strip()
+                    # If there is no date then this is the next likely header, device block ended
+                    if "avg-cpu" in line:
+                        iostat_device_block_processing = False
+                    # Add devices to database
+                    if iostat_processing and iostat_device_block_processing and iostat_header != "":
+                        iostat_row_dict = {}
+                        # if European "," for ".", do that first
+                        line = line.replace(",", ".")
+                        # get rid of multiple whitespaces, then use comma separator so the AM/PM is preserved if its there
+                        line = " ".join(line.split())
+                        line = line.replace(" ", ",")
+                        if iostat_date_included:
+                            if iostat_am_pm:
+                                line = (
+                                    date_time.split()[0]
+                                    + ","
+                                    + date_time.split()[1]
+                                    + " "
+                                    + date_time.split()[2]
+                                    + ","
+                                    + line
+                                )
+                            else:
+                                line = date_time.split()[0] + "," + str(date_time.split()[1]) + "," + line
+                        values = line.split(",")
+                        values = [i.strip() for i in values]  # strip off carriage return etc
+                        values_converted = [get_number_type(v) for v in values]
+                        iostat_row_dict = dict(zip(iostat_columns, values_converted))
+                        iostat_rows_list.append(iostat_row_dict)
+                    # Header line found, next line is start of device block
+                    if "Device" in line:
+                        iostat_device_block_processing = True
+                    # First time in create column names
+                    if iostat_processing and iostat_header == "" and "Device" in line:
+                        if iostat_date_included:
+                            iostat_header = f"Date Time {line}"
+                        else:
+                            iostat_header = f"{line}"
+                        iostat_header = iostat_header.replace(":", "")  # "Device:" used later on logic
+                        iostat_columns = iostat_header.split()
+                        iostat_columns = [i.strip() for i in iostat_columns]  # strip off carriage return etc
 
     # Add each section to the database
 
@@ -293,7 +320,6 @@ def create_sections(connection, input_file, include_iostat):
 
 
 def create_overview(connection, input_file):
-
     cursor = connection.cursor()
 
     create_overview_table = """
@@ -479,7 +505,6 @@ def create_overview(connection, input_file):
 
 
 def linked_chart(data, column_name, title, max_y, filepath, **kwargs):
-
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
@@ -512,6 +537,7 @@ def linked_chart(data, column_name, title, max_y, filepath, **kwargs):
         alt.Chart(data)
         .mark_line()
         .encode(
+            # alt.X("datetime:T", title="Time", axis=alt.Axis(format='%e %b, %Y')),
             alt.X("datetime:T", title="Time"),
             alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
             alt.Color("Type", title="Metric"),
@@ -535,8 +561,42 @@ def linked_chart(data, column_name, title, max_y, filepath, **kwargs):
     (upper & lower).save(f"{filepath}{file_prefix}{output_name}.html")
 
 
-def chart_vmstat(connection, filepath):
+def linked_chart_no_time(data, column_name, title, max_y, filepath, **kwargs):
+    file_prefix = kwargs.get("file_prefix", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
 
+    brush = alt.selection(type="interval", encodings=["x"])
+
+    # Create the chart
+    base = (
+        alt.Chart(data)
+        .mark_line()
+        .encode(
+            alt.X("id_key:Q", title="Count"),
+            alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
+            alt.Color("Type", title="Metric"),
+            tooltip=["metric:N"],
+        )
+        .properties(height=400, width=800, title=title)
+    )
+
+    # Upper is zoomed area X axis
+    upper = base.encode(alt.X("id_key:Q", title="Count Zoom", scale=alt.Scale(domain=brush)))
+
+    # Lower chart bind the brush in our chart by setting the selection property
+    lower = base.properties(height=100, title="").add_selection(brush)
+
+    alt.hconcat(upper & lower).configure_title(fontSize=14, color="black").configure_legend(
+        strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
+    )
+
+    output_name = column_name.replace("/", "_")
+
+    (upper & lower).save(f"{filepath}{file_prefix}{output_name}.html")
+
+
+def chart_vmstat(connection, filepath):
     # print(f"vmstat...")
     # Get useful
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -593,7 +653,6 @@ def chart_vmstat(connection, filepath):
 
 
 def chart_mgstat(connection, filepath):
-
     # print(f"mgstat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -633,7 +692,6 @@ def chart_mgstat(connection, filepath):
 
 
 def chart_perfmon(connection, filepath):
-
     # print(f"perfmon...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -679,7 +737,10 @@ def chart_perfmon(connection, filepath):
 
             # Remove outliers first, will result in nan for zero values, so needs more work
             # to_chart_df = to_chart_df[((to_chart_df.metric - to_chart_df.metric.mean()) / to_chart_df.metric.std()).abs() < 3]
-            max_y = to_chart_df["metric"].max()
+            if "_Time" in column_name:
+                max_y = 100
+            else:
+                max_y = to_chart_df["metric"].max()
 
             data = to_chart_df
 
@@ -687,7 +748,6 @@ def chart_perfmon(connection, filepath):
 
 
 def chart_iostat(connection, filepath, operating_system):
-
     # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -696,47 +756,81 @@ def chart_iostat(connection, filepath, operating_system):
     df = pd.read_sql_query("SELECT * FROM iostat", connection)
     df.dropna(inplace=True)
 
-    df["datetime"] = df["Date"] + " " + df["Time"]
+    # If there is no date and time in iostat then just use index as x axis
+    if "Date" in df.columns:
 
-    # Format the data for Altair
-    # Cut down the df to just the the list of categorical data we care about (columns)
-    columns_to_chart = list(df.columns)
-    unwanted_columns = ["id_key", "Date", "Time"]
-    columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
+        df["datetime"] = df["Date"] + " " + df["Time"]
 
-    iostat_df = df[columns_to_chart]
-    devices = iostat_df["Device"].unique()
+        # Format the data for Altair
+        # Cut down the df to just the the list of categorical data we care about (columns)
+        columns_to_chart = list(df.columns)
+        unwanted_columns = ["id_key", "Date", "Time"]
+        columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
-    # Chart each disk
-    for device in devices:
+        iostat_df = df[columns_to_chart]
+        devices = iostat_df["Device"].unique()
 
-        device_df = iostat_df.loc[iostat_df["Device"] == device]
+        # Chart each disk
+        for device in devices:
 
-        # unpivot the dataframe; first column is date time column, column name is next, then the value in that column
-        device_df = device_df.melt("datetime", var_name="Type", value_name="metric")
+            device_df = iostat_df.loc[iostat_df["Device"] == device]
 
-        # For each column create a chart
-        for column_name in columns_to_chart:
-            if column_name == "datetime" or column_name == "Device":
-                pass
-            else:
-                title = f"{device} : {column_name} - {customer}"
-                save_name = [s for s in column_name if s.isalnum() or s.isspace()]
-                save_name = "".join(save_name)
+            # unpivot the dataframe; first column is date time column, column name is next, then the value in that column
+            device_df = device_df.melt("datetime", var_name="Type", value_name="metric")
 
-                to_chart_df = device_df.loc[device_df["Type"] == column_name]
+            # For each column create a chart
+            for column_name in columns_to_chart:
+                if column_name == "datetime" or column_name == "Device":
+                    pass
+                else:
+                    title = f"{device} : {column_name} - {customer}"
+                    save_name = [s for s in column_name if s.isalnum() or s.isspace()]
+                    save_name = "".join(save_name)
 
-                # Remove outliers first, will result in nan for zero values, so needs more work
-                # to_chart_df = to_chart_df[((to_chart_df.metric - to_chart_df.metric.mean()) / to_chart_df.metric.std()).abs() < 3]
-                max_y = to_chart_df["metric"].max()
+                    to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
-                data = to_chart_df
+                    # Remove outliers first, will result in nan for zero values, so needs more work
+                    # to_chart_df = to_chart_df[((to_chart_df.metric - to_chart_df.metric.mean()) / to_chart_df.metric.std()).abs() < 3]
+                    max_y = to_chart_df["metric"].max()
 
-                linked_chart(data, column_name, title, max_y, filepath, file_prefix=device)
+                    data = to_chart_df
+
+                    linked_chart(data, column_name, title, max_y, filepath, file_prefix=device)
+
+    else:
+        # No date or time, chart all columns, index is x axis
+
+        columns_to_chart = list(df.columns)
+
+        iostat_df = df
+        devices = iostat_df["Device"].unique()
+
+        # Chart each disk
+        for device in devices:
+            device_df = iostat_df.loc[iostat_df["Device"] == device]
+
+            # unpivot the dataframe; first column is index, column name is next, then the value in that column
+            device_df = device_df.melt("id_key", var_name="Type", value_name="metric")
+
+            # For each column create a chart
+            for column_name in columns_to_chart:
+                if not column_name == "Device":
+                    title = f"{device} : {column_name} - {customer}"
+                    save_name = [s for s in column_name if s.isalnum() or s.isspace()]
+                    save_name = "".join(save_name)
+
+                    to_chart_df = device_df.loc[device_df["Type"] == column_name]
+
+                    # Remove outliers first, will result in nan for zero values, so needs more work
+                    # to_chart_df = to_chart_df[((to_chart_df.metric - to_chart_df.metric.mean()) / to_chart_df.metric.std()).abs() < 3]
+                    max_y = to_chart_df["metric"].max()
+
+                    data = to_chart_df
+
+                    linked_chart_no_time(data, column_name, title, max_y, filepath, file_prefix=device)
 
 
 def mainline(input_file, include_iostat, append_to_database, existing_database):
-
     input_error = False
 
     # What are we doing?
@@ -767,7 +861,7 @@ def mainline(input_file, include_iostat, append_to_database, existing_database):
 
     # Is this the first time in?
     cursor = connection.cursor()
-    cursor.execute(''' SELECT count(name) FROM sqlite_master WHERE type='table' AND name='overview' ''')
+    cursor.execute(""" SELECT count(name) FROM sqlite_master WHERE type='table' AND name='overview' """)
 
     # if the count is 1, then table exists
     if cursor.fetchone()[0] == 1:
@@ -803,7 +897,7 @@ def mainline(input_file, include_iostat, append_to_database, existing_database):
             os.mkdir(output_file_path)
         chart_mgstat(connection, output_file_path)
 
-        if operating_system == "Linux":
+        if operating_system == "Linux" or operating_system == "Ubuntu":
 
             output_file_path = f"{filepath}/metrics/vmstat/"
             if not os.path.isdir(output_file_path):
@@ -847,11 +941,19 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "-x", "--iostat", dest="include_iostat", help="Also plot iostat data (can take a long time)", action="store_true"
+        "-x",
+        "--iostat",
+        dest="include_iostat",
+        help="Also plot iostat data (can take a long time)",
+        action="store_true",
     )
 
     parser.add_argument(
-        "-a", "--append", dest="append_to_database", help="Do not overwrite database, append to existing database", action="store_true"
+        "-a",
+        "--append",
+        dest="append_to_database",
+        help="Do not overwrite database, append to existing database",
+        action="store_true",
     )
 
     parser.add_argument(
