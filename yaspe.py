@@ -123,7 +123,7 @@ def get_number_type(s):
             return s
 
 
-def create_sections(connection, input_file, include_iostat):
+def create_sections(connection, input_file, include_iostat, html_filename):
     vmstat_processing = False
     vmstat_header = ""
     vmstat_rows_list = []
@@ -162,6 +162,8 @@ def create_sections(connection, input_file, include_iostat):
                 values_converted = [get_number_type(v) for v in values]
                 # create a dictionary of this row and append to a list of row dictionaries for later add to table
                 mgstat_row_dict = dict(zip(mgstat_columns, values_converted))
+                # Add the file name
+                mgstat_row_dict["html name"] = html_filename
                 mgstat_rows_list.append(mgstat_row_dict)
             if mgstat_processing and "Glorefs" in line:
                 mgstat_header = line
@@ -179,6 +181,7 @@ def create_sections(connection, input_file, include_iostat):
                     values = [i.strip() for i in values]  # strip off carriage return etc
                     values_converted = [get_number_type(v) for v in values]
                     vmstat_row_dict = dict(zip(vmstat_columns, values_converted))
+                    vmstat_row_dict["html name"] = html_filename
                     vmstat_rows_list.append(vmstat_row_dict)
                 if vmstat_processing and "us sy id wa" in line:
                     # vmstat has column names on same line as html
@@ -201,6 +204,7 @@ def create_sections(connection, input_file, include_iostat):
                     values = list(map(lambda x: 0.0 if x == " " else x, values))
                     values_converted = [get_number_type(v) for v in values]
                     perfmon_row_dict = dict(zip(perfmon_columns, values_converted))
+                    perfmon_row_dict["html name"] = html_filename
                     perfmon_rows_list.append(perfmon_row_dict)
                 if perfmon_processing and "Memory" in line:
                     perfmon_header = line
@@ -261,6 +265,7 @@ def create_sections(connection, input_file, include_iostat):
                         values = [i.strip() for i in values]  # strip off carriage return etc
                         values_converted = [get_number_type(v) for v in values]
                         iostat_row_dict = dict(zip(iostat_columns, values_converted))
+                        iostat_row_dict["html name"] = html_filename
                         iostat_rows_list.append(iostat_row_dict)
                     # Header line found, next line is start of device block
                     if "Device" in line:
@@ -830,7 +835,7 @@ def chart_iostat(connection, filepath, operating_system):
                     linked_chart_no_time(data, column_name, title, max_y, filepath, file_prefix=device)
 
 
-def mainline(input_file, include_iostat, append_to_database, existing_database, output_filename):
+def mainline(input_file, include_iostat, append_to_database, existing_database, output_prefix):
     input_error = False
 
     # What are we doing?
@@ -843,34 +848,39 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
 
     print(f"{database_action}")
 
-    # get the path
+    # get the file paths and file names
     if existing_database:
-        head_tail = os.path.split(existing_database)
+        filepath_filename = os.path.split(existing_database)
     else:
-        head_tail = os.path.split(input_file)
-    filepath = head_tail[0]
-    filename = head_tail[1]
+        filepath_filename = os.path.split(input_file)
+        
+    filepath = filepath_filename[0]
+    filename = filepath_filename[1]
 
-    # if no path it must be in the current path
+    # if no path it is the current path
     if filepath == "":
         filepath = "."
 
-    if output_filename is None:
-        basename = filename.split('.')[0]
+    # if not specified defaults to the html file name
+    html_filename = filename.split('.')[0]
+
+    if output_prefix is None:
+        base_prefix = html_filename
     else:
-        basename = output_filename
+        base_prefix = output_prefix
 
-    print(f"output {basename}")
+    print(f"Output prefix: {base_prefix}")
 
-    full_output_filename = f"{filepath}/{basename}_SystemPerformance.sqlite"
+    output_filepath_prefix = f"{filepath}/{base_prefix}"
+    sql_filename = f"{output_filepath_prefix}_SystemPerformance.sqlite"
 
     # Delete the database and recreate
     if database_action == "Create and Chart":
-        if os.path.exists(full_output_filename):
-            os.remove(full_output_filename)
+        if os.path.exists(sql_filename):
+            os.remove(sql_filename)
 
     # Connect to database (Create database file if it does not exist already)
-    connection = create_connection(full_output_filename)
+    connection = create_connection(sql_filename)
 
     # Is this the first time in?
     cursor = connection.cursor()
@@ -879,7 +889,7 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
     # if the count is 1, then table exists
     if cursor.fetchone()[0] == 1:
         if database_action != "Chart only":
-            create_sections(connection, input_file, include_iostat)
+            create_sections(connection, input_file, include_iostat, html_filename)
 
     else:
         if database_action == "Chart only":
@@ -887,7 +897,7 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
             print(f"No data to chart")
         else:
             create_overview(connection, input_file)
-            create_sections(connection, input_file, include_iostat)
+            create_sections(connection, input_file, include_iostat, html_filename)
 
     connection.close()
 
@@ -895,38 +905,40 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
 
     if "Chart" in database_action and not input_error:
 
-        output_file_path = f"{filepath}/{basename}_metrics/"
+        output_file_path_base = f"{output_filepath_prefix}_metrics"
 
-        if not os.path.isdir(output_file_path):
-            os.mkdir(output_file_path)
+        if not os.path.isdir(output_file_path_base):
+            os.mkdir(output_file_path_base)
 
-        connection = create_connection(f"{filepath}/{basename}_SystemPerformance.sqlite")
+        connection = create_connection(sql_filename)
 
         operating_system = execute_single_read_query(
             connection, "SELECT * FROM overview WHERE field = 'operating system';"
         )[2]
 
-        output_file_path = f"{filepath}/{basename}_metrics/mgstat/"
+        # mgstat
+        output_file_path = f"{output_file_path_base}/mgstat/"
 
         if not os.path.isdir(output_file_path):
             os.mkdir(output_file_path)
         chart_mgstat(connection, output_file_path)
 
+        # vmstat and iostat
         if operating_system == "Linux" or operating_system == "Ubuntu":
 
-            output_file_path = f"{filepath}/{basename}_metrics/vmstat/"
+            output_file_path = f"{output_file_path_base}/vmstat/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
             chart_vmstat(connection, output_file_path)
 
             if include_iostat:
-                output_file_path = f"{filepath}/{basename}_metrics/iostat/"
+                output_file_path = f"{output_file_path_base}/iostat/"
                 if not os.path.isdir(output_file_path):
                     os.mkdir(output_file_path)
                 chart_iostat(connection, output_file_path, operating_system)
 
         if operating_system == "Windows":
-            output_file_path = f"{filepath}/{basename}_metrics/perfmon/"
+            output_file_path = f"{output_file_path_base}/perfmon/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
             chart_perfmon(connection, output_file_path)
@@ -973,9 +985,9 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "-o",
-        "--output",
-        dest="output_filename",
-        help="Output filename prefix for sql file",
+        "--output_prefix",
+        dest="output_prefix",
+        help="Output filename prefix, defaults to html file name",
         action="store",
         metavar='"output file prefix"',
     )
@@ -1017,6 +1029,6 @@ if __name__ == "__main__":
                 sys.exit()
 
     try:
-        mainline(input_file, args.include_iostat, args.append_to_database, existing_database, args.output_filename)
+        mainline(input_file, args.include_iostat, args.append_to_database, existing_database, args.output_prefix)
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
