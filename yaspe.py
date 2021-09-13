@@ -509,7 +509,7 @@ def create_overview(connection, input_file):
     return
 
 
-def linked_chart(data, column_name, title, max_y, filepath, **kwargs):
+def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
@@ -563,10 +563,10 @@ def linked_chart(data, column_name, title, max_y, filepath, **kwargs):
 
     output_name = column_name.replace("/", "_")
 
-    (upper & lower).save(f"{filepath}{file_prefix}{output_name}.html")
+    (upper & lower).save(f"{filepath}{output_prefix}_{file_prefix}{output_name}.html")
 
 
-def linked_chart_no_time(data, column_name, title, max_y, filepath, **kwargs):
+def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
@@ -598,10 +598,10 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, **kwargs):
 
     output_name = column_name.replace("/", "_")
 
-    (upper & lower).save(f"{filepath}{file_prefix}{output_name}.html")
+    (upper & lower).save(f"{filepath}{output_prefix}_{file_prefix}{output_name}.html")
 
 
-def chart_vmstat(connection, filepath):
+def chart_vmstat(connection, filepath, output_prefix):
     # print(f"vmstat...")
     # Get useful
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -618,7 +618,7 @@ def chart_vmstat(connection, filepath):
     # Format the data for Altair
     # Cut down the df to just the the list of categorical data we care about (columns)
     columns_to_chart = list(df.columns)
-    unwanted_columns = ["id_key", "Date", "Time"]
+    unwanted_columns = ["id_key", "Date", "Time", "html name"]
     columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
     vmstat_df = df[columns_to_chart]
@@ -654,10 +654,10 @@ def chart_vmstat(connection, filepath):
 
             data = to_chart_df
 
-            linked_chart(data, column_name, title, max_y, filepath)
+            linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
-def chart_mgstat(connection, filepath):
+def chart_mgstat(connection, filepath, output_prefix):
     # print(f"mgstat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -671,7 +671,7 @@ def chart_mgstat(connection, filepath):
     # Format the data for Altair
     # Cut down the df to just the the list of categorical data we care about (columns)
     columns_to_chart = list(df.columns)
-    unwanted_columns = ["id_key", "Date", "Time"]
+    unwanted_columns = ["id_key", "Date", "Time", "html name"]
     columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
     mgstat_df = df[columns_to_chart]
@@ -693,10 +693,10 @@ def chart_mgstat(connection, filepath):
 
             data = to_chart_df
 
-            linked_chart(data, column_name, title, max_y, filepath)
+            linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
-def chart_perfmon(connection, filepath):
+def chart_perfmon(connection, filepath, output_prefix):
     # print(f"perfmon...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -719,7 +719,7 @@ def chart_perfmon(connection, filepath):
     # Format the data for Altair
     # Cut down the df to just the the list of categorical data we care about (columns)
     columns_to_chart = list(df.columns)
-    unwanted_columns = ["id_key", "Time"]
+    unwanted_columns = ["id_key", "Time", "html name"]
     columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
     perfmon_df = df[columns_to_chart]
@@ -749,10 +749,10 @@ def chart_perfmon(connection, filepath):
 
             data = to_chart_df
 
-            linked_chart(data, column_name, title, max_y, filepath)
+            linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
-def chart_iostat(connection, filepath, operating_system):
+def chart_iostat(connection, filepath, output_prefix, operating_system):
     # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -769,7 +769,7 @@ def chart_iostat(connection, filepath, operating_system):
         # Format the data for Altair
         # Cut down the df to just the the list of categorical data we care about (columns)
         columns_to_chart = list(df.columns)
-        unwanted_columns = ["id_key", "Date", "Time"]
+        unwanted_columns = ["id_key", "Date", "Time", "html name"]
         columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
         iostat_df = df[columns_to_chart]
@@ -800,12 +800,14 @@ def chart_iostat(connection, filepath, operating_system):
 
                     data = to_chart_df
 
-                    linked_chart(data, column_name, title, max_y, filepath, file_prefix=device)
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
     else:
         # No date or time, chart all columns, index is x axis
 
         columns_to_chart = list(df.columns)
+        unwanted_columns = ["id_key", "html name"]
+        columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
         iostat_df = df
         devices = iostat_df["Device"].unique()
@@ -832,7 +834,7 @@ def chart_iostat(connection, filepath, operating_system):
 
                     data = to_chart_df
 
-                    linked_chart_no_time(data, column_name, title, max_y, filepath, file_prefix=device)
+                    linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
 
 def mainline(input_file, include_iostat, append_to_database, existing_database, output_prefix):
@@ -861,23 +863,28 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
     if filepath == "":
         filepath = "."
 
-    # if not specified defaults to the html file name
+    # get the prefix
     html_filename = filename.split('.')[0]
 
     if output_prefix is None:
         base_prefix = html_filename
+        output_prefix = html_filename
     else:
         base_prefix = output_prefix
 
     print(f"Output prefix: {base_prefix}")
 
     output_filepath_prefix = f"{filepath}/{base_prefix}"
-    sql_filename = f"{output_filepath_prefix}_SystemPerformance.sqlite"
 
-    # Delete the database and recreate
-    if database_action == "Create and Chart":
-        if os.path.exists(sql_filename):
-            os.remove(sql_filename)
+    if existing_database:
+        sql_filename = existing_database
+    else:
+        sql_filename = f"{output_filepath_prefix}_SystemPerformance.sqlite"
+
+        # Delete the database and recreate
+        if database_action == "Create and Chart":
+            if os.path.exists(sql_filename):
+                os.remove(sql_filename)
 
     # Connect to database (Create database file if it does not exist already)
     connection = create_connection(sql_filename)
@@ -921,7 +928,7 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
 
         if not os.path.isdir(output_file_path):
             os.mkdir(output_file_path)
-        chart_mgstat(connection, output_file_path)
+        chart_mgstat(connection, output_file_path, output_prefix)
 
         # vmstat and iostat
         if operating_system == "Linux" or operating_system == "Ubuntu":
@@ -929,19 +936,19 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
             output_file_path = f"{output_file_path_base}/vmstat/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
-            chart_vmstat(connection, output_file_path)
+            chart_vmstat(connection, output_file_path, output_prefix)
 
             if include_iostat:
                 output_file_path = f"{output_file_path_base}/iostat/"
                 if not os.path.isdir(output_file_path):
                     os.mkdir(output_file_path)
-                chart_iostat(connection, output_file_path, operating_system)
+                chart_iostat(connection, output_file_path, output_prefix, operating_system)
 
         if operating_system == "Windows":
             output_file_path = f"{output_file_path_base}/perfmon/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
-            chart_perfmon(connection, output_file_path)
+            chart_perfmon(connection, output_file_path, output_prefix)
 
         connection.close()
 
@@ -995,13 +1002,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "-e",
         "--existing_database",
-        help="Chart existing database, full path to existing database directory",
+        help="Chart existing database, full path and filename to existing database",
         action="store",
-        metavar='"/path"',
+        metavar='"/path/filename_SystemPerformance.sqlite"',
     )
 
     args = parser.parse_args()
 
+    # Validate input file
     if args.input_file is not None:
         try:
             if os.path.getsize(args.input_file) > 0:
@@ -1014,15 +1022,17 @@ if __name__ == "__main__":
             sys.exit()
 
     else:
+
+        # if no input file validate existing database to chart
         if args.existing_database is None:
             print('Error: -i "Input html filename with full path required"')
             sys.exit()
         else:
             try:
                 if os.path.getsize(args.existing_database) > 0:
-                    existing_database = f"{args.existing_database}/SystemPerformance.sqlite"
+                    existing_database = args.existing_database
                 else:
-                    print('Error: -i "Existing database filename with full path required"')
+                    print('Error: -o "Existing database filename with full path required"')
                     sys.exit()
             except OSError as e:
                 print("Could not process files because: {}".format(str(e)))
