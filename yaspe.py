@@ -358,7 +358,7 @@ def create_overview(connection, input_file):
             if "overview=" in line:
                 sp_dict["overview"] = (line.split("=")[1]).strip()
 
-            if "Caché Version String: " in line or "Product Version String: " in line:
+            if "Version String: " in line:
                 sp_dict["version string"] = (line.split(":", 1)[1]).strip()
 
                 if "Windows" in line:
@@ -830,7 +830,7 @@ def chart_iostat(connection, filepath, operating_system):
                     linked_chart_no_time(data, column_name, title, max_y, filepath, file_prefix=device)
 
 
-def mainline(input_file, include_iostat, append_to_database, existing_database):
+def mainline(input_file, include_iostat, append_to_database, existing_database, output_filename):
     input_error = False
 
     # What are we doing?
@@ -849,15 +849,26 @@ def mainline(input_file, include_iostat, append_to_database, existing_database):
     else:
         head_tail = os.path.split(input_file)
     filepath = head_tail[0]
-    # filename = head_tail[1]
+    filename = head_tail[1]
+
+    # if no path it must be in the current path
+    if filepath == "":
+        filepath = "."
+
+    basename = filename.split('.')[0]
+
+    if output_filename != "":
+        full_output_filename = f"{filepath}/{output_filename}_SystemPerformance.sqlite"
+    else:
+        full_output_filename = f"{filepath}/{basename}_SystemPerformance.sqlite"
 
     # Delete the database and recreate
     if database_action == "Create and Chart":
-        if os.path.exists(f"{filepath}/SystemPerformance.sqlite"):
-            os.remove(f"{filepath}/SystemPerformance.sqlite")
+        if os.path.exists(full_output_filename):
+            os.remove(full_output_filename)
 
     # Connect to database (Create database file if it does not exist already)
-    connection = create_connection(f"{filepath}/SystemPerformance.sqlite")
+    connection = create_connection(full_output_filename)
 
     # Is this the first time in?
     cursor = connection.cursor()
@@ -957,6 +968,14 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "-o",
+        "--output",
+        dest="output_filename",
+        help="Output filename for sql file",
+        action="store",
+    )
+
+    parser.add_argument(
         "-e",
         "--existing_database",
         help="Chart existing database, full path to existing database directory",
@@ -993,6 +1012,6 @@ if __name__ == "__main__":
                 sys.exit()
 
     try:
-        mainline(input_file, args.include_iostat, args.append_to_database, existing_database)
+        mainline(input_file, args.include_iostat, args.append_to_database, existing_database, args.output_filename)
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
