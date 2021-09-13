@@ -855,12 +855,14 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
     if filepath == "":
         filepath = "."
 
-    basename = filename.split('.')[0]
-
-    if output_filename != "":
-        full_output_filename = f"{filepath}/{output_filename}_SystemPerformance.sqlite"
+    if output_filename is None:
+        basename = filename.split('.')[0]
     else:
-        full_output_filename = f"{filepath}/{basename}_SystemPerformance.sqlite"
+        basename = output_filename
+
+    print(f"output {basename}")
+
+    full_output_filename = f"{filepath}/{basename}_SystemPerformance.sqlite"
 
     # Delete the database and recreate
     if database_action == "Create and Chart":
@@ -893,36 +895,38 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
 
     if "Chart" in database_action and not input_error:
 
-        output_file_path = f"{filepath}/metrics/"
+        output_file_path = f"{filepath}/{basename}_metrics/"
+
         if not os.path.isdir(output_file_path):
             os.mkdir(output_file_path)
 
-        connection = create_connection(f"{filepath}/SystemPerformance.sqlite")
+        connection = create_connection(f"{filepath}/{basename}_SystemPerformance.sqlite")
 
         operating_system = execute_single_read_query(
             connection, "SELECT * FROM overview WHERE field = 'operating system';"
         )[2]
 
-        output_file_path = f"{filepath}/metrics/mgstat/"
+        output_file_path = f"{filepath}/{basename}_metrics/mgstat/"
+
         if not os.path.isdir(output_file_path):
             os.mkdir(output_file_path)
         chart_mgstat(connection, output_file_path)
 
         if operating_system == "Linux" or operating_system == "Ubuntu":
 
-            output_file_path = f"{filepath}/metrics/vmstat/"
+            output_file_path = f"{filepath}/{basename}_metrics/vmstat/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
             chart_vmstat(connection, output_file_path)
 
             if include_iostat:
-                output_file_path = f"{filepath}/metrics/iostat/"
+                output_file_path = f"{filepath}/{basename}_metrics/iostat/"
                 if not os.path.isdir(output_file_path):
                     os.mkdir(output_file_path)
                 chart_iostat(connection, output_file_path, operating_system)
 
         if operating_system == "Windows":
-            output_file_path = f"{filepath}/metrics/perfmon/"
+            output_file_path = f"{filepath}/{basename}_metrics/perfmon/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
             chart_perfmon(connection, output_file_path)
@@ -971,8 +975,9 @@ if __name__ == "__main__":
         "-o",
         "--output",
         dest="output_filename",
-        help="Output filename for sql file",
+        help="Output filename prefix for sql file",
         action="store",
+        metavar='"output file prefix"',
     )
 
     parser.add_argument(
