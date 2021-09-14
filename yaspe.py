@@ -123,7 +123,7 @@ def get_number_type(s):
             return s
 
 
-def create_sections(connection, input_file, include_iostat, html_filename):
+def create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix):
     vmstat_processing = False
     vmstat_header = ""
     vmstat_rows_list = []
@@ -302,6 +302,9 @@ def create_sections(connection, input_file, include_iostat, html_filename):
 
         connection.commit()
 
+        if csv_out:
+            mgstat_df.to_csv(f"{output_filepath_prefix}mgstat.csv", index=False, encoding='utf-8')
+
     if vmstat_header != "":
         vmstat_df = pd.DataFrame(vmstat_rows_list)
         create_generic_table(connection, "vmstat", vmstat_df)
@@ -309,12 +312,17 @@ def create_sections(connection, input_file, include_iostat, html_filename):
             insert_dict_into_table(connection, "vmstat", row)
         connection.commit()
 
+        if csv_out:
+            vmstat_df.to_csv(f"{output_filepath_prefix}vmstat.csv", index=False, encoding='utf-8')
+
     if perfmon_header != "":
         perfmon_df = pd.DataFrame(perfmon_rows_list)
         create_generic_table(connection, "perfmon", perfmon_df)
         for row in perfmon_rows_list:
             insert_dict_into_table(connection, "perfmon", row)
         connection.commit()
+        if csv_out:
+            perfmon_df.to_csv(f"{output_filepath_prefix}perfmon.csv", index=False, encoding='utf-8')
 
     if iostat_header != "":
         iostat_df = pd.DataFrame(iostat_rows_list)
@@ -322,6 +330,8 @@ def create_sections(connection, input_file, include_iostat, html_filename):
         for row in iostat_rows_list:
             insert_dict_into_table(connection, "iostat", row)
         connection.commit()
+        if csv_out:
+            iostat_df.to_csv(f"{output_filepath_prefix}iostat.csv", index=False, encoding='utf-8')
 
 
 def create_overview(connection, input_file):
@@ -837,7 +847,7 @@ def chart_iostat(connection, filepath, output_prefix, operating_system):
                     linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
 
-def mainline(input_file, include_iostat, append_to_database, existing_database, output_prefix):
+def mainline(input_file, include_iostat, append_to_database, existing_database, output_prefix, csv_out):
     input_error = False
 
     # What are we doing?
@@ -894,7 +904,7 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
     # if the count is 1, then table exists
     if cursor.fetchone()[0] == 1:
         if database_action != "Chart only":
-            create_sections(connection, input_file, include_iostat, html_filename)
+            create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix)
 
     else:
         if database_action == "Chart only":
@@ -902,7 +912,7 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
             print(f"No data to chart")
         else:
             create_overview(connection, input_file)
-            create_sections(connection, input_file, include_iostat, html_filename)
+            create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix)
 
     connection.close()
 
@@ -992,7 +1002,7 @@ if __name__ == "__main__":
         "-o",
         "--output_prefix",
         dest="output_prefix",
-        help="Output filename prefix, defaults to html file name",
+        help="Output filename prefix, defaults to html file name, blank (-o '') is legal",
         action="store",
         metavar='"output file prefix"',
     )
@@ -1003,6 +1013,14 @@ if __name__ == "__main__":
         help="Chart existing database, full path and filename to existing database",
         action="store",
         metavar='"/path/filename_SystemPerformance.sqlite"',
+    )
+
+    parser.add_argument(
+        "-c",
+        "--csv",
+        dest="csv_out",
+        help="Create csv files of each html files metrics",
+        action="store_true",
     )
 
     args = parser.parse_args()
@@ -1037,6 +1055,6 @@ if __name__ == "__main__":
                 sys.exit()
 
     try:
-        mainline(input_file, args.include_iostat, args.append_to_database, existing_database, args.output_prefix)
+        mainline(input_file, args.include_iostat, args.append_to_database, existing_database, args.output_prefix, args.csv_out)
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
