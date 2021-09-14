@@ -303,7 +303,13 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
         connection.commit()
 
         if csv_out:
-            mgstat_df.to_csv(f"{output_filepath_prefix}mgstat.csv", index=False, encoding='utf-8')
+            mgstat_output_csv = f"{output_filepath_prefix}mgstat.csv"
+
+            # if file does not exist write header
+            if not os.path.isfile(mgstat_output_csv):
+                mgstat_df.to_csv(mgstat_output_csv, header='column_names',index=False, encoding='utf-8')
+            else:  # else it exists so append without writing the header
+                mgstat_df.to_csv(mgstat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
 
     if vmstat_header != "":
         vmstat_df = pd.DataFrame(vmstat_rows_list)
@@ -313,7 +319,13 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
         connection.commit()
 
         if csv_out:
-            vmstat_df.to_csv(f"{output_filepath_prefix}vmstat.csv", index=False, encoding='utf-8')
+            vmstat_output_csv = f"{output_filepath_prefix}vmstat.csv"
+
+            # if file does not exist write header
+            if not os.path.isfile(vmstat_output_csv):
+                vmstat_df.to_csv(vmstat_output_csv, header='column_names',index=False, encoding='utf-8')
+            else:  # else it exists so append without writing the header
+                vmstat_df.to_csv(vmstat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
 
     if perfmon_header != "":
         perfmon_df = pd.DataFrame(perfmon_rows_list)
@@ -321,8 +333,15 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
         for row in perfmon_rows_list:
             insert_dict_into_table(connection, "perfmon", row)
         connection.commit()
+
         if csv_out:
-            perfmon_df.to_csv(f"{output_filepath_prefix}perfmon.csv", index=False, encoding='utf-8')
+            perfmon_output_csv = f"{output_filepath_prefix}vmstat.csv"
+
+            # if file does not exist write header
+            if not os.path.isfile(perfmon_output_csv):
+                perfmon_df.to_csv(perfmon_output_csv, header='column_names',index=False, encoding='utf-8')
+            else:  # else it exists so append without writing the header
+                perfmon_df.to_csv(perfmon_output_csv, mode='a', header=False, index=False, encoding='utf-8')
 
     if iostat_header != "":
         iostat_df = pd.DataFrame(iostat_rows_list)
@@ -331,7 +350,13 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
             insert_dict_into_table(connection, "iostat", row)
         connection.commit()
         if csv_out:
-            iostat_df.to_csv(f"{output_filepath_prefix}iostat.csv", index=False, encoding='utf-8')
+            iostat_output_csv = f"{output_filepath_prefix}vmstat.csv"
+
+            # if file does not exist write header
+            if not os.path.isfile(iostat_output_csv):
+                iostat_df.to_csv(iostat_output_csv, header='column_names',index=False, encoding='utf-8')
+            else:  # else it exists so append without writing the header
+                iostat_df.to_csv(iostat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
 
 
 def create_overview(connection, input_file):
