@@ -94,8 +94,8 @@ docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/three_d
 
 - HTML charts for all columns in mgstat and vmstat or windows perfmon and output to folders under `./prefix_metrics`
 - It is optional to create charts for iostat as this can take a long time if there is a big disk list
-- if you do not want the default prefix (html file name), override with `-o your_choice` or `-o ''` for no prefix.
-
+- If you do not want the default prefix (html file name), override with `-o your_choice` or `-o ''` for no prefix.
+- If you want a csv file for further processing use the `-c` argument. If you use `-c` with `-o` csv files (for example for multiple days) will append.
 
 *Example output*
 
