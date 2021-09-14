@@ -563,7 +563,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     output_name = column_name.replace("/", "_")
 
-    (upper & lower).save(f"{filepath}{output_prefix}_{file_prefix}{output_name}.html")
+    (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html")
 
 
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -598,7 +598,7 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
     output_name = column_name.replace("/", "_")
 
-    (upper & lower).save(f"{filepath}{output_prefix}_{file_prefix}{output_name}.html")
+    (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html")
 
 
 def chart_vmstat(connection, filepath, output_prefix):
@@ -867,19 +867,17 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
     html_filename = filename.split('.')[0]
 
     if output_prefix is None:
-        base_prefix = html_filename
-        output_prefix = html_filename
+        output_prefix = f"{html_filename}_"
     else:
-        base_prefix = output_prefix
+        if output_prefix != "":
+            output_prefix = f"{output_prefix}_"
 
-    print(f"Output prefix: {base_prefix}")
-
-    output_filepath_prefix = f"{filepath}/{base_prefix}"
+    output_filepath_prefix = f"{filepath}/{output_prefix}"
 
     if existing_database:
         sql_filename = existing_database
     else:
-        sql_filename = f"{output_filepath_prefix}_SystemPerformance.sqlite"
+        sql_filename = f"{output_filepath_prefix}SystemPerformance.sqlite"
 
         # Delete the database and recreate
         if database_action == "Create and Chart":
@@ -912,7 +910,7 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
 
     if "Chart" in database_action and not input_error:
 
-        output_file_path_base = f"{output_filepath_prefix}_metrics"
+        output_file_path_base = f"{output_filepath_prefix}metrics"
 
         if not os.path.isdir(output_file_path_base):
             os.mkdir(output_file_path_base)
