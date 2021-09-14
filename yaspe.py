@@ -1044,7 +1044,7 @@ if __name__ == "__main__":
         "-c",
         "--csv",
         dest="csv_out",
-        help="Create csv files of each html files metrics",
+        help="Create csv files of each html files metrics, append if csv file exists",
         action="store_true",
     )
 

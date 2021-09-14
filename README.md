@@ -20,13 +20,11 @@ This will replace `yape`. I will add functionality as I need it. e.g. I expect t
 
 ## Run the command over a pButtons or SystemPerformance file
 
-Required argument `-i /data/filename.html` to point to the pButtons or SystemPerformance file.
-
 See the help text:
 
 ```plaintext
 $ docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h
-usage: yaspe [-h] [-i "/path/file.html"] [-x] [-a] [-e "/path"]
+usage: yaspe [-h] [-i "/path/file.html"] [-x] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c]
 
 Performance file review
 
@@ -36,8 +34,11 @@ optional arguments:
                         Input html filename with full path
   -x, --iostat          Also plot iostat data (can take a long time)
   -a, --append          Do not overwrite database, append to existing database
-  -e "/path", --existing_database "/path"
-                        Chart existing database, full path to existing database directory
+  -o "output file prefix", --output_prefix "output file prefix"
+                        Output filename prefix, defaults to html file name, blank (-o '') is legal
+  -e "/path/filename_SystemPerformance.sqlite", --existing_database "/path/filename_SystemPerformance.sqlite"
+                        Chart existing database, full path and filename to existing database
+  -c, --csv             Create csv files of each html files metrics, append if csv file exists
 
 Be safe, "quote the path"
 ```
@@ -69,24 +70,32 @@ If the SystemPerformance files have a short sample period this can result in lon
 It may be a bit clunky to work with in the browser.
 I suggest you run over a week without iostat (`-x`), then use the method above to deep dive on a day or couple of days.
 
+By default, output folders and files are prefixed with the html file name. 
+To keep all the metric data in a single database use the `-o` argument to override the output file prefix.
+
 Example of running over multiple days;
 - change to the folder with the html files and run the commands, run:
 
 ```plaintext
-for i in `ls *.html`;do docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/"${i}" -a; done
+for i in `ls *.html`;do docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/"${i}" -a -o "three_days"; done
 ```
 
+The resulting database file will use the prefix, in this example; `three_days_SystemPerformance.sqlite`
+
+To create charts for the accumulated days use the `-e` argument.
+
 ```plaintext
-docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data
+docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/three_days_SystemPerformance.sqlite
 ```
 
 <hr>
 
 ## Output files
 
-- An sqlite database file `SystemPerformance.sqlite` stores extracted metrics for (further processing (TBA))
-- HTML charts for all columns in mgstat and vmstat or windows perfmon and output to folders under `./metrics`
+- HTML charts for all columns in mgstat and vmstat or windows perfmon and output to folders under `./prefix_metrics`
 - It is optional to create charts for iostat as this can take a long time if there is a big disk list
+- if you do not want the default prefix (html file name), override with `-o your_choice` or `-o ''` for no prefix.
+
 
 *Example output*
 
