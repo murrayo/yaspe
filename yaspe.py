@@ -285,6 +285,8 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
     if mgstat_header != "":
         # Create dataframe of rows. Shortcut here to creating table columns or later charts etc
         mgstat_df = pd.DataFrame(mgstat_rows_list)
+        # Remove any rows with NaN
+        mgstat_df.dropna(inplace=True)
 
         # Want to just dump a dataframe to a table and avoid all the roll-your-own steps ;)
         # SQLAlchemy is included in pandas
@@ -313,6 +315,8 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
 
     if vmstat_header != "":
         vmstat_df = pd.DataFrame(vmstat_rows_list)
+        vmstat_df.dropna(inplace=True)
+
         create_generic_table(connection, "vmstat", vmstat_df)
         for row in vmstat_rows_list:
             insert_dict_into_table(connection, "vmstat", row)
@@ -329,10 +333,11 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
 
     if perfmon_header != "":
         perfmon_df = pd.DataFrame(perfmon_rows_list)
+        perfmon_df.dropna(inplace=True)
         create_generic_table(connection, "perfmon", perfmon_df)
         for row in perfmon_rows_list:
             insert_dict_into_table(connection, "perfmon", row)
-        connection.commit()
+        connection.commit(inplace=True)
 
         if csv_out:
             perfmon_output_csv = f"{output_filepath_prefix}vmstat.csv"
@@ -345,6 +350,7 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
 
     if iostat_header != "":
         iostat_df = pd.DataFrame(iostat_rows_list)
+        iostat_df.dropna(inplace=True)
         create_generic_table(connection, "iostat", iostat_df)
         for row in iostat_rows_list:
             insert_dict_into_table(connection, "iostat", row)
