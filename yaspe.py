@@ -356,7 +356,7 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
             insert_dict_into_table(connection, "iostat", row)
         connection.commit()
         if csv_out:
-            iostat_output_csv = f"{output_filepath_prefix}vmstat.csv"
+            iostat_output_csv = f"{output_filepath_prefix}iostat.csv"
 
             # if file does not exist write header
             if not os.path.isfile(iostat_output_csv):
