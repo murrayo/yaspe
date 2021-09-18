@@ -5,20 +5,22 @@ Chart the results
 
 
 """
-import os
-import sys
-import locale
 import argparse
-import pandas as pd
-import altair as alt
-
+import locale
+import os
 # from altair_saver import save
 import sqlite3
+import sys
 from sqlite3 import Error
+
+import altair as alt
+import pandas as pd
 
 # Altair
 # Max is 5,000 rows by default
 alt.data_transformers.disable_max_rows()
+
+import sp_check
 
 
 def create_connection(path):
@@ -251,13 +253,13 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                         if iostat_date_included:
                             if iostat_am_pm:
                                 line = (
-                                    date_time.split()[0]
-                                    + ","
-                                    + date_time.split()[1]
-                                    + " "
-                                    + date_time.split()[2]
-                                    + ","
-                                    + line
+                                        date_time.split()[0]
+                                        + ","
+                                        + date_time.split()[1]
+                                        + " "
+                                        + date_time.split()[2]
+                                        + ","
+                                        + line
                                 )
                             else:
                                 line = date_time.split()[0] + "," + str(date_time.split()[1]) + "," + line
@@ -309,7 +311,7 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
 
             # if file does not exist write header
             if not os.path.isfile(mgstat_output_csv):
-                mgstat_df.to_csv(mgstat_output_csv, header='column_names',index=False, encoding='utf-8')
+                mgstat_df.to_csv(mgstat_output_csv, header='column_names', index=False, encoding='utf-8')
             else:  # else it exists so append without writing the header
                 mgstat_df.to_csv(mgstat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
 
@@ -327,7 +329,7 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
 
             # if file does not exist write header
             if not os.path.isfile(vmstat_output_csv):
-                vmstat_df.to_csv(vmstat_output_csv, header='column_names',index=False, encoding='utf-8')
+                vmstat_df.to_csv(vmstat_output_csv, header='column_names', index=False, encoding='utf-8')
             else:  # else it exists so append without writing the header
                 vmstat_df.to_csv(vmstat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
 
@@ -344,7 +346,7 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
 
             # if file does not exist write header
             if not os.path.isfile(perfmon_output_csv):
-                perfmon_df.to_csv(perfmon_output_csv, header='column_names',index=False, encoding='utf-8')
+                perfmon_df.to_csv(perfmon_output_csv, header='column_names', index=False, encoding='utf-8')
             else:  # else it exists so append without writing the header
                 perfmon_df.to_csv(perfmon_output_csv, mode='a', header=False, index=False, encoding='utf-8')
 
@@ -360,7 +362,7 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
 
             # if file does not exist write header
             if not os.path.isfile(iostat_output_csv):
-                iostat_df.to_csv(iostat_output_csv, header='column_names',index=False, encoding='utf-8')
+                iostat_df.to_csv(iostat_output_csv, header='column_names', index=False, encoding='utf-8')
             else:  # else it exists so append without writing the header
                 iostat_df.to_csv(iostat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
 
@@ -581,15 +583,15 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     # Create the chart
     base = (
         alt.Chart(data)
-        .mark_line()
-        .encode(
+            .mark_line()
+            .encode(
             # alt.X("datetime:T", title="Time", axis=alt.Axis(format='%e %b, %Y')),
             alt.X("datetime:T", title="Time"),
             alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
             alt.Color("Type", title="Metric"),
             tooltip=["metric"],
         )
-        .properties(height=400, width=800, title=title)
+            .properties(height=400, width=800, title=title)
     )
 
     # Upper is zoomed area X axis
@@ -617,14 +619,14 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     # Create the chart
     base = (
         alt.Chart(data)
-        .mark_line()
-        .encode(
+            .mark_line()
+            .encode(
             alt.X("id_key:Q", title="Count"),
             alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
             alt.Color("Type", title="Metric"),
             tooltip=["metric:N"],
         )
-        .properties(height=400, width=800, title=title)
+            .properties(height=400, width=800, title=title)
     )
 
     # Upper is zoomed area X axis
@@ -878,7 +880,7 @@ def chart_iostat(connection, filepath, output_prefix, operating_system):
                     linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
 
-def mainline(input_file, include_iostat, append_to_database, existing_database, output_prefix, csv_out):
+def mainline(input_file, include_iostat, append_to_database, existing_database, output_prefix, csv_out, system_out):
     input_error = False
 
     # What are we doing?
@@ -896,7 +898,7 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
         filepath_filename = os.path.split(existing_database)
     else:
         filepath_filename = os.path.split(input_file)
-        
+
     filepath = filepath_filename[0]
     filename = filepath_filename[1]
 
@@ -942,6 +944,15 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
             input_error = True
             print(f"No data to chart")
         else:
+
+            # Create a system summary
+            if system_out:
+                sp_dict = sp_check.system_check(input_file)
+                output_log = sp_check.build_log(sp_dict)
+
+                with open(f"{output_filepath_prefix}overview.txt", "w") as text_file:
+                    print(f"{output_log}", file=text_file)
+
             create_overview(connection, input_file)
             create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix)
 
@@ -1008,7 +1019,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-i",
         "--input_file",
-        help="Input html filename with full path",
+        help="Input html filename with full path.",
         action="store",
         metavar='"/path/file.html"',
     )
@@ -1017,7 +1028,7 @@ if __name__ == "__main__":
         "-x",
         "--iostat",
         dest="include_iostat",
-        help="Also plot iostat data (can take a long time)",
+        help="Also plot iostat data (can take a long time).",
         action="store_true",
     )
 
@@ -1025,7 +1036,7 @@ if __name__ == "__main__":
         "-a",
         "--append",
         dest="append_to_database",
-        help="Do not overwrite database, append to existing database",
+        help="Do not overwrite database, append to existing database.",
         action="store_true",
     )
 
@@ -1033,7 +1044,7 @@ if __name__ == "__main__":
         "-o",
         "--output_prefix",
         dest="output_prefix",
-        help="Output filename prefix, defaults to html file name, blank (-o '') is legal",
+        help="Output filename prefix, defaults to html file name, blank (-o '') is legal.",
         action="store",
         metavar='"output file prefix"',
     )
@@ -1041,7 +1052,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-e",
         "--existing_database",
-        help="Chart existing database, full path and filename to existing database",
+        help="Chart existing database, full path and filename to existing database.",
         action="store",
         metavar='"/path/filename_SystemPerformance.sqlite"',
     )
@@ -1050,7 +1061,15 @@ if __name__ == "__main__":
         "-c",
         "--csv",
         dest="csv_out",
-        help="Create csv files of each html files metrics, append if csv file exists",
+        help="Create csv files of each html files metrics, append if csv file exists.",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "-s",
+        "--system",
+        dest="system_out",
+        help="Output system overview. ",
         action="store_true",
     )
 
@@ -1086,6 +1105,7 @@ if __name__ == "__main__":
                 sys.exit()
 
     try:
-        mainline(input_file, args.include_iostat, args.append_to_database, existing_database, args.output_prefix, args.csv_out)
+        mainline(input_file, args.include_iostat, args.append_to_database, existing_database, args.output_prefix,
+                 args.csv_out, args.system_out)
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
