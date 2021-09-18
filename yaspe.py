@@ -8,6 +8,9 @@ Chart the results
 import argparse
 import locale
 import os
+from datetime import datetime
+import dateutil.parser
+
 # from altair_saver import save
 import sqlite3
 import sys
@@ -148,6 +151,20 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
     operating_system = execute_single_read_query(
         connection, "SELECT * FROM overview WHERE field = 'operating system';"
     )[2]
+
+    # What is the start date and date format
+    
+    profile_string = execute_single_read_query(
+        connection, "SELECT * FROM overview WHERE field = 'profile run';"
+    )[2]
+
+    # Profile run "24hours_5sec" started at 00:03:00 on Jul 10 2021.
+    profile_date = profile_string.split("on ")[1].replace(".", "")
+
+    old_format = dateutil.parser.parse(profile_date)
+    date_time_object = datetime.strptime(str(old_format), '%Y-%m-%d  %H:%M:%S')
+    new_format = date_time_object.strftime('%m/%d/%Y')
+    # print(f'{profile_date} ~ {old_format} ~ {new_format}')
 
     with open(input_file, "r", encoding="ISO-8859-1") as file:
 
@@ -721,7 +738,7 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
 
     # What are we doing?
     if append_to_database:
-        database_action = "Append only"
+        database_action = f"Append only: {input_file}"
     elif existing_database:
         database_action = "Chart only"
     else:
