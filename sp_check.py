@@ -25,13 +25,6 @@ def system_check(input_file):
 
             # Summary
 
-            if "for Windows" in line:
-                sp_dict["operating system"] = "Windows"
-            if "Linux" in line:
-                sp_dict["operating system"] = "Linux"
-            if "AIX" in line:
-                sp_dict["operating system"] = "AIX"
-
             if "VMware" in line:
                 sp_dict["platform"] = "VMware"
 
@@ -44,6 +37,15 @@ def system_check(input_file):
 
             if "Version String: " in line or "Product Version String: " in line:
                 sp_dict["version string"] = (line.split(":", 1)[1]).strip()
+
+                if "Windows" in line:
+                    sp_dict["operating system"] = "Windows"
+                if "Linux" in line:
+                    sp_dict["operating system"] = "Linux"
+                if "AIX" in line:
+                    sp_dict["operating system"] = "AIX"
+                if "Ubuntu Server LTS" in line:
+                    sp_dict["operating system"] = "Ubuntu"
 
             if "Profile run " in line:
                 sp_dict["profile run"] = line.strip()
@@ -62,6 +64,11 @@ def system_check(input_file):
 
             if "numberofcpus=" in line:
                 sp_dict["mgstat header"] = line.strip()
+
+                mgstat_header = sp_dict["mgstat header"].split(",")
+                for item in mgstat_header:
+                    if "numberofcpus" in item:
+                        sp_dict["number cpus"] = item.split("=")[1].split(":")[0]
 
             # Linux cpu info
 

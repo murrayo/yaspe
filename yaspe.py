@@ -367,7 +367,7 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                 iostat_df.to_csv(iostat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
 
 
-def create_overview(connection, input_file):
+def create_overview(connection, sp_dict):
     cursor = connection.cursor()
 
     create_overview_table = """
@@ -380,174 +380,10 @@ def create_overview(connection, input_file):
 
     execute_simple_query(connection, create_overview_table)
 
-    sp_dict = {}
-
-    with open(input_file, "r", encoding="ISO-8859-1") as file:
-
-        model_name = True
-        windows_info_available = False
-
-        memory_next = False
-        perfmon_next = False
-
-        up_counter = 0
-
-        for line in file:
-
-            # Summary
-
-            if "VMware" in line:
-                sp_dict["platform"] = "VMware"
-
-            if "Customer: " in line:
-                customer = (line.split(":")[1]).strip()
-                sp_dict["customer"] = customer
-
-            if "overview=" in line:
-                sp_dict["overview"] = (line.split("=")[1]).strip()
-
-            if "Version String: " in line:
-                sp_dict["version string"] = (line.split(":", 1)[1]).strip()
-
-                if "Windows" in line:
-                    sp_dict["operating system"] = "Windows"
-                if "Linux" in line:
-                    sp_dict["operating system"] = "Linux"
-                if "AIX" in line:
-                    sp_dict["operating system"] = "AIX"
-                if "Ubuntu Server LTS" in line:
-                    sp_dict["operating system"] = "Ubuntu"
-
-            if "Profile run " in line:
-                sp_dict["profile run"] = line.strip()
-
-            if "Run over " in line:
-                sp_dict["run over"] = line.strip()
-
-            if "on machine" in line:
-                sp_dict[f"instance"] = (line.split(" on machine ", 1)[0]).strip()
-
-            if line.startswith("up "):
-                up_counter += 1
-                sp_dict[f"up instance {up_counter}"] = (line.split(" ", 1)[1]).strip()
-
-            # mgstat
-
-            if "numberofcpus=" in line:
-                sp_dict["mgstat header"] = line.strip()
-
-                mgstat_header = sp_dict["mgstat header"].split(",")
-                for item in mgstat_header:
-                    if "numberofcpus" in item:
-                        sp_dict["number cpus"] = item.split("=")[1].split(":")[0]
-
-            # Linux cpu info
-
-            if "model name	:" in line:
-                if model_name:
-                    model_name = False
-                    sp_dict["processor model"] = (line.split(":")[1]).strip()
-
-            # CPF file
-
-            if "AlternateDirectory=" in line:
-                sp_dict["alternate journal"] = (line.split("=")[1]).strip()
-            if "CurrentDirectory=" in line:
-                sp_dict["current journal"] = (line.split("=")[1]).strip()
-            if "globals=" in line:
-                sp_dict["globals"] = (line.split("=")[1]).strip()
-            if "gmheap=" in line:
-                sp_dict["gmheap"] = (line.split("=")[1]).strip()
-            if "locksiz=" in line:
-                sp_dict["locksiz"] = (line.split("=")[1]).strip()
-            if "routines=" in line:
-                sp_dict["routines"] = (line.split("=")[1]).strip()
-            if "wijdir=" in line:
-                sp_dict["wijdir"] = (line.split("=")[1]).strip()
-            if "Freeze" in line:
-                sp_dict["freeze"] = (line.split("=")[1]).strip()
-            if "Asyncwij=" in line:
-                sp_dict["asyncwij"] = (line.split("=")[1]).strip()
-            if "wduseasyncio=" in line:
-                sp_dict["wduseasyncio"] = (line.split("=")[1]).strip()
-
-            # Linux kernel
-
-            if "kernel.hostname" in line:
-                sp_dict["linux hostname"] = (line.split("=")[1]).strip()
-
-            if "swappiness" in line:
-                sp_dict["swappiness"] = (line.split("=")[1]).strip()
-
-            # Number hugepages = shared memory. eg 48GB/2048 = 24576
-            if "vm.nr_hugepages" in line:
-                sp_dict["vm.nr_hugepages"] = (line.split("=")[1]).strip()
-
-            # Shared memory must be greater than hugepages in bytes (IRIS shared memory)
-            if "kernel.shmmax" in line:
-                sp_dict["kernel.shmmax"] = (line.split("=")[1]).strip()
-            if "kernel.shmall" in line:
-                sp_dict["kernel.shmall"] = (line.split("=")[1]).strip()
-
-            # dirty background ratio = 5
-            if "vm.dirty_background_ratio" in line:
-                sp_dict["vm.dirty_background_ratio"] = (line.split("=")[1]).strip()
-
-            # dirty ratio = 10
-            if "vm.dirty_ratio" in line:
-                sp_dict["vm.dirty_ratio"] = (line.split("=")[1]).strip()
-
-            # Linux free
-
-            if memory_next:
-                sp_dict["memory MB"] = (line.split(",")[2]).strip()
-                memory_next = False
-            if "<div id=free>" in line:
-                memory_next = True
-
-            # Windows info
-            if "Windows info" in line:
-                windows_info_available = True
-
-            if windows_info_available:
-                if "Host Name:" in line:
-                    sp_dict["windows host name"] = (line.split(":")[1]).strip()
-                if "OS Name:" in line:
-                    sp_dict["windows os name"] = (line.split(":")[1]).strip()
-                if "[01]: Intel64 Family" in line:
-                    sp_dict["windows processor"] = (line.split(":")[1]).strip()
-                if "Time Zone:" in line:
-                    sp_dict["windows time zone"] = line.strip()
-                if "Total Physical Memory:" in line:
-                    sp_dict["windows total memory"] = (line.split(":")[1]).strip()
-                    # if decimal point instead of comma
-                    sp_dict["windows total memory"] = sp_dict["windows total memory"].replace(".", ",")
-
-                if "hypervisor" in line:
-                    sp_dict["windows hypervisor"] = line.strip()
-
-            # Windows perform
-
-            if perfmon_next:
-                sp_dict["perfmon_header"] = line.strip()
-                perfmon_next = False
-            if "beg_win_perfmon" in line:
-                perfmon_next = True
-
     # Create the insert query string
     for key in sp_dict:
         cursor.execute("INSERT INTO overview (field, value) VALUES (?, ?)", (key, sp_dict[key]))
         connection.commit()
-
-        # # Debug
-        # print(f"{key} : {sp_dict[key]}")
-
-    # # Debug
-    # select_overview = "SELECT * from overview"
-    # overviews = execute_read_query(connection, select_overview)
-    #
-    # for overview in overviews:
-    #     print(f"{overview}")
 
     return
 
@@ -946,14 +782,15 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
         else:
 
             # Create a system summary
+            sp_dict = sp_check.system_check(input_file)
+
             if system_out:
-                sp_dict = sp_check.system_check(input_file)
                 output_log = sp_check.build_log(sp_dict)
 
                 with open(f"{output_filepath_prefix}overview.txt", "w") as text_file:
                     print(f"{output_log}", file=text_file)
 
-            create_overview(connection, input_file)
+            create_overview(connection, sp_dict)
             create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix)
 
     connection.close()
