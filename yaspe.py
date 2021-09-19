@@ -152,20 +152,6 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
         connection, "SELECT * FROM overview WHERE field = 'operating system';"
     )[2]
 
-    # What is the start date and date format
-    
-    profile_string = execute_single_read_query(
-        connection, "SELECT * FROM overview WHERE field = 'profile run';"
-    )[2]
-
-    # Profile run "24hours_5sec" started at 00:03:00 on Jul 10 2021.
-    profile_date = profile_string.split("on ")[1].replace(".", "")
-
-    old_format = dateutil.parser.parse(profile_date)
-    date_time_object = datetime.strptime(str(old_format), '%Y-%m-%d  %H:%M:%S')
-    new_format = date_time_object.strftime('%m/%d/%Y')
-    # print(f'{profile_date} ~ {old_format} ~ {new_format}')
-
     with open(input_file, "r", encoding="ISO-8859-1") as file:
 
         for line in file:
@@ -560,6 +546,25 @@ def chart_mgstat(connection, filepath, output_prefix):
 
     # Read in to dataframe
     df = pd.read_sql_query("SELECT * FROM mgstat", connection)
+
+    # What is the start date and date format
+    profile_string = execute_single_read_query(
+        connection, "SELECT * FROM overview WHERE field = 'profile run';"
+    )[2]
+    # Profile run "24hours_5sec" started at 00:03:00 on Jul 10 2021.
+    profile_date = profile_string.split("on ")[1].replace(".", "")
+
+    master_date = dateutil.parser.parse(profile_date)
+    master_date_time_object = datetime.strptime(str(master_date), '%Y-%m-%d  %H:%M:%S')
+
+    # Is the date on the first row dmy or mdy?
+    test_date = dateutil.parser.parse(df['Date'].iloc[0])
+    test_date_time_object = datetime.strptime(str(test_date), '%Y-%m-%d  %H:%M:%S')
+
+    date_difference = master_date - test_date
+    if abs(date_difference.days) > 2:
+        print(f'{profile_date} ~ {master_date} ~ {test_date} ~ {date_difference.days}')
+#        fixed_date = datetime.strptime("21/12/2008", "%d/%m/%Y").strftime('%Y-%m-%d')
 
     # Add a datetime column
     df["datetime"] = df["Date"] + " " + df["Time"]
