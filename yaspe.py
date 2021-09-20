@@ -539,6 +539,15 @@ def chart_vmstat(connection, filepath, output_prefix):
             linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
+def make_mdy_date(date_in):
+
+    date_in = dateutil.parser.parse(date_in)
+    date_out = datetime.strptime(str(date_in.date()), "%Y-%d-%m").strftime("%m/%d/%Y")
+
+    # print(f"{date_in}   {date_out}")
+
+    return date_out
+
 def chart_mgstat(connection, filepath, output_prefix):
     # print(f"mgstat...")
 
@@ -547,7 +556,8 @@ def chart_mgstat(connection, filepath, output_prefix):
     # Read in to dataframe
     df = pd.read_sql_query("SELECT * FROM mgstat", connection)
 
-    # What is the start date and date format
+    # What is the start date and date format.
+    # Have found 10/7/2021 in NZ matches 7/10/2021 USA, so charts start on NZ chart starts 7 Oct, then jumps to 7 Nov.
     profile_string = execute_single_read_query(
         connection, "SELECT * FROM overview WHERE field = 'profile run';"
     )[2]
@@ -562,9 +572,19 @@ def chart_mgstat(connection, filepath, output_prefix):
     test_date_time_object = datetime.strptime(str(test_date), '%Y-%m-%d  %H:%M:%S')
 
     date_difference = master_date - test_date
+
     if abs(date_difference.days) > 2:
-        print(f'{profile_date} ~ {master_date} ~ {test_date} ~ {date_difference.days}')
-#        fixed_date = datetime.strptime("21/12/2008", "%d/%m/%Y").strftime('%Y-%m-%d')
+        print(f"Date converted to mm/dd/yyyy in mgstat")
+        mdy_date = datetime.strptime(str(test_date_time_object.date()), "%Y-%d-%m").strftime("%m/%d/%Y")
+
+        df["Date"] = df.apply(
+            lambda row: make_mdy_date(row["Date"]), axis=1
+        )
+
+        # print(f'Profile date: {master_date} - {profile_date} : ')
+        # print(f'Test date   : {test_date}')
+        # print(f'Difference  : {date_difference.days} days')
+        # print(f'As %m/%d/%Y : {mdy_date}')
 
     # Add a datetime column
     df["datetime"] = df["Date"] + " " + df["Time"]
