@@ -541,8 +541,9 @@ def chart_vmstat(connection, filepath, output_prefix):
 
 def make_mdy_date(date_in):
 
+    # update "%Y-%m-%d" to suit
     date_in = dateutil.parser.parse(date_in)
-    date_out = datetime.strptime(str(date_in.date()), "%Y-%d-%m").strftime("%m/%d/%Y")
+    date_out = datetime.strptime(str(date_in.date()), "%Y-%m-%d").strftime("%m/%d/%Y")
 
     # print(f"{date_in}   {date_out}")
 
@@ -556,35 +557,11 @@ def chart_mgstat(connection, filepath, output_prefix):
     # Read in to dataframe
     df = pd.read_sql_query("SELECT * FROM mgstat", connection)
 
-    # What is the start date and date format.
-    # Have found 10/7/2021 in NZ matches 7/10/2021 USA, so charts start on NZ chart starts 7 Oct, then jumps to 7 Nov.
-    profile_string = execute_single_read_query(
-        connection, "SELECT * FROM overview WHERE field = 'profile run';"
-    )[2]
-    # Profile run "24hours_5sec" started at 00:03:00 on Jul 10 2021.
-    profile_date = profile_string.split("on ")[1].replace(".", "")
-
-    master_date = dateutil.parser.parse(profile_date)
-    master_date_time_object = datetime.strptime(str(master_date), '%Y-%m-%d  %H:%M:%S')
-
-    # Is the date on the first row dmy or mdy?
-    test_date = dateutil.parser.parse(df['Date'].iloc[0])
-    test_date_time_object = datetime.strptime(str(test_date), '%Y-%m-%d  %H:%M:%S')
-
-    date_difference = master_date - test_date
-
-    if abs(date_difference.days) > 2:
-        print(f"Date converted to mm/dd/yyyy in mgstat")
-        mdy_date = datetime.strptime(str(test_date_time_object.date()), "%Y-%d-%m").strftime("%m/%d/%Y")
-
+    # hack until good way to detect date format is mmm/dd/yyyy or not
+    if True:
         df["Date"] = df.apply(
             lambda row: make_mdy_date(row["Date"]), axis=1
         )
-
-        # print(f'Profile date: {master_date} - {profile_date} : ')
-        # print(f'Test date   : {test_date}')
-        # print(f'Difference  : {date_difference.days} days')
-        # print(f'As %m/%d/%Y : {mdy_date}')
 
     # Add a datetime column
     df["datetime"] = df["Date"] + " " + df["Time"]
