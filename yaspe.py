@@ -558,7 +558,7 @@ def chart_mgstat(connection, filepath, output_prefix):
     df = pd.read_sql_query("SELECT * FROM mgstat", connection)
 
     # hack until good way to detect date format is mmm/dd/yyyy or not
-    if True:
+    if False:
         df["Date"] = df.apply(
             lambda row: make_mdy_date(row["Date"]), axis=1
         )
