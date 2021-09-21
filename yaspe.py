@@ -812,7 +812,7 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
 
                 # Simple dump of all data in overview
                 overview_df = pd.DataFrame(list(sp_dict.items()), columns=["key", "value"])
-                overview_df.to_csv(f"{output_filepath_prefix}overview_all.txt", header=True, index=False, sep=',', mode='w')
+                overview_df.to_csv(f"{output_filepath_prefix}overview_all.csv", header=True, index=False, sep=',', mode='w')
 
             create_overview(connection, sp_dict)
             create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix)
