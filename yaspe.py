@@ -5,9 +5,12 @@ Chart the results
 
 
 """
+import sp_check
+
 import argparse
 import locale
 import os
+
 from datetime import datetime
 import dateutil.parser
 
@@ -22,8 +25,6 @@ import pandas as pd
 # Altair
 # Max is 5,000 rows by default
 alt.data_transformers.disable_max_rows()
-
-import sp_check
 
 
 def create_connection(path):
@@ -808,6 +809,10 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
 
                 with open(f"{output_filepath_prefix}overview.txt", "w") as text_file:
                     print(f"{output_log}", file=text_file)
+
+                # Simple dump of all data in overview
+                overview_df = pd.DataFrame(list(sp_dict.items()), columns=["key", "value"])
+                overview_df.to_csv(f"{output_filepath_prefix}overview_all.txt", header=True, index=False, sep=',', mode='w')
 
             create_overview(connection, sp_dict)
             create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix)
