@@ -99,7 +99,7 @@ def system_check(input_file):
                 sp_dict["asyncwij"] = (line.split("=")[1]).strip()
             if "wduseasyncio=" in line:
                 sp_dict["wduseasyncio"] = (line.split("=")[1]).strip()
-            if "jrnbufs" in line:
+            if "jrnbufs=" in line:
                 sp_dict["jrnbufs"] = (line.split("=")[1]).strip()
 
             # Linux kernel

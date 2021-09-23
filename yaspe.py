@@ -965,6 +965,13 @@ if __name__ == "__main__":
                 print("Could not process files because: {}".format(str(e)))
                 sys.exit()
 
+    # This section is a precursor to config file replacement/override of parameters
+    disk_dictionary = {"Database": "dm-9",
+                       "Primary Journal": "sdg1",
+                       "Alternate Journal": "sdh1",
+                       "WIJ": "dm-10",
+                       "IRIS": "dm-10"}
+
     try:
         mainline(input_file, args.include_iostat, args.append_to_database, existing_database, args.output_prefix,
                  args.csv_out, args.system_out)
