@@ -343,7 +343,7 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
         create_generic_table(connection, "perfmon", perfmon_df)
         for row in perfmon_rows_list:
             insert_dict_into_table(connection, "perfmon", row)
-        connection.commit(inplace=True)
+        connection.commit()
 
         if csv_out:
             perfmon_output_csv = f"{output_filepath_prefix}vmstat.csv"
