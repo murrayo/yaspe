@@ -392,30 +392,36 @@ def create_overview(connection, sp_dict):
     return
 
 
+def png_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
+    file_prefix = kwargs.get("file_prefix", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
+
+    # A simple png - note for this to work in a container Chrome must be installed in the container
+    chart = (
+        alt.Chart(data)
+            .mark_point(filled=True, size=25)
+            .encode(
+            alt.X("datetime:T", title="Time"),
+            alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
+            alt.Color("Type", title="Metric"),
+            tooltip=["metric"],
+        )
+            .properties(height=400, width=800, title=title)
+            .configure_legend(
+            strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="top-right"
+        )
+            .configure_title(fontSize=14, color="black")
+    )
+    output_name = column_name.replace("/", "_")
+    chart.save(f"{filepath}{output_prefix}{file_prefix}png_{output_name}.png")
+
+
 def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
-    # # A simple png - note for this to work in a container Chrome must be installed in the container
-    # chart = (
-    #     alt.Chart(data)
-    #     .mark_point(filled=True, size=25)
-    #     .encode(
-    #         alt.X("datetime:T", title="Time"),
-    #         alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
-    #         alt.Color("Type", title="Metric"),
-    #         tooltip=["metric"],
-    #     )
-    #     .properties(height=400, width=800, title=title)
-    #     .configure_legend(
-    #         strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="top-right"
-    #     )
-    #     .configure_title(fontSize=14, color="black")
-    # )
-    # chart.save(f"{filepath}png_{column_name}.png")
-
-    # A linked chart
     # First we’ll create an interval selection using the selection_interval() function (in this case for x axis only)
 
     brush = alt.selection(type="interval", encodings=["x"])
@@ -431,7 +437,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
             alt.Color("Type", title="Metric"),
             tooltip=["metric"],
         )
-            .properties(height=400, width=800, title=title)
+        .properties(height=400, width=800, title=title)
     )
 
     # Upper is zoomed area X axis
@@ -484,7 +490,7 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html")
 
 
-def chart_vmstat(connection, filepath, output_prefix):
+def chart_vmstat(connection, filepath, output_prefix, png_out):
     # print(f"vmstat...")
     # Get useful
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -537,11 +543,13 @@ def chart_vmstat(connection, filepath, output_prefix):
 
             data = to_chart_df
 
-            linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+            if png_out:
+                png_chart(data, column_name, title, max_y, filepath, output_prefix)
+            else:
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
 def make_mdy_date(date_in):
-
     # update "%Y-%m-%d" to suit
     date_in = dateutil.parser.parse(date_in)
     date_out = datetime.strptime(str(date_in.date()), "%Y-%m-%d").strftime("%m/%d/%Y")
@@ -550,7 +558,8 @@ def make_mdy_date(date_in):
 
     return date_out
 
-def chart_mgstat(connection, filepath, output_prefix):
+
+def chart_mgstat(connection, filepath, output_prefix, png_out):
     # print(f"mgstat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -592,10 +601,13 @@ def chart_mgstat(connection, filepath, output_prefix):
 
             data = to_chart_df
 
-            linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+            if png_out:
+                png_chart(data, column_name, title, max_y, filepath, output_prefix)
+            else:
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
-def chart_perfmon(connection, filepath, output_prefix):
+def chart_perfmon(connection, filepath, output_prefix, png_out):
     # print(f"perfmon...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -648,10 +660,13 @@ def chart_perfmon(connection, filepath, output_prefix):
 
             data = to_chart_df
 
-            linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+            if png_out:
+                png_chart(data, column_name, title, max_y, filepath, output_prefix)
+            else:
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
-def chart_iostat(connection, filepath, output_prefix, operating_system):
+def chart_iostat(connection, filepath, output_prefix, operating_system, png_out):
     # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -699,7 +714,10 @@ def chart_iostat(connection, filepath, output_prefix, operating_system):
 
                     data = to_chart_df
 
-                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                    if png_out:
+                        png_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                    else:
+                        linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
     else:
         # No date or time, chart all columns, index is x axis
@@ -733,10 +751,14 @@ def chart_iostat(connection, filepath, output_prefix, operating_system):
 
                     data = to_chart_df
 
-                    linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                    if png_out:
+                        pass
+                    else:
+                        linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
 
-def mainline(input_file, include_iostat, append_to_database, existing_database, output_prefix, csv_out, system_out):
+def mainline(input_file, include_iostat, append_to_database, existing_database, output_prefix, csv_out, png_out,
+             system_out):
     input_error = False
 
     # What are we doing?
@@ -812,7 +834,8 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
 
                 # Simple dump of all data in overview
                 overview_df = pd.DataFrame(list(sp_dict.items()), columns=["key", "value"])
-                overview_df.to_csv(f"{output_filepath_prefix}overview_all.csv", header=True, index=False, sep=',', mode='w')
+                overview_df.to_csv(f"{output_filepath_prefix}overview_all.csv", header=True, index=False, sep=',',
+                                   mode='w')
 
             create_overview(connection, sp_dict)
             create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix)
@@ -839,7 +862,7 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
 
         if not os.path.isdir(output_file_path):
             os.mkdir(output_file_path)
-        chart_mgstat(connection, output_file_path, output_prefix)
+        chart_mgstat(connection, output_file_path, output_prefix, png_out)
 
         # vmstat and iostat
         if operating_system == "Linux" or operating_system == "Ubuntu":
@@ -847,19 +870,19 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
             output_file_path = f"{output_file_path_base}/vmstat/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
-            chart_vmstat(connection, output_file_path, output_prefix)
+            chart_vmstat(connection, output_file_path, output_prefix, png_out)
 
             if include_iostat:
                 output_file_path = f"{output_file_path_base}/iostat/"
                 if not os.path.isdir(output_file_path):
                     os.mkdir(output_file_path)
-                chart_iostat(connection, output_file_path, output_prefix, operating_system)
+                chart_iostat(connection, output_file_path, output_prefix, operating_system, png_out)
 
         if operating_system == "Windows":
             output_file_path = f"{output_file_path_base}/perfmon/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
-            chart_perfmon(connection, output_file_path, output_prefix)
+            chart_perfmon(connection, output_file_path, output_prefix, png_out)
 
         connection.close()
 
@@ -927,6 +950,14 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "-p",
+        "--png",
+        dest="png_out",
+        help="Create png files of metrics. Requires chrome driver (not in docker)",
+        action="store_true",
+    )
+
+    parser.add_argument(
         "-s",
         "--system",
         dest="system_out",
@@ -974,7 +1005,6 @@ if __name__ == "__main__":
 
     try:
         mainline(input_file, args.include_iostat, args.append_to_database, existing_database, args.output_prefix,
-                 args.csv_out, args.system_out)
+                 args.csv_out, args.png_out, args.system_out)
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
-        
