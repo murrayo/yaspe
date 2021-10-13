@@ -414,7 +414,7 @@ def png_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs
             .configure_title(fontSize=14, color="black")
     )
     output_name = column_name.replace("/", "_")
-    chart.save(f"{filepath}{output_prefix}{file_prefix}png_{output_name}.png")
+    chart.save(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png")
 
 
 def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -953,7 +953,7 @@ if __name__ == "__main__":
         "-p",
         "--png",
         dest="png_out",
-        help="Create png files of metrics. Requires chrome driver (not in docker)",
+        help="Create png files of metrics. Requires chrome driver (NOT available in docker)",
         action="store_true",
     )
 
