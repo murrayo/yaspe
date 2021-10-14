@@ -1,3 +1,5 @@
 altair
 pandas
+matplotlib
+seaborn
 python-dateutil

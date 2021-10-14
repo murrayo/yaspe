@@ -24,21 +24,24 @@ See the help text:
 
 ```plaintext
 $ docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h
-usage: yaspe [-h] [-i "/path/file.html"] [-x] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c]
+usage: yaspe [-h] [-i "/path/file.html"] [-x] [-a] [-o "output file prefix"]
+             [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-s]
 
 Performance file review
 
 optional arguments:
   -h, --help            show this help message and exit
   -i "/path/file.html", --input_file "/path/file.html"
-                        Input html filename with full path
-  -x, --iostat          Also plot iostat data (can take a long time)
-  -a, --append          Do not overwrite database, append to existing database
+                        Input html filename with full path.
+  -x, --iostat          Also plot iostat data (can take a long time).
+  -a, --append          Do not overwrite database, append to existing database.
   -o "output file prefix", --output_prefix "output file prefix"
-                        Output filename prefix, defaults to html file name, blank (-o '') is legal
+                        Output filename prefix, defaults to html file name, blank (-o '') is legal.
   -e "/path/filename_SystemPerformance.sqlite", --existing_database "/path/filename_SystemPerformance.sqlite"
-                        Chart existing database, full path and filename to existing database
-  -c, --csv             Create csv files of each html files metrics, append if csv file exists
+                        Chart existing database, full path and filename to existing database.
+  -c, --csv             Create csv files of each html files metrics, append if csv file exists.
+  -p, --png             Create png files of metrics. Instead of html.
+  -s, --system          Output system overview.
 
 Be safe, "quote the path"
 ```

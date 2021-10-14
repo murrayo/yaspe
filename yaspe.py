@@ -19,6 +19,12 @@ import sqlite3
 import sys
 from sqlite3 import Error
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import matplotlib.dates as plt_dates
+import seaborn as sns
+
+
 import altair as alt
 import pandas as pd
 
@@ -417,6 +423,54 @@ def png_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs
     chart.save(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png")
 
 
+def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
+    file_prefix = kwargs.get("file_prefix", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
+
+    # Convert datetime string to datetime type (data is a _view_ of full dataframe, create a copy to update here)
+    png_data = data.copy()
+    png_data.loc[:, 'datetime'] = pd.to_datetime(data['datetime'], infer_datetime_format=True)
+
+    colormap_name = "Set1"
+
+    plt.style.use('seaborn-whitegrid')
+    plt.figure(num=None, figsize=(10, 6), dpi=300)
+    palette = plt.get_cmap(colormap_name)
+
+    color = palette(1)
+
+    fig, ax = plt.subplots()
+    plt.gcf().set_size_inches(10, 6)
+    plt.gcf().set_dpi(300)
+
+    ax.plot(png_data['datetime'], png_data['metric'], label=column_name, color=color, marker='.', linestyle="none", alpha=0.7)
+    ax.grid(which='major', axis='both', linestyle='--')
+    ax.set_title(title, fontsize=14)
+    ax.set_ylabel(column_name, fontsize=10)
+    ax.tick_params(labelsize=10)
+    ax.set_ylim(bottom=0)  # Always zero start
+    if max_y != 0:
+        ax.set_ylim(top=max_y)
+
+    if png_data["metric"].max() > 10 or "%" in column_name:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    elif png_data["metric"].max() < 0.002:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.4f}"))
+    else:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
+
+    ax.xaxis.set_major_formatter(plt_dates.DateFormatter('%H:%M'))
+
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    plt.tight_layout()
+
+    output_name = column_name.replace("/", "_")
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format='png')
+    plt.close('all')
+
+
 def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
@@ -544,7 +598,7 @@ def chart_vmstat(connection, filepath, output_prefix, png_out):
             data = to_chart_df
 
             if png_out:
-                png_chart(data, column_name, title, max_y, filepath, output_prefix)
+                simple_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
@@ -602,7 +656,7 @@ def chart_mgstat(connection, filepath, output_prefix, png_out):
             data = to_chart_df
 
             if png_out:
-                png_chart(data, column_name, title, max_y, filepath, output_prefix)
+                simple_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
@@ -661,7 +715,7 @@ def chart_perfmon(connection, filepath, output_prefix, png_out):
             data = to_chart_df
 
             if png_out:
-                png_chart(data, column_name, title, max_y, filepath, output_prefix)
+                simple_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
@@ -715,7 +769,7 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out)
                     data = to_chart_df
 
                     if png_out:
-                        png_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                        simple_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
                     else:
                         linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
@@ -953,7 +1007,7 @@ if __name__ == "__main__":
         "-p",
         "--png",
         dest="png_out",
-        help="Create png files of metrics. Requires chrome driver (NOT available in docker)",
+        help="Create png files of metrics. Instead of html",
         action="store_true",
     )
 
