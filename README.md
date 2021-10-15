@@ -52,6 +52,13 @@ For example, change to the folder with a SystemPerformance html file and run the
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
 ```
 
+If you want simple png files rather than html: smaller and quicker to look through: Use the `-p` option.
+
+```plaintext
+docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p
+```
+
+
 <hr>
 
 Or put the path to the folder with the html file in the docker volume parameter and put the html file name after `-i /data/` 
