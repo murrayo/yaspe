@@ -460,7 +460,9 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     else:
         ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
 
-    ax.xaxis.set_major_formatter(plt_dates.DateFormatter('%H:%M'))
+    locator = plt_dates.AutoDateLocator()
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(plt_dates.AutoDateFormatter(locator=locator, defaultfmt='%H:%M'))
 
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
