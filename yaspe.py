@@ -441,7 +441,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     color = palette(1)
 
     fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(10, 6)
+    plt.gcf().set_size_inches(16, 6)
     plt.gcf().set_dpi(300)
 
     ax.plot(png_data['datetime'], png_data['metric'], label=column_name, color=color, marker='.', linestyle="none", alpha=0.7)
