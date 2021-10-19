@@ -435,7 +435,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     colormap_name = "Set1"
 
     plt.style.use('seaborn-whitegrid')
-    plt.figure(num=None, figsize=(10, 6), dpi=300)
+    plt.figure(num=None, figsize=(16, 6), dpi=300)
     palette = plt.get_cmap(colormap_name)
 
     color = palette(1)
