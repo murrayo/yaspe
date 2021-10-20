@@ -167,16 +167,19 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
             if "<!-- end_mgstat -->" in line:
                 mgstat_processing = False
             if mgstat_processing and mgstat_header != "":
-                mgstat_row_dict = {}
-                values = line.split(",")
-                values = [i.strip() for i in values]  # strip off carriage return etc
-                # Convert integers or real from strings if possible
-                values_converted = [get_number_type(v) for v in values]
-                # create a dictionary of this row and append to a list of row dictionaries for later add to table
-                mgstat_row_dict = dict(zip(mgstat_columns, values_converted))
-                # Add the file name
-                mgstat_row_dict["html name"] = html_filename
-                mgstat_rows_list.append(mgstat_row_dict)
+                if line.strip() != "":
+                    mgstat_row_dict = {}
+                    values = line.split(",")
+                    values = [i.strip() for i in values]  # strip off carriage return etc
+                    # Convert integers or real from strings if possible
+                    values_converted = [get_number_type(v) for v in values]
+                    # create a dictionary of this row and append to a list of row dictionaries for later add to table
+                    mgstat_row_dict = dict(zip(mgstat_columns, values_converted))
+                    # Add the file name
+                    mgstat_row_dict["html name"] = html_filename
+                    # Added for pretty processing
+                    mgstat_row_dict["datetime"] = f'{mgstat_row_dict["Date"]} {mgstat_row_dict["Time"]}'
+                    mgstat_rows_list.append(mgstat_row_dict)
             if mgstat_processing and "Glorefs" in line:
                 mgstat_header = line
                 mgstat_columns = mgstat_header.split(",")
@@ -188,13 +191,16 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                 if "<!-- end_vmstat -->" in line:
                     vmstat_processing = False
                 if vmstat_processing and vmstat_header != "":
-                    vmstat_row_dict = {}
-                    values = line.split()
-                    values = [i.strip() for i in values]  # strip off carriage return etc
-                    values_converted = [get_number_type(v) for v in values]
-                    vmstat_row_dict = dict(zip(vmstat_columns, values_converted))
-                    vmstat_row_dict["html name"] = html_filename
-                    vmstat_rows_list.append(vmstat_row_dict)
+                    if line.strip() != "":
+                        vmstat_row_dict = {}
+                        values = line.split()
+                        values = [i.strip() for i in values]  # strip off carriage return etc
+                        values_converted = [get_number_type(v) for v in values]
+                        vmstat_row_dict = dict(zip(vmstat_columns, values_converted))
+                        vmstat_row_dict["html name"] = html_filename
+                        # Added for pretty processing
+                        vmstat_row_dict["datetime"] = f'{vmstat_row_dict["Date"]} {vmstat_row_dict["Time"]}'
+                        vmstat_rows_list.append(vmstat_row_dict)
                 if vmstat_processing and "us sy id wa" in line:
                     # vmstat has column names on same line as html
                     vmstat_header = line.split("<pre>")[1].strip()
@@ -209,15 +215,16 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                 if "<!-- end_win_perfmon -->" in line:
                     perfmon_processing = False
                 if perfmon_processing and perfmon_header != "":
-                    perfmon_row_dict = {}
-                    values = line.split(",")
-                    values = [i.strip() for i in values]  # strip off carriage return etc
-                    values = list(map(lambda x: x[1:-1].replace('"', ""), values))
-                    values = list(map(lambda x: 0.0 if x == " " else x, values))
-                    values_converted = [get_number_type(v) for v in values]
-                    perfmon_row_dict = dict(zip(perfmon_columns, values_converted))
-                    perfmon_row_dict["html name"] = html_filename
-                    perfmon_rows_list.append(perfmon_row_dict)
+                    if line.strip() != "":
+                        perfmon_row_dict = {}
+                        values = line.split(",")
+                        values = [i.strip() for i in values]  # strip off carriage return etc
+                        values = list(map(lambda x: x[1:-1].replace('"', ""), values))
+                        values = list(map(lambda x: 0.0 if x == " " else x, values))
+                        values_converted = [get_number_type(v) for v in values]
+                        perfmon_row_dict = dict(zip(perfmon_columns, values_converted))
+                        perfmon_row_dict["html name"] = html_filename
+                        perfmon_rows_list.append(perfmon_row_dict)
                 if perfmon_processing and "Memory" in line:
                     perfmon_header = line
                     # get rid of characters that screw with queries or charting
@@ -254,31 +261,34 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                         iostat_device_block_processing = False
                     # Add devices to database
                     if iostat_processing and iostat_device_block_processing and iostat_header != "":
-                        iostat_row_dict = {}
-                        # if European "," for ".", do that first
-                        line = line.replace(",", ".")
-                        # get rid of multiple whitespaces, then use comma separator so the AM/PM is preserved if its there
-                        line = " ".join(line.split())
-                        line = line.replace(" ", ",")
-                        if iostat_date_included:
-                            if iostat_am_pm:
-                                line = (
-                                        date_time.split()[0]
-                                        + ","
-                                        + date_time.split()[1]
-                                        + " "
-                                        + date_time.split()[2]
-                                        + ","
-                                        + line
-                                )
-                            else:
-                                line = date_time.split()[0] + "," + str(date_time.split()[1]) + "," + line
-                        values = line.split(",")
-                        values = [i.strip() for i in values]  # strip off carriage return etc
-                        values_converted = [get_number_type(v) for v in values]
-                        iostat_row_dict = dict(zip(iostat_columns, values_converted))
-                        iostat_row_dict["html name"] = html_filename
-                        iostat_rows_list.append(iostat_row_dict)
+                        if line.strip() != "":
+                            iostat_row_dict = {}
+                            # if European "," for ".", do that first
+                            line = line.replace(",", ".")
+                            # get rid of multiple whitespaces, then use comma separator so the AM/PM is preserved if its there
+                            line = " ".join(line.split())
+                            line = line.replace(" ", ",")
+                            if iostat_date_included:
+                                if iostat_am_pm:
+                                    line = (
+                                            date_time.split()[0]
+                                            + ","
+                                            + date_time.split()[1]
+                                            + " "
+                                            + date_time.split()[2]
+                                            + ","
+                                            + line
+                                    )
+                                else:
+                                    line = date_time.split()[0] + "," + str(date_time.split()[1]) + "," + line
+                            values = line.split(",")
+                            values = [i.strip() for i in values]  # strip off carriage return etc
+                            values_converted = [get_number_type(v) for v in values]
+                            iostat_row_dict = dict(zip(iostat_columns, values_converted))
+                            iostat_row_dict["html name"] = html_filename
+                            # Added for pretty processing
+                            iostat_row_dict["datetime"] = f'{iostat_row_dict["Date"]} {iostat_row_dict["Time"]}'
+                            iostat_rows_list.append(iostat_row_dict)
                     # Header line found, next line is start of device block
                     if "Device" in line:
                         iostat_device_block_processing = True
@@ -398,31 +408,6 @@ def create_overview(connection, sp_dict):
     return
 
 
-def png_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
-    file_prefix = kwargs.get("file_prefix", "")
-    if file_prefix != "":
-        file_prefix = f"{file_prefix}_"
-
-    # A simple png - note for this to work in a container Chrome must be installed in the container
-    chart = (
-        alt.Chart(data)
-            .mark_point(filled=True, size=25)
-            .encode(
-            alt.X("datetime:T", title="Time"),
-            alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
-            alt.Color("Type", title="Metric"),
-            tooltip=["metric"],
-        )
-            .properties(height=400, width=800, title=title)
-            .configure_legend(
-            strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="top-right"
-        )
-            .configure_title(fontSize=14, color="black")
-    )
-    output_name = column_name.replace("/", "_")
-    chart.save(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png")
-
-
 def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
@@ -509,6 +494,22 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     output_name = column_name.replace("/", "_")
 
     (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html")
+
+
+def interactive_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
+    file_prefix = kwargs.get("file_prefix", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
+
+    output_name = column_name.replace("/", "_")
+
+    # Create the chart
+    alt.Chart(data).mark_line().encode(
+        alt.X("datetime:T", title="Time"),
+        alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
+        alt.Color("Type", title="Metric"),
+        tooltip=["metric"],
+    ).properties(height=400, width=800, title=title).interactive().save(f"{filepath}{output_prefix}{file_prefix}int_{output_name}.html")
 
 
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -774,6 +775,9 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out)
                         simple_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
                     else:
                         linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+
+                        if False:
+                            interactive_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
     else:
         # No date or time, chart all columns, index is x axis
