@@ -24,13 +24,13 @@ See the help text:
 
 ```plaintext
 $ docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h
-usage: yaspe [-h] [-i "/path/file.html"] [-x] [-a] [-o "output file prefix"]
-             [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-s]
+usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-s]
 
-Performance file review
+Performance file review.
 
 optional arguments:
   -h, --help            show this help message and exit
+  -v, --version         show program's version number and exit
   -i "/path/file.html", --input_file "/path/file.html"
                         Input html filename with full path.
   -x, --iostat          Also plot iostat data (can take a long time).
@@ -40,7 +40,7 @@ optional arguments:
   -e "/path/filename_SystemPerformance.sqlite", --existing_database "/path/filename_SystemPerformance.sqlite"
                         Chart existing database, full path and filename to existing database.
   -c, --csv             Create csv files of each html files metrics, append if csv file exists.
-  -p, --png             Create png files of metrics. Instead of html.
+  -p, --png             Create png files of metrics. Instead of html
   -s, --system          Output system overview.
 
 Be safe, "quote the path"

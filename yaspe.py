@@ -958,8 +958,10 @@ if __name__ == "__main__":
     existing_database = ""
 
     parser = argparse.ArgumentParser(
-        prog="yaspe", description="Performance file review", epilog='Be safe, "quote the path"'
+        prog="yaspe", description="Performance file review.", epilog='Be safe, "quote the path"'
     )
+
+    parser.add_argument('-v', '--version', action='version', version='%(prog)s 1.211026.001')
 
     parser.add_argument(
         "-i",
