@@ -303,6 +303,17 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                         iostat_columns = iostat_header.split()
                         iostat_columns = [i.strip() for i in iostat_columns]  # strip off carriage return etc
 
+    def make_mdy_date(date_in):
+        # print(f"Date in {date_in}")
+
+        # update "%Y-%m-%d" to suit
+        date_in = dateutil.parser.parse(date_in)
+        date_out = datetime.strptime(str(date_in.date()), "%Y-%d-%m").strftime("%m/%d/%Y")
+
+        # print(f"Date in {date_in}   Date out {date_out}")
+
+        return date_out
+
     # Add each section to the database
 
     if mgstat_header != "":
@@ -310,6 +321,21 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
         mgstat_df = pd.DataFrame(mgstat_rows_list)
         # Remove any rows with NaN
         mgstat_df.dropna(inplace=True)
+
+        # Check for dd/mm/yy date format interpreted as mm/dd/yy (eg start an end should be only 24 hours)
+        first_date = dateutil.parser.parse(mgstat_df['Date'].iloc[0])
+        last_date = dateutil.parser.parse(mgstat_df['Date'].iloc[-1])
+        delta = last_date - first_date
+
+        if delta.days > 2:
+            print(f"mgstat Convert dd/mm/yy date to expected mm/dd/yy")
+
+            mgstat_df["Date"] = mgstat_df.apply(
+                    lambda row: make_mdy_date(row["Date"]), axis=1
+            )
+            mgstat_df["datetime"] = mgstat_df.apply(
+                    lambda row: f'{row["Date"]} {row["Time"]}', axis=1
+            )
 
         # Want to just dump a dataframe to a table and avoid all the roll-your-own steps ;)
         # SQLAlchemy is included in pandas
@@ -323,6 +349,17 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
 
         # Add the rows to the table, loop through the list of dictionaries
         for row in mgstat_rows_list:
+
+            # The dataframe is updated above, but in this example using the dictionary
+            if delta.days > 2:
+                new_date = make_mdy_date(row["Date"])
+                new_date_dict = {"Date": new_date}
+                row.update(new_date_dict)
+
+                new_datetime = f'{row["Date"]} {row["Time"]}'
+                new_datetime_dict = {"datetime": new_datetime}
+                row.update(new_datetime_dict)
+
             insert_dict_into_table(connection, "mgstat", row)
 
         connection.commit()
@@ -605,16 +642,6 @@ def chart_vmstat(connection, filepath, output_prefix, png_out):
                 simple_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
-
-
-def make_mdy_date(date_in):
-    # update "%Y-%m-%d" to suit
-    date_in = dateutil.parser.parse(date_in)
-    date_out = datetime.strptime(str(date_in.date()), "%Y-%m-%d").strftime("%m/%d/%Y")
-
-    # print(f"{date_in}   {date_out}")
-
-    return date_out
 
 
 def chart_mgstat(connection, filepath, output_prefix, png_out):
