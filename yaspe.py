@@ -136,6 +136,21 @@ def get_number_type(s):
             return s
 
 
+def make_mdy_date(date_in):
+
+    # Flip ambiguous dd/mm/yyyy dates eg. 09/11/2021 where 11 is in fact Nov not Sept.
+    # Default dates in charting usually fall in to expecting mm/dd/yyyy format
+
+    # Input is a date string. Can be any legal format, returns a datetime.datetime object
+    date_in = dateutil.parser.parse(date_in)
+
+    # Output will be %Y-%m-%d, eg 2021-09-11 - plan is to flip the month and day eg output 11/09/2021
+    date_out = datetime.strptime(str(date_in.date()), "%Y-%m-%d").strftime("%d/%m/%Y")
+
+    # print(f"Date in {date_in}   Date out {date_out}")
+
+    return date_out
+
 def create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix):
     vmstat_processing = False
     vmstat_header = ""
@@ -151,6 +166,8 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
     mgstat_processing = False
     mgstat_header = ""
     mgstat_rows_list = []
+    mgstat_first_line = True
+    mgstat_date_convert = False
 
     perfmon_processing = False
     perfmon_header = ""
@@ -159,6 +176,15 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
     operating_system = execute_single_read_query(
         connection, "SELECT * FROM overview WHERE field = 'operating system';"
     )[2]
+
+    # Get the start date for date format validation
+    profile_run = execute_single_read_query(
+        connection, "SELECT * FROM overview WHERE field = 'profile run';"
+    )[2]
+
+    run_start = profile_run.split("on ")[1]
+    run_start = run_start[:-1]
+    run_start_date = dateutil.parser.parse(run_start)
 
     with open(input_file, "r", encoding="ISO-8859-1") as file:
 
@@ -178,6 +204,23 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                     mgstat_row_dict = dict(zip(mgstat_columns, values_converted))
                     # Add the file name
                     mgstat_row_dict["html name"] = html_filename
+
+                    # Check date format
+                    if mgstat_first_line:
+                        mgstat_first_line = False
+
+                        first_date = dateutil.parser.parse(mgstat_row_dict['Date'])
+                        delta = run_start_date - first_date
+
+                        if delta.days > 1:
+                            print(f"mgstat convert dd/mm/yy date to mm/dd/yy")
+                            mgstat_date_convert = True
+
+                    if mgstat_date_convert:
+                        new_date = make_mdy_date(mgstat_row_dict["Date"])
+                        new_date_dict = {"Date": new_date}
+                        mgstat_row_dict.update(new_date_dict)
+
                     # Added for pretty processing
                     mgstat_row_dict["datetime"] = f'{mgstat_row_dict["Date"]} {mgstat_row_dict["Time"]}'
                     mgstat_rows_list.append(mgstat_row_dict)
@@ -303,17 +346,6 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                         iostat_columns = iostat_header.split()
                         iostat_columns = [i.strip() for i in iostat_columns]  # strip off carriage return etc
 
-    def make_mdy_date(date_in):
-        # print(f"Date in {date_in}")
-
-        # update "%Y-%m-%d" to suit
-        date_in = dateutil.parser.parse(date_in)
-        date_out = datetime.strptime(str(date_in.date()), "%Y-%d-%m").strftime("%m/%d/%Y")
-
-        # print(f"Date in {date_in}   Date out {date_out}")
-
-        return date_out
-
     # Add each section to the database
 
     if mgstat_header != "":
@@ -321,21 +353,6 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
         mgstat_df = pd.DataFrame(mgstat_rows_list)
         # Remove any rows with NaN
         mgstat_df.dropna(inplace=True)
-
-        # Check for dd/mm/yy date format interpreted as mm/dd/yy (eg start an end should be only 24 hours)
-        first_date = dateutil.parser.parse(mgstat_df['Date'].iloc[0])
-        last_date = dateutil.parser.parse(mgstat_df['Date'].iloc[-1])
-        delta = last_date - first_date
-
-        if delta.days > 2:
-            print(f"mgstat Convert dd/mm/yy date to expected mm/dd/yy")
-
-            mgstat_df["Date"] = mgstat_df.apply(
-                    lambda row: make_mdy_date(row["Date"]), axis=1
-            )
-            mgstat_df["datetime"] = mgstat_df.apply(
-                    lambda row: f'{row["Date"]} {row["Time"]}', axis=1
-            )
 
         # Want to just dump a dataframe to a table and avoid all the roll-your-own steps ;)
         # SQLAlchemy is included in pandas
@@ -349,17 +366,6 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
 
         # Add the rows to the table, loop through the list of dictionaries
         for row in mgstat_rows_list:
-
-            # The dataframe is updated above, but in this example using the dictionary
-            if delta.days > 2:
-                new_date = make_mdy_date(row["Date"])
-                new_date_dict = {"Date": new_date}
-                row.update(new_date_dict)
-
-                new_datetime = f'{row["Date"]} {row["Time"]}'
-                new_datetime_dict = {"datetime": new_datetime}
-                row.update(new_datetime_dict)
-
             insert_dict_into_table(connection, "mgstat", row)
 
         connection.commit()
