@@ -142,14 +142,21 @@ def make_mdy_date(date_in):
     # Default dates in charting usually fall in to expecting mm/dd/yyyy format
 
     # Input is a date string. Can be any legal format, returns a datetime.datetime object
-    date_in = dateutil.parser.parse(date_in)
+    date_parsed = dateutil.parser.parse(date_in)
 
-    # Output will be %Y-%m-%d, eg 2021-09-11 - plan is to flip the month and day eg output 11/09/2021
-    date_out = datetime.strptime(str(date_in.date()), "%Y-%m-%d").strftime("%d/%m/%Y")
+    # Output date_in.date() will be %Y-%m-%d, eg 2021-09-11 - plan is to flip the month and day eg output 11/09/2021
+    # date_out = datetime.strptime(str(date_in.date()), "%Y-%m-%d").strftime("%d/%m/%Y")
+    day = datetime.strptime(str(date_parsed.date()), "%Y-%m-%d").strftime("%d")
+    month = datetime.strptime(str(date_parsed.date()), "%Y-%m-%d").strftime("%m")
+    year = datetime.strptime(str(date_parsed.date()), "%Y-%m-%d").strftime("%Y")
 
-    # print(f"Date in {date_in}   Date out {date_out}")
+    if int(date_in[: 2]) > 12:
+        date_out = f"{month}/{day}/{year}"
+    else:
+        date_out = f"{day}/{month}/{year}"
 
     return date_out
+
 
 def create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix):
     vmstat_processing = False
@@ -162,11 +169,13 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
     iostat_device_block_processing = False
     iostat_am_pm = False
     iostat_date_included = False
+    iostat_date = ""
+    iostat_date_convert = False
 
     mgstat_processing = False
     mgstat_header = ""
     mgstat_rows_list = []
-    mgstat_first_line = True
+    mgstat_date = ""
     mgstat_date_convert = False
 
     perfmon_processing = False
@@ -206,15 +215,18 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                     mgstat_row_dict["html name"] = html_filename
 
                     # Check date format
-                    if mgstat_first_line:
-                        mgstat_first_line = False
+                    if mgstat_row_dict['Date'] != mgstat_date:
+                        mgstat_date = mgstat_row_dict['Date']
 
-                        first_date = dateutil.parser.parse(mgstat_row_dict['Date'])
-                        delta = run_start_date - first_date
-
-                        if delta.days > 1:
-                            print(f"mgstat convert dd/mm/yy date to mm/dd/yy")
+                        if int(mgstat_row_dict['Date'][:2]) > 12:
+                            print(f"mgstat convert dd/mm/yy date to mm/dd/yy {mgstat_row_dict['Date']} > {make_mdy_date(mgstat_row_dict['Date'])}")
                             mgstat_date_convert = True
+                        else:
+                            delta = run_start_date - dateutil.parser.parse(mgstat_row_dict['Date'])
+
+                            if delta.days > 1:
+                                print(f"mgstat convert dd/mm/yy date to mm/dd/yy {mgstat_row_dict['Date']}  > {make_mdy_date(mgstat_row_dict['Date'])}")
+                                mgstat_date_convert = True
 
                     if mgstat_date_convert:
                         new_date = make_mdy_date(mgstat_row_dict["Date"])
@@ -330,6 +342,26 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                             values_converted = [get_number_type(v) for v in values]
                             iostat_row_dict = dict(zip(iostat_columns, values_converted))
                             iostat_row_dict["html name"] = html_filename
+
+                            # Check date format
+                            if iostat_row_dict['Date'] != iostat_date:
+                                iostat_date = iostat_row_dict['Date']
+
+                                if int(iostat_row_dict['Date'][:2]) > 12:
+                                    print(f"iostat convert dd/mm/yy date to mm/dd/yy {iostat_row_dict['Date']} > {make_mdy_date(iostat_row_dict['Date'])}")
+                                    iostat_date_convert = True
+                                else:
+                                    delta = run_start_date - dateutil.parser.parse(iostat_row_dict['Date'])
+
+                                    if delta.days > 1:
+                                        print(f"iostat convert dd/mm/yy date to mm/dd/yy {iostat_row_dict['Date']} > {make_mdy_date(iostat_row_dict['Date'])}")
+                                        iostat_date_convert = True
+
+                            if iostat_date_convert:
+                                new_date = make_mdy_date(iostat_row_dict["Date"])
+                                new_date_dict = {"Date": new_date}
+                                iostat_row_dict.update(new_date_dict)
+
                             # Added for pretty processing
                             iostat_row_dict["datetime"] = f'{iostat_row_dict["Date"]} {iostat_row_dict["Time"]}'
                             iostat_rows_list.append(iostat_row_dict)
