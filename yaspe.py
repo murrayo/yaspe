@@ -136,6 +136,26 @@ def get_number_type(s):
             return s
 
 
+def check_date(section, run_start_date, date_to_check):
+
+    if int(date_to_check[:2]) > 2000:
+        print(f"{section} Check date format (yyyy/xx/xx?): {date_to_check}")
+        return False
+
+    if int(date_to_check[:2]) > 12:
+        print(
+            f"{section} convert dd/mm/yy date to mm/dd/yy {date_to_check} > {make_mdy_date(date_to_check)}")
+        return True
+    else:
+        delta = run_start_date - dateutil.parser.parse(date_to_check)
+
+        if delta.days > 1:
+            print(f"{section} convert dd/mm/yy date to mm/dd/yy {date_to_check}  > {make_mdy_date(date_to_check)}")
+            return True
+
+    return False
+
+
 def make_mdy_date(date_in):
 
     # Flip ambiguous dd/mm/yyyy dates eg. 09/11/2021 where 11 is in fact Nov not Sept.
@@ -162,6 +182,8 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
     vmstat_processing = False
     vmstat_header = ""
     vmstat_rows_list = []
+    vmstat_date = ""
+    vmstat_date_convert = False
 
     iostat_processing = False
     iostat_header = ""
@@ -181,6 +203,8 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
     perfmon_processing = False
     perfmon_header = ""
     perfmon_rows_list = []
+    # perfmon_date = ""
+    # perfmon_date_convert = False
 
     operating_system = execute_single_read_query(
         connection, "SELECT * FROM overview WHERE field = 'operating system';"
@@ -215,18 +239,9 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                     mgstat_row_dict["html name"] = html_filename
 
                     # Check date format
-                    if mgstat_row_dict['Date'] != mgstat_date:
+                    if not mgstat_date_convert and mgstat_row_dict['Date'] != mgstat_date:
                         mgstat_date = mgstat_row_dict['Date']
-
-                        if int(mgstat_row_dict['Date'][:2]) > 12:
-                            print(f"mgstat convert dd/mm/yy date to mm/dd/yy {mgstat_row_dict['Date']} > {make_mdy_date(mgstat_row_dict['Date'])}")
-                            mgstat_date_convert = True
-                        else:
-                            delta = run_start_date - dateutil.parser.parse(mgstat_row_dict['Date'])
-
-                            if delta.days > 1:
-                                print(f"mgstat convert dd/mm/yy date to mm/dd/yy {mgstat_row_dict['Date']}  > {make_mdy_date(mgstat_row_dict['Date'])}")
-                                mgstat_date_convert = True
+                        mgstat_date_convert = check_date("mgstat", run_start_date, mgstat_row_dict['Date'])
 
                     if mgstat_date_convert:
                         new_date = make_mdy_date(mgstat_row_dict["Date"])
@@ -254,6 +269,17 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                         values_converted = [get_number_type(v) for v in values]
                         vmstat_row_dict = dict(zip(vmstat_columns, values_converted))
                         vmstat_row_dict["html name"] = html_filename
+
+                        # Check date format
+                        if not vmstat_date_convert and vmstat_row_dict['Date'] != vmstat_date:
+                            vmstat_date = vmstat_row_dict['Date']
+                            vmstat_date_convert = check_date("vmstat", run_start_date, vmstat_row_dict['Date'])
+
+                        if vmstat_date_convert:
+                            new_date = make_mdy_date(vmstat_row_dict["Date"])
+                            new_date_dict = {"Date": new_date}
+                            vmstat_row_dict.update(new_date_dict)
+
                         # Added for pretty processing
                         vmstat_row_dict["datetime"] = f'{vmstat_row_dict["Date"]} {vmstat_row_dict["Time"]}'
                         vmstat_rows_list.append(vmstat_row_dict)
@@ -280,6 +306,10 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                         values_converted = [get_number_type(v) for v in values]
                         perfmon_row_dict = dict(zip(perfmon_columns, values_converted))
                         perfmon_row_dict["html name"] = html_filename
+
+                        # The first column is a date time with timezone
+                        # todo: move datetime column creation to here, include dd/mm/yy check
+
                         perfmon_rows_list.append(perfmon_row_dict)
                 if perfmon_processing and "Memory" in line:
                     perfmon_header = line
@@ -344,18 +374,9 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                             iostat_row_dict["html name"] = html_filename
 
                             # Check date format
-                            if iostat_row_dict['Date'] != iostat_date:
+                            if not iostat_date_convert and iostat_row_dict['Date'] != iostat_date:
                                 iostat_date = iostat_row_dict['Date']
-
-                                if int(iostat_row_dict['Date'][:2]) > 12:
-                                    print(f"iostat convert dd/mm/yy date to mm/dd/yy {iostat_row_dict['Date']} > {make_mdy_date(iostat_row_dict['Date'])}")
-                                    iostat_date_convert = True
-                                else:
-                                    delta = run_start_date - dateutil.parser.parse(iostat_row_dict['Date'])
-
-                                    if delta.days > 1:
-                                        print(f"iostat convert dd/mm/yy date to mm/dd/yy {iostat_row_dict['Date']} > {make_mdy_date(iostat_row_dict['Date'])}")
-                                        iostat_date_convert = True
+                                iostat_date_convert = check_date("iostat", run_start_date, iostat_row_dict['Date'])
 
                             if iostat_date_convert:
                                 new_date = make_mdy_date(iostat_row_dict["Date"])
