@@ -23,8 +23,9 @@ This will replace `yape`. I will add functionality as I need it. e.g. I expect t
 See the help text:
 
 ```plaintext
-$ docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h
-usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-s]
+usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-a]
+             [-o "output file prefix"]
+             [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-s]
 
 Performance file review.
 
@@ -34,12 +35,16 @@ optional arguments:
   -i "/path/file.html", --input_file "/path/file.html"
                         Input html filename with full path.
   -x, --iostat          Also plot iostat data (can take a long time).
-  -a, --append          Do not overwrite database, append to existing database.
+  -a, --append          Do not overwrite database, append to existing
+                        database.
   -o "output file prefix", --output_prefix "output file prefix"
-                        Output filename prefix, defaults to html file name, blank (-o '') is legal.
+                        Output filename prefix, defaults to html file name,
+                        blank (-o '') is legal.
   -e "/path/filename_SystemPerformance.sqlite", --existing_database "/path/filename_SystemPerformance.sqlite"
-                        Chart existing database, full path and filename to existing database.
-  -c, --csv             Create csv files of each html files metrics, append if csv file exists.
+                        Chart existing database, full path and filename to
+                        existing database.
+  -c, --csv             Create csv files of each html files metrics, append if
+                        csv file exists.
   -p, --png             Create png files of metrics. Instead of html
   -s, --system          Output system overview.
 
@@ -121,3 +126,63 @@ Remove the old image and create a new one with updated source code
 
 [logo]: https://github.com/murrayo/yaspe/blob/main/yaspe.gif "Example"
 
+## System config check
+
+_yaspe_ includes a system overview and basic config check (`-s`)
+
+This check is designed to save you hunting through your SystemPerformance file looking for system details. 
+
+- a full list of items found is in `[prefix]_overview_all.csv`
+- The check also includes a basic configuration review in `[prefix]_overview.txt`
+
+An example of `overview.txt` follows:
+
+```plaintext
+System Summary for your site name
+
+Hostname         : YOURHOST
+Instance         : SHADOW
+Operating system : Linux
+Platform         : N/A
+CPUs             : 24
+Processor model  : Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz
+Memory           : 126 GB
+Shared memory    : globals 71680 MB + routines 1023 MB + gmheap 1000 MB = 73,703 MB
+Version          : Cache for UNIX (Red Hat Enterprise Linux for x86-64) 2018.1.4 (Build 505_1U) Thu May 28 2020 10:11:16 EDT
+Date collected   : Profile run "24hours" started at 16:15:00 on Nov 22 2021.
+
+Warnings:
+- Journal freeze on error is not enabled. If journal IO errors occur database activity that occurs during this period cannot be restored.
+- swappiness is 10. For databases 5 is recommended to adjust how aggressive the Linux kernel swaps memory pages to disk.
+- Hugepages not set. For performance, memory efficiency and to protect the shared memory from paging out, use huge page memory space. It is not advisable to specify HugePages much higher than the shared memory amount because the unused memory are not be available to other components.
+- dirty_background_ratio is 10. InterSystems recommends setting this parameter to 5. This setting is the maximum percentage of active memory that can be filled with dirty pages before pdflush begins to write them.
+- dirty_ratio is 30. InterSystems recommends setting this parameter to 10. This setting is the maximum percentage of total memory that can be filled with dirty pages before processes are forced to write dirty buffers themselves during their time slice instead of being allowed to do more writes. These changes force the Linux pdflush daemon to write out dirty pages more often rather than queue large amounts of updates that can potentially flood the storage with a large burst of updates
+
+Recommendations:
+- Review and fix warnings above
+- Set HugePages, see IRIS documentation: https://docs.intersystems.com/irislatest/csp/docbook/Doc.View.cls?KEY=GCI_prepare_install#GCI_memory_big_linux
+- Total memory is 128,755 MB, 75% of total memory is 96,566 MB.
+- Shared memory (globals+routines+gmheap) is 73,703 MB. (57% of total memory).
+- Number of HugePages for 2048 KB page size for (73,703 MB + 5% buffer = 77,388 MB) is 38694
+
+All instances on this host:
+- >SHADOW            2018.1.4.505.1.a  56772  /cachesys
+```
+
+## My workflow
+
+First I create the system check and create the SQLite file (for later processing):
+
+`docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/SystemPerfomanceFileName.html -a -s -x -o yaspe`
+
+Next I create the png files output for a quick look through key metrics:
+
+`docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/yaspe_SystemPerformance.sqlite -p`
+
+If I want to zoom in or create output for reports to customers I create the html output:
+
+`docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/yaspe_SystemPerformance.sqlite -o html`
+
+Next steps:
+
+- for a deeper dive I use the _pretty pButtons_ scripts to combine different metrics. For example, vmstat (wa) with iostat w_await... _watch this space_
