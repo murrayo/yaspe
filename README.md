@@ -236,7 +236,7 @@ for i in `ls *.html`; do /path/to/yaspe/souce/you/downloaded/yaspe.py -i $i -a  
 /path/to/yaspe/souce/you/downloaded/yaspe.py -e yaspe_SystemPerformance.sqlite -p
 ```
 
-- If you want to zoom in or create output for reports to customers, create the html output:
+- If you want to zoom in or create output for reports for others, create the html output:
 
 ```commandline
 /path/to/yaspe/souce/you/downloaded/yaspe.py -e yaspe_SystemPerformance.sqlite -o html
