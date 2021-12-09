@@ -126,7 +126,7 @@ Remove the old image and create a new one with updated source code
 
 [logo]: https://github.com/murrayo/yaspe/blob/main/yaspe.gif "Example"
 
-## System config check
+# System config check
 
 _yaspe_ includes a system overview and basic config check (`-s`)
 
@@ -169,7 +169,7 @@ All instances on this host:
 - >SHADOW            2018.1.4.505.1.a  56772  /cachesys
 ```
 
-## My workflow
+# My workflow
 
 First I create the system check and create the SQLite file (for later processing):
 
