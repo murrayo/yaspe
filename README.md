@@ -227,7 +227,7 @@ Once installed you can `cd` to the folder with your pButtons or SystemPerformanc
 - Create the system check and create the SQLite file (for later processing):
 
 ```commandline
-for i in `ls *.html`; do /Users/moldfiel/zISC/local_git_repositories/github/yaspe/yaspe.py -i $i -a  -s -x -o yaspe;done
+for i in `ls *.html`; do /path/to/yaspe/souce/you/downloaded/yaspe.py -i $i -a  -s -x -o yaspe;done
 ```
 
 - Create the png files output for a quick look through key metrics:
