@@ -22,7 +22,7 @@ This will replace `yape`. I will add functionality as I need it. e.g. I expect t
 
 See the help text:
 
-```plaintext
+```commandline
 usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-a]
              [-o "output file prefix"]
              [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-s]
@@ -53,13 +53,13 @@ Be safe, "quote the path"
 
 For example, change to the folder with a SystemPerformance html file and run the command:
 
-```plaintext
+```commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
 ```
 
 If you want simple png files rather than html: smaller and quicker to look through: Use the `-p` option.
 
-```plaintext
+```commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p
 ```
 
@@ -68,7 +68,7 @@ docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysyste
 
 Or put the path to the folder with the html file in the docker volume parameter and put the html file name after `-i /data/` 
 
-```plaintext
+```commandline
 docker run -v "/path/to/folder/with html file":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
 ```
 
@@ -91,7 +91,7 @@ To keep all the metric data in a single database use the `-o` argument to overri
 Example of running over multiple days;
 - change to the folder with the html files and run the commands, run:
 
-```plaintext
+```commandline
 for i in `ls *.html`;do docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/"${i}" -a -o "three_days"; done
 ```
 
@@ -99,7 +99,7 @@ The resulting database file will use the prefix, in this example; `three_days_Sy
 
 To create charts for the accumulated days use the `-e` argument.
 
-```plaintext
+```commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/three_days_SystemPerformance.sqlite
 ```
 
@@ -171,18 +171,73 @@ All instances on this host:
 
 # My workflow
 
-First I create the system check and create the SQLite file (for later processing):
+- First I create the system check and create the SQLite file (for later processing):
 
-`docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/SystemPerfomanceFileName.html -a -s -x -o yaspe`
+```commandline
+docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/SystemPerfomanceFileName.html -a -s -x -o yaspe
+```
 
-Next I create the png files output for a quick look through key metrics:
+- Next I create the png files output for a quick look through key metrics:
 
-`docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/yaspe_SystemPerformance.sqlite -p`
+```commandline
+docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/yaspe_SystemPerformance.sqlite -p
+```
 
-If I want to zoom in or create output for reports to customers I create the html output:
+- If I want to zoom in or create output for reports to customers I create the html output:
 
-`docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/yaspe_SystemPerformance.sqlite -o html`
+```commandline
+docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/yaspe_SystemPerformance.sqlite -o html
+```
 
 Next steps:
 
 - for a deeper dive I use the _pretty pButtons_ scripts to combine different metrics. For example, vmstat (wa) with iostat w_await... _watch this space_
+
+# Running without a container?
+
+_yaspe_ is written in Python.
+
+If you wish to run locally in the operating system, I suggest you create a separate Python virtual environment for _yaspe_.
+
+There are many references for creating Python environments on the web. You can start with the official documentation:
+
+- https://docs.python.org/3/tutorial/venv.html
+
+_yaspe_ is tested in Python 3.9. Specifically my test system is: 
+
+```commandline
+python --version
+Python 3.9.5
+```
+
+**Once you have set up your Python environment:**
+
+- download the source files
+- `cd` to folder with source files
+
+See `requirements.txt` for the Python packages used. You will need to:
+
+```commandline
+pip3 install -r requirements.txt
+```
+
+Once installed you can `cd` to the folder with your pButtons or SystemPerformance file(s) and run the following sequence:
+
+
+- Create the system check and create the SQLite file (for later processing):
+
+```commandline
+for i in `ls *.html`; do /Users/moldfiel/zISC/local_git_repositories/github/yaspe/yaspe.py -i $i -a  -s -x -o yaspe;done
+```
+
+- Create the png files output for a quick look through key metrics:
+
+```commandline
+/path/to/yaspe/souce/you/downloaded/yaspe.py -e yaspe_SystemPerformance.sqlite -p
+```
+
+- If you want to zoom in or create output for reports to customers, create the html output:
+
+```commandline
+/path/to/yaspe/souce/you/downloaded/yaspe.py -e yaspe_SystemPerformance.sqlite -o html
+```
