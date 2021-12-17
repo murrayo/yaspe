@@ -131,8 +131,11 @@ def system_check(input_file):
             # Linux free
 
             if memory_next:
-                sp_dict["memory MB"] = (line.split(",")[2]).strip()
-                memory_next = False
+                if "Memtotal" in line:
+                    pass
+                else:
+                    sp_dict["memory MB"] = (line.split(",")[2]).strip()
+                    memory_next = False
             if "<div id=free>" in line:
                 memory_next = True
 
