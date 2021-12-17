@@ -284,8 +284,11 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                         vmstat_row_dict["datetime"] = f'{vmstat_row_dict["Date"]} {vmstat_row_dict["Time"]}'
                         vmstat_rows_list.append(vmstat_row_dict)
                 if vmstat_processing and "us sy id wa" in line:
-                    # vmstat has column names on same line as html
-                    vmstat_header = line.split("<pre>")[1].strip()
+                    # vmstat !sometimes! has column names on same line as html
+                    if "<pre>" in line:
+                        vmstat_header = line.split("<pre>")[1].strip()
+                    else:
+                        vmstat_header = line
                     vmstat_header = vmstat_header.split(" r ")[1]
                     vmstat_header = f"Date Time r {vmstat_header}"
                     vmstat_columns = vmstat_header.split()
@@ -1047,7 +1050,7 @@ if __name__ == "__main__":
         prog="yaspe", description="Performance file review.", epilog='Be safe, "quote the path"'
     )
 
-    parser.add_argument('-v', '--version', action='version', version='%(prog)s 1.211026.001')
+    parser.add_argument('-v', '--version', action='version', version='%(prog)s 1.211217.001')
 
     parser.add_argument(
         "-i",
