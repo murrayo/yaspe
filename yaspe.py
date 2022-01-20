@@ -578,14 +578,14 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
             alt.Color("Type", title="Metric"),
             tooltip=["metric"],
         )
-        .properties(height=400, width=800, title=title)
+        .properties(height=500, width=1333, title=title)
     )
 
     # Upper is zoomed area X axis
     upper = base.encode(alt.X("datetime:T", title="Time Zoom", scale=alt.Scale(domain=brush)))
 
     # Lower chart bind the brush in our chart by setting the selection property
-    lower = base.properties(height=100, title="").add_selection(brush)
+    lower = base.properties(height=150, title="").add_selection(brush)
 
     alt.hconcat(upper & lower).configure_title(fontSize=14, color="black").configure_legend(
         strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
@@ -609,7 +609,7 @@ def interactive_chart(data, column_name, title, max_y, filepath, output_prefix, 
         alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
         alt.Color("Type", title="Metric"),
         tooltip=["metric"],
-    ).properties(height=400, width=800, title=title).interactive().save(f"{filepath}{output_prefix}{file_prefix}int_{output_name}.html")
+    ).properties(height=500, width=1333, title=title).interactive().save(f"{filepath}{output_prefix}{file_prefix}int_{output_name}.html")
 
 
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -629,14 +629,14 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
             alt.Color("Type", title="Metric"),
             tooltip=["metric:N"],
         )
-            .properties(height=400, width=800, title=title)
+            .properties(height=500, width=1333, title=title)
     )
 
     # Upper is zoomed area X axis
     upper = base.encode(alt.X("id_key:Q", title="Count Zoom", scale=alt.Scale(domain=brush)))
 
     # Lower chart bind the brush in our chart by setting the selection property
-    lower = base.properties(height=100, title="").add_selection(brush)
+    lower = base.properties(height=150, title="").add_selection(brush)
 
     alt.hconcat(upper & lower).configure_title(fontSize=14, color="black").configure_legend(
         strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
