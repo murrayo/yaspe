@@ -593,7 +593,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     output_name = column_name.replace("/", "_")
 
-    (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html")
+    (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html", scale_factor=2.0)
 
 
 def interactive_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -609,7 +609,7 @@ def interactive_chart(data, column_name, title, max_y, filepath, output_prefix, 
         alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
         alt.Color("Type", title="Metric"),
         tooltip=["metric"],
-    ).properties(height=500, width=1333, title=title).interactive().save(f"{filepath}{output_prefix}{file_prefix}int_{output_name}.html")
+    ).properties(height=500, width=1333, title=title).interactive().save(f"{filepath}{output_prefix}{file_prefix}int_{output_name}.html", scale_factor=2.0)
 
 
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -644,7 +644,7 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
     output_name = column_name.replace("/", "_")
 
-    (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html")
+    (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html", scale_factor=2.0)
 
 
 def chart_vmstat(connection, filepath, output_prefix, png_out):
