@@ -1,0 +1,13 @@
+Site Name: "- Sample site name"
+Disk List:
+    Database: "dm-7"
+    Primary Journal: "dm-2"
+    Alternate Journal: "dm-4"
+    WIJ: "dm-3"
+    IRIS: "dm-3"
+Colormap Name: "Set1"
+DPI: 300
+WIDTH: 16
+HEIGHT: 6
+MEDIAN: False
+Moving Average: 60

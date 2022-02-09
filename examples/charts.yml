@@ -1,0 +1,211 @@
+DB Jnl and WIJ Writes latency and DB Read latency:  
+    Title: "DB Jnl and WIJ Writes latency and DB Read latency"
+    columns_to_show:
+        column1: {"Text": "Database Write await", "Name": "w_await_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Journal Write await", "Name": "w_await_pri", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }   
+        column3: {"Text": "WIJ Write await", "Name": "w_await_wij", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column4: {"Text": "Database Read await", "Name": "r_await_db", "axis": "right", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "Write Latency (ms)"
+    y_label_r: "Read Latency (ms)"
+    y_max_l: 0
+    y_max_r: 0
+
+DB Jnl and WIJ Writes latency and DB Read latency single y:
+    Title: "DB Jnl and WIJ Writes latency and DB Read latency (single Y)"
+    columns_to_show:
+        column1: {"Text": "Database Write await", "Name": "w_await_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Journal Write await", "Name": "w_await_pri", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column3: {"Text": "WIJ Write await", "Name": "w_await_wij", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column4: {"Text": "Database Read await", "Name": "r_await_db", "axis": "left", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "Latency (ms)"
+    y_label_r: ""
+    y_max_l: 0
+    y_max_r: 0
+
+DB Writes and DB Read latency:  
+    Title: "DB Writes and DB Read latency"
+    columns_to_show:
+        column1: {"Text": "Database Writes", "Name": "w/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Database Read await", "Name": "r_await_db", "axis": "right", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "Write IOPS"
+    y_label_r: "Read Latency (ms)"
+    y_max_l: 0
+    y_max_r: 0
+
+WIJ Writes and DB Read latency:  
+    Title: "WIJ Writes and DB Read latency"
+    columns_to_show:
+        column1: {"Text": "WIJ Writes", "Name": "w/s_wij", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Database Read await", "Name": "r_await_db", "axis": "right", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "WIJ IOPS"
+    y_label_r: "Read Latency (ms)"
+    y_max_l: 0
+    y_max_r: 0
+
+WIJ Writes and Journal write latency:  
+    Title: "WIJ Writes and Journal write latency"
+    columns_to_show:
+        column1: {"Text": "Database Writes", "Name": "w/s_wij", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Journal w_await", "Name": "w_await_pri", "axis": "right", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "WIJ IOPS"
+    y_label_r: "Write Latency (ms)"
+    y_max_l: 0
+    y_max_r: 0
+
+DB Writes and DB Reads:  
+    Title: "DB Writes and DB Reads"
+    columns_to_show:
+        column1: {"Text": "Database Writes", "Name": "w/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Database Reads", "Name": "r/s_db", "axis": "right", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "Write IOPS"
+    y_label_r: "Read IOPS"
+    y_max_l: 0
+    y_max_r: 0
+    
+Glorefs and CPU Utilisation:  
+    Title: "Glorefs and CPU Utilisation"
+    columns_to_show:
+        column1: {"Text": "Glorefs", "Name": "Glorefs_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Total CPU", "Name": "Total CPU_vm", "axis": "right", "Style": "", "Linewidth": 2, "Markerstyle": "+", "Markersize": 3 }   
+    zoom: False
+    y_label_l: "Global references/sec"
+    y_label_r: "Total CPU utilisation %"  
+    y_max_l: 0
+    y_max_r: 100           
+    
+Total CPU and CPU read queue:  
+    Title: "Total CPU and CPU read queue"
+    columns_to_show:
+        column1: {"Text": "Read queue", "Name": "r_vm", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1}
+        column2: {"Text": "Total CPU", "Name": "Total CPU_vm", "axis": "right", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1}   
+    zoom: False
+    y_label_l: "read queue"
+    y_label_r: "Total CPU utilisation %"
+    y_max_l: 0
+    y_max_r: 100    
+
+CPU time spent system Zoom:  
+    Title: "Time spent system Zoom"
+    columns_to_show:
+        column1: {"Text": "Total CPU", "Name": "Total CPU_vm", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 2}  
+        column2: {"Text": "System time", "Name": "sy_vm", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 2}
+    zoom: True
+    y_label_l: "Utilisation %"
+    y_label_r: ""
+    y_max_l: 100
+    y_max_r: 0    
+    
+CPU time spent waiting for IO Zoom:  
+    Title: "Time spent waiting for IO Zoom"
+    columns_to_show:
+        column1: {"Text": "Total CPU", "Name": "Total CPU_vm", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 2}  
+        column2: {"Text": "Time spent waiting for IO", "Name": "wa_vm", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 2}
+    zoom: True
+    y_label_l: "Utilisation %"
+    y_label_r: ""
+    y_max_l: 100
+    y_max_r: 0    
+       
+CPU time spent waiting for IO:  
+    Title: "CPU time spent waiting for IO"
+    columns_to_show:
+        column1: {"Text": "Total CPU", "Name": "Total CPU_vm", "axis": "left", "Style": "", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}  
+        column2: {"Text": "Time spent waiting for IO", "Name": "wa_vm", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1}
+    zoom: False
+    y_label_l: "Utilisation %"
+    y_label_r: ""
+    y_max_l: 100
+    y_max_r: 0    
+              
+CPU Utilisation:  
+    Title: "CPU Utilisation"
+    columns_to_show:
+        column1: {"Text": "Total CPU", "Name": "Total CPU_vm", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1}   
+    zoom: False
+    y_label_l: "Total CPU utilisation %"
+    y_label_r: 
+    y_max_l: 100
+    y_max_r: 0    
+
+Glorefs and Database Reads:  
+    Title: "Glorefs and Database Reads"
+    columns_to_show:
+        column1: {"Text": "Glorefs", "Name": "Glorefs_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1}
+        column2: {"Text": "Read IOPS Database", "Name": "r/s_db", "axis": "right", "Style": ":", "Linewidth": 2, "Markerstyle": "", "Markersize": 2}  
+    zoom: True
+    y_label_l: "Global references/sec"
+    y_label_r: "Database reads/sec" 
+    y_max_l: 0
+    y_max_r: 0    
+    
+Gloupds and WIJ Writes:  
+    Title: "Gloupds and WIJ Writes"
+    columns_to_show:
+        column1: {"Text": "Gloupds", "Name": "Gloupds_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1}
+        column2: {"Text": "Write IOPS WIJ", "Name": "w/s_wij", "axis": "right", "Style": "", "Linewidth": 2, "Markerstyle": "o", "Markersize": 3}
+    zoom: True
+    y_label_l: "Global updates/sec"
+    y_label_r: "WIJ Writes/sec" 
+    y_max_l: 0
+    y_max_r: 0    
+    
+Database Writes and WIJ Writes:
+    Title: "Database Writes and WIJ Writes"
+    columns_to_show:
+        column1: {"Text": "Write IOPS Database", "Name": "w/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Write IOPS WIJ", "Name": "w/s_wij", "axis": "right", "Style": "", "Linewidth": 2, "Markerstyle": "o", "Markersize": 3}
+    zoom: True
+    y_label_l: "Database writes/sec"
+    y_label_r: "WIJ Writes/sec" 
+    y_max_l: 0
+    y_max_r: 0    
+
+Mgstat WIJ Writes and iostat WIJ Writes:  
+    Title: "mgstat WIJ Writes and iostat WIJ Writes"
+    columns_to_show:
+        column1: {"Text": "WIJ Writes mgstat", "Name": "WIJwri_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "WIJ Writes iostat", "Name": "w/s_wij", "axis": "right", "Style": "", "Linewidth": 2, "Markerstyle": "o", "Markersize": 3}
+    zoom: True
+    y_label_l: "mgstat WIJ writes/sec"
+    y_label_r: "iostat WIJ Writes/sec" 
+    y_max_l: 0
+    y_max_r: 0    
+    
+DB Write size:  
+    Title: "DB Write Size"
+    columns_to_show:
+        column1: {"Text": "DB Writes", "Name": "w/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "DB Write kB/s", "Name": "wkB/s_db", "axis": "right", "Style": "", "Linewidth": 2, "Markerstyle": "o", "Markersize": 3}
+    zoom: True
+    y_label_l: "DB writes/sec"
+    y_label_r: "DB write kB/sec" 
+    y_max_l: 0
+    y_max_r: 0        
+            
+WIJ Write size:  
+    Title: "WIJ Write Size"
+    columns_to_show:
+        column1: {"Text": "WIJ Writes", "Name": "w/s_wij", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 3 }
+        column2: {"Text": "WIJ Write kB/s", "Name": "wkB/s_wij", "axis": "right", "Style": "", "Linewidth": 2, "Markerstyle": "o", "Markersize": 3}
+    zoom: True
+    y_label_l: "WIJ writes/sec"
+    y_label_r: "WIJ write kB/sec" 
+    y_max_l: 0
+    y_max_r: 0        
+        
+JNL Writes:  
+    Title: "Journal Writes"
+    columns_to_show:
+        column1: {"Text": "Journal Writes", "Name": "w/s_pri", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Journal Write kB/s", "Name": "wkB/s_pri", "axis": "right", "Style": "", "Linewidth": 2, "Markerstyle": "o", "Markersize": 3}
+    zoom: True
+    y_label_l: "Jnl writes/sec"
+    y_label_r: "Jnl write kB/sec" 
+    y_max_l: 0
+    y_max_r: 0                 

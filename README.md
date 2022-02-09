@@ -1,22 +1,23 @@
 # yaspe
 
-Parse and chart pButtons and SystemPerformance files
+Parse and chart InterSystems Caché pButtons and InterSystems IRIS SystemPerformance files.
+
+For combining metrics from mgstat, iostat and vmstat see [Pretty Performance](#Pretty-Performance) below.
 
 # Yet Another System Performance Extractor
 
 This will replace `yape`. I will add functionality as I need it. e.g. I expect to create charts with multiple interesting metrics. If you would like to see specific combinations let me know e.g. glorefs with CPU 
 
-:: **NOTE:** Currently only supports ::
-
-- IRIS/Caché (mgstat)
-- Linux (vmstat, iostat)
-- Windows (Perfmon)
+> **NOTE:** Currently only supports
+>- IRIS/Caché (mgstat)
+>- Linux (vmstat, iostat)
+>- Windows (Perfmon)
 
 ## Create docker container image
 
 - download the source files
 - `cd` to folder with source files
-- build yaspe container image: `docker build --no-cache -t yaspe .`
+- build `yaspe` container image: `docker build --no-cache -t yaspe .`
 
 ## Run the command over a pButtons or SystemPerformance file
 
@@ -241,3 +242,169 @@ for i in `ls *.html`; do /path/to/yaspe/souce/you/downloaded/yaspe.py -i $i -a  
 ```commandline
 /path/to/yaspe/souce/you/downloaded/yaspe.py -e yaspe_SystemPerformance.sqlite -o html
 ```
+<hr>
+
+# Pretty Performance
+
+## Sample Charts
+
+Below is the example custom chart, Glorefs (mgstat) and Total CPU utilisation (vmstat).
+
+![image example1](images/Glorefs_and_CPU_Utilisation_-_Sample_site_name_Monday_17_Jan_2022.png)
+
+Below is one of the default images, which includes a zoom to specified time (or defaults to 13:00-14:00).
+
+![image example2](images/CPU_Utilisation_1000_1100.png)
+
+Another custom image included in the sample charts.yml file. This chart combines read and write latency for IRIS disks. (Awful WIJ write performance!)
+
+![image example 2](images/DB_Jnl_and_WIJ_Writes_latency_and_DB_Read_latency_1000_to_1100_-_Sample_site_name_Monday_17_Jan_2022.png)
+
+Here is the same chart with all metrics on the left axis only (not as clear, but depends on the metrics).
+
+![image example 2](images/DB_Jnl_and_WIJ_Writes_latency_and_DB_Read_latency_(single_Y)_1000_to_1100_-_Sample_site_name_Monday_17_Jan_2022.png)
+
+Maybe you care about IO throughput for a cloud disk...
+
+![image example 2](images/DB_Write_Size_1000_to_1100_-_Sample_site_name_Monday_17_Jan_2022.png)
+
+<hr>
+
+## Overview
+
+pretty_performance uses the sqlite database created  by `yaspe` to make charts that can combine metrics for vmstat, iostat and mgstat. 
+For example, this is handy if you need to output charts for performance reports.
+
+There is also an option to output merged vmstat, iostat and mgstat as a csv file for you to work with in excel or other ways.
+
+Formatting and chart creation is driven from two yml files, I have included samples;
+
+- charts.yml - Attributes of charts to produce. What columns to include etc.
+- input.yml - Instance details such as site name and key disk names (e.g. database, WIJ, pri and alt journal, IRIS)
+
+<hr>
+
+## Workflow
+
+### A. Create sqlite file using yaspe
+
+One of the outputs of `yaspe` is an SQLite file with all the SystemPerformance metrics. e.g. `yaspe_SystemPerformance.sqlite`
+
+Hint: Use default plots to see what it is you want to look at or deep dive in to.
+If you already know what columns you care about, you can simply run yaspe to only create the sqlite file.
+
+> **NOTE:** Currently only supports Linux. Specifically;
+>- IRIS/Caché (mgstat)
+>- Linux (vmstat, iostat)
+
+For example:
+
+`docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/your_html_file_name.html -x -c -s -a -o "yaspe"`
+
+**Note:** `-x` to include iostat and `-a` to append to the sqlite tables.
+
+The resulting sqlite file name is derived from the `-o` parameter: `yaspe_SystemPerformance.sqlite`
+
+### B. Edit yml files
+
+- charts.yml - Attributes of charts to produce. You can leave as defaults until you need to drill in to see specific requirements.
+- input.yml - Instance details such as site name and key disks. **This file will be unique to the site**
+
+You will need the disk /dev names for Database, Primary and Alternate Journal, WIJ, and Caché/IRIS disk. 
+They can all be the same device if that is how your system is set up. See the notes below for changing the defaults for charts.yml.
+
+If you need clues to the device names look at the Linux info `/dev/mapper` section in the SystemPerformance html file. 
+For example; you can see below that the main IRIS database is on dm-7, journals are on dm-4 and dm-2, IRIS in this case is on dm-3, and so is the WIJ.
+
+![](images/disk_list.png)
+
+### C. Run the script
+
+Below is an example using optional flags to start the zoom charts at 10:00 and end at 11:00:
+
+`docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./pretty_performance.py -f /data/yaspe_SystemPerformance.sqlite -s 10:00 -e 11:00 -p /data/input.yml -i -m -c /data/charts.yml -o ./pretty_yaspe`
+
+_Note: This example assumes:_
+
+- You have `cd` to the folder with the sqlite file.
+- You have edited `charts.yml` and `input.yml`, and they are in the same folder as the sqlite file (otherwise specify a path).
+
+## yml Configuration
+
+The following example shows an example of the input.yml file:
+
+```yaml
+Site Name: "- Sample Site Name"
+Disk List:
+    Database: "dm-7"
+    Primary Journal: "dm-2"
+    Alternate Journal: "dm-4"
+    WIJ: "dm-3"
+    IRIS: "dm-3"
+Colormap Name: "Set1"
+DPI: 300
+WIDTH: 16
+HEIGHT: 6
+MEDIAN: False
+Moving Average: 60
+```
+
+- Site Name : Is text that appears in the title of all charts, and is also used as part of the file name.
+- Disk List : Section is unique to your site. Use the last part of the device name. e.g.: /dev/sde is sde, /dev/dm-5 is dm-5 etc.
+- Colormap Name : Do not change
+- DPI : Chart dots per inch, 300 is print level quality, 80 is fine for screens.
+- WIDTH : Chart width in inches.
+- HEIGHT : Chart height in inches.
+- MEDIAN : Do not change.
+- Moving Average : Do not change.
+
+The following example shows an example of _part_ of the charts.yml file:
+
+```yaml
+Glorefs and vmstat:  
+    Title: "Glorefs and vmstat"
+    columns_to_show:
+        column1: {"Text": "Glorefs", "Name": "Glorefs_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Total CPU", "Name": "Total CPU_vm", "axis": "right", "Style": "", "Linewidth": 2, "Markerstyle": "+", "Markersize": 3 }   
+    zoom: False
+    y_label_l: "Global references/sec"
+    y_label_r: "Total CPU utilisation %"  
+    y_max_l: 0
+    y_max_r: 100           
+```
+
+- Title : text appears in the title area of the chart, and is also used as part of the file name.
+- Columns to show : section lists each plot line, there is no hard limit on the number of lines (see Column names below).
+- column# : This section, one per plot line, lists pairs of keys with attributes. Attributes are:
+
+  - Text : Legend for the plot line.
+  - Name : Column name from the sqlite database.
+  - axis : y axis; left or right
+  - Style : blank ("") if a marker, eg a dot or triangle etc will be used, else one of [these Styles](https://matplotlib.org/stable/api/markers_api.html).
+  - Linewidth : if a line style, the width.
+  - Markerstyle : if Style is "" the marker style.
+  - Markersize : If marker is used the size.
+
+- zoom : if True, the chart x axis will limited to times specified in the command line time selection options -s and -e.
+- ylabel_l : The left hand side y label.
+- ylabel_r : The right hand side y label.
+- y_max_l : Maximum y axis left, e.g. 100 if you are showing %. 0 for max(). All charts start at 0.
+- y_max_r : Maximum y axis right.
+
+**Column names**
+
+Column names are derived from _mgstat, _vmstat, and the disk types in input.yml, for example;
+
+- `_db` is Database metrics columns.
+- `_pri` is Primary journal metrics.
+- `_wij` is WIJ metrics.
+- `_mg` is mgstat.
+- `_vm` is vmstat.
+
+Partial list, you should get the idea. Check out the `.csv` output for a full list:
+
+`datetime,rrqm/s_db,wrqm/s_db,r/s_db,w/s_db,rkB/s_db,wkB/s_db,avgrq-sz_db,avgqu-sz_db,await_db,r_await_db,w_await_db,svctm_db,%util_db,rrqm/s_pri,wrqm/s_pri,r/s_pri,w/s_pri,rkB/s_pri,wkB/s_pri,avgrq-sz_pri,avgqu-sz_pri,await_pri,r_await_pri,w_await_pri,svctm_pri,%util_pri,rrqm/s_wij,wrqm/s_wij,r/s_wij,w/s_wij,rkB/s_wij,wkB/s_wij,avgrq-sz_wij,avgqu-sz_wij,await_wij,r_await_wij,w_await_wij,svctm_wij,%util_wij,Glorefs_mg,RemGrefs_mg,GRratio_mg,PhyRds_mg,Rdratio_mg,Gloupds_mg,RemGupds_mg,Rourefs_mg,RemRrefs_mg,RouLaS_mg,RemRLaS_mg,PhyWrs_mg,WDQsz_mg,WDtmpq_mg,WDphase_mg,WIJwri_mg,RouCMs_mg,Jrnwrts_mg,ActECP_mg,Addblk_mg,PrgBufL_mg,PrgSrvR_mg,BytSnt_mg,BytRcd_mg,WDpass_mg,IJUcnt_mg,IJULock_mg,PPGrefs_mg,PPGupds_mg,r_vm,b_vm,swpd_vm,free_vm,buff_vm,cache_vm,si_vm,so_vm,bi_vm,bo_vm,in_vm,cs_vm,us_vm,sy_vm,id_vm,wa_vm,st_vm,Total CPU_vm`
+
+<hr>
+
+
