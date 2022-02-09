@@ -462,7 +462,7 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
         connection.commit()
 
         if csv_out:
-            perfmon_output_csv = f"{output_filepath_prefix}vmstat.csv"
+            perfmon_output_csv = f"{output_filepath_prefix}perfmon.csv"
 
             # if file does not exist write header
             if not os.path.isfile(perfmon_output_csv):
