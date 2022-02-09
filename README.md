@@ -6,18 +6,25 @@ For combining metrics from mgstat, iostat and vmstat see [Pretty Performance](#P
 
 # Yet Another System Performance Extractor
 
-This will replace `yape`. I will add functionality as I need it. e.g. I expect to create charts with multiple interesting metrics. If you would like to see specific combinations let me know e.g. glorefs with CPU 
+This is a replacement for [yape](https://github.com/murrayo/yape). There will be no more development on `yape`.
 
-> **NOTE:** Currently only supports
+I will add functionality to `yaspe` as I need it. I use these tools pretty much daily, so there are frequent updates; which is not the same as support ;)
+However, if you find bugs, or are looking for enhancements let me know!
+
+> **NOTE:** `yaspe` currently only supports:
 >- IRIS/Caché (mgstat)
 >- Linux (vmstat, iostat)
 >- Windows (Perfmon)
 
 ## Create docker container image
 
-- download the source files
+To create a docker image:
+
+- Download the source files
 - `cd` to folder with source files
-- build `yaspe` container image: `docker build --no-cache -t yaspe .`
+- Build `yaspe` container image: `docker build --no-cache -t yaspe .`
+
+There are also instructions for (running without docker)[#Running-without-a-container]
 
 ## Run the command over a pButtons or SystemPerformance file
 
@@ -194,17 +201,17 @@ Next steps:
 
 - for a deeper dive I use the _pretty pButtons_ scripts to combine different metrics. For example, vmstat (wa) with iostat w_await... _watch this space_
 
-# Running without a container?
+# Running without a container
 
-_yaspe_ is written in Python.
+`yaspe` is written in Python.
 
-If you wish to run locally in the operating system, I suggest you create a separate Python virtual environment for _yaspe_.
+If you wish to run locally in the operating system, I suggest you create a separate Python virtual environment for `yaspe`.
 
 There are many references for creating Python environments on the web. You can start with the official documentation:
 
 - https://docs.python.org/3/tutorial/venv.html
 
-_yaspe_ is tested in Python 3.9. Specifically my test system is: 
+`yaspe` is tested in Python 3.9. Specifically my test system is: 
 
 ```commandline
 python --version
@@ -282,6 +289,41 @@ Formatting and chart creation is driven from two yml files, I have included samp
 - charts.yml - Attributes of charts to produce. What columns to include etc.
 - input.yml - Instance details such as site name and key disk names (e.g. database, WIJ, pri and alt journal, IRIS)
 
+<hr>
+
+## Look at the help
+
+``` commandline
+docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./pretty_performance.py -h
+usage: pretty_performance.py [-h] -f DB_FILENAME [-s ZOOM_START] [-e ZOOM_END]
+                             -p PARAMATER_FILE [-i] [-m] [-x] [-c CHART_FILE]
+                             [-o OUTPUT_DIR] [-l]
+
+Create charts from Linux pButtons and SystemPerformance data already stored in
+sqlite3 file
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -f DB_FILENAME, --db_filename DB_FILENAME
+                        db path and file name
+  -s ZOOM_START, --zoom_start ZOOM_START
+                        Start time for zoom
+  -e ZOOM_END, --zoom_end ZOOM_END
+                        Stop time for zoom
+  -p PARAMATER_FILE, --paramater_file PARAMATER_FILE
+                        Input for standard definitions
+  -i, --include_iostat_plots
+                        Include standard default iostat plots
+  -m, --include_mgstat_plots
+                        Include standard mgstat plots
+  -x, --output_csv_file
+                        output csv file
+  -c CHART_FILE, --chart_file CHART_FILE
+                        Chart file definitions
+  -o OUTPUT_DIR, --output_dir OUTPUT_DIR
+                        override output directory
+  -l, --limit_yaxis     limit y axis to 3 sigma maximum
+```
 <hr>
 
 ## Workflow
