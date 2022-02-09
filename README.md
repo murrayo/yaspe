@@ -26,7 +26,7 @@ To create a docker image:
 - `cd` to folder with source files
 - Build `yaspe` container image: `docker build --no-cache -t yaspe .`
 
-There are also instructions for (running without docker)[#Running-without-a-container]
+There are also instructions for [running without docker](#Running-without-a-container)
 
 ## Run the command over a pButtons or SystemPerformance file
 
