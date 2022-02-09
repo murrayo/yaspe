@@ -199,7 +199,7 @@ docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/yaspe_S
 
 Next steps:
 
-- for a deeper dive I use the _pretty pButtons_ scripts to combine different metrics. For example, vmstat (wa) with iostat w_await... _watch this space_
+- for a deeper dive I use the [Pretty Perforamnce](#Pretty-Performance) to combine different metrics. For example, vmstat (wa) with iostat w_await, etc
 
 # Running without a container
 
@@ -341,9 +341,9 @@ If you already know what columns you care about, you can simply run yaspe to onl
 
 For example:
 
-`docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/your_html_file_name.html -x -c -s -a -o "yaspe"`
+`docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/your_html_file_name.html -x -a -c -s -o "yaspe"`
 
-**Note:** `-x` to include iostat and `-a` to append to the sqlite tables.
+**Note:** `-x` to include iostat. I used `-a` to skip the step of creating html charts in yaspe.
 
 The resulting sqlite file name is derived from the `-o` parameter: `yaspe_SystemPerformance.sqlite`
 
@@ -370,6 +370,7 @@ _Note: This example assumes:_
 
 - You have `cd` to the folder with the sqlite file.
 - You have edited `charts.yml` and `input.yml`, and they are in the same folder as the sqlite file (otherwise specify a path).
+- There is data for the time period between `-s` and `-e` times!
 
 ## yml Configuration
 
