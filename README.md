@@ -36,7 +36,15 @@ There are also instructions for [running without docker](#Running-without-a-cont
 
 ## Run the command over a pButtons or SystemPerformance file
 
-See the help text:
+See the help text (note the differences in image name depending on your situation):
+
+For docker hub version:
+
+`docker run -v "$(pwd)":/data --rm --name yaspe murray1oldfield/yaspe:latest ./yaspe.py -h`
+
+For local version:
+
+`docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h`
 
 ```commandline
 usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-a]
