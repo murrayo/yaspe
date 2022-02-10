@@ -18,9 +18,15 @@ However, if you find bugs, or are looking for enhancements let me know!
 >- Linux (vmstat, iostat)
 >- Windows (Perfmon)
 
+## Latest version at docker hub
+
+For Intel: `docker pull murray1oldfield/yaspe:latest`
+
+For Apple M1: `docker pull murray1oldfield/yaspe:latest_M1`
+
 ## Create docker container image
 
-To create a docker image:
+To create a docker image on your own system:
 
 - Download the source files
 - `cd` to folder with source files
