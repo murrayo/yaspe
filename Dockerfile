@@ -12,6 +12,8 @@ ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US:en   
 
 COPY requirements.txt requirements.txt
-RUN pip3 install -r requirements.txt
+RUN pip3 -V
+RUN pip3 install --upgrade pip
+RUN pip3 install -r requirements.txt --default-timeout=100 --no-cache-dir
 
 COPY . .
