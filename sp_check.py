@@ -155,9 +155,6 @@ def system_check(input_file):
                     sp_dict["windows time zone"] = line.strip()
                 if "Total Physical Memory:" in line:
                     sp_dict["windows total memory"] = (line.split(":")[1]).strip()
-                    # if decimal point instead of comma
-                    sp_dict["windows total memory"] = sp_dict["windows total memory"].replace(".",",")
-
                 if "hypervisor" in line:
                     sp_dict["windows hypervisor"] = line.strip()
 
@@ -188,7 +185,8 @@ def system_check(input_file):
 
     if "memory MB" not in sp_dict:
         if "windows total memory" in sp_dict:
-            sp_dict['memory MB'] = int((sp_dict["windows total memory"].split(" ")[0]).replace(",", ""))
+            # Extract numbers only. Eg there may be point, commas, letters, and others from around the world.
+            sp_dict['memory MB'] = int(''.join(i for i in sp_dict["windows total memory"] if i.isdigit()))
         else:
             sp_dict['memory MB'] = 0
 
