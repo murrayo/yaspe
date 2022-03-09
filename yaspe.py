@@ -467,14 +467,9 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
 
     if perfmon_header != "":
         perfmon_df = pd.DataFrame(perfmon_rows_list)
-        # "date" and "time" are reserved words in SQL. Rename the columns to avoid clashes later.
-        perfmon_df.rename(columns={"Date": "RunDate", "Time": "RunTime"}, inplace=True)
         perfmon_df.dropna(inplace=True)
         create_generic_table(connection, "perfmon", perfmon_df)
         for row in perfmon_rows_list:
-            # "date" and "time" are reserved words in SQL. Rename the columns to avoid clashes later.
-            row["RunDate"] = row.pop("Date")
-            row["RunTime"] = row.pop("Time")
             insert_dict_into_table(connection, "perfmon", row)
         connection.commit()
 
