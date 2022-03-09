@@ -407,6 +407,10 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
     if mgstat_header != "":
         # Create dataframe of rows. Shortcut here to creating table columns or later charts etc
         mgstat_df = pd.DataFrame(mgstat_rows_list)
+
+        # "date" and "time" are reserved words in SQL. Rename the columns to avoid clashes later.
+        mgstat_df.rename(columns={"Date": "datestr", "Time": "timestr"}, inplace=True)
+
         # Remove any rows with NaN
         mgstat_df.dropna(inplace=True)
 
@@ -422,6 +426,9 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
 
         # Add the rows to the table, loop through the list of dictionaries
         for row in mgstat_rows_list:
+            # "date" and "time" are reserved words in SQL. Rename the columns to avoid clashes later.
+            row["datestr"] = row.pop("Date")
+            row["timestr"] = row.pop("Time")
             insert_dict_into_table(connection, "mgstat", row)
 
         connection.commit()
@@ -716,17 +723,17 @@ def chart_mgstat(connection, filepath, output_prefix, png_out):
 
     # hack until good way to detect date format is mmm/dd/yyyy or not
     if False:
-        df["Date"] = df.apply(
-            lambda row: make_mdy_date(row["Date"]), axis=1
+        df["datestr"] = df.apply(
+            lambda row: make_mdy_date(row["datestr"]), axis=1
         )
 
     # Add a datetime column
-    df["datetime"] = df["Date"] + " " + df["Time"]
+    df["datetime"] = df["datestr"] + " " + df["timestr"]
 
     # Format the data for Altair
     # Cut down the df to just the the list of categorical data we care about (columns)
     columns_to_chart = list(df.columns)
-    unwanted_columns = ["id_key", "Date", "Time", "html name"]
+    unwanted_columns = ["id_key", "datestr", "timestr", "html name"]
     columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
     mgstat_df = df[columns_to_chart]
