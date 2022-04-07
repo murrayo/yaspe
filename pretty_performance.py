@@ -535,12 +535,13 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
         # will realign starting on 0, eg 00:01:06 will end up as 12:01:05 am
 
         # Resample to 1 sec
-        df_master_vm = df_master_vm.reset_index().set_index("datetime").resample("1S", convention='start').mean()
-
+        # df_master_vm = df_master_vm.reset_index().set_index("datetime").resample("1S", convention='start').interpolate(method="linear")
+        df_master_vm = df_master_vm.reset_index().set_index("datetime").resample("1S").interpolate(method="linear")
+ 
         # Get mgstat
         df_master_mg = get_subset_dataframe(db, "mgstat")
         df_master_mg = df_master_mg.add_suffix("_mg")
-        df_master_mg = df_master_mg.reset_index().set_index("datetime").resample("1S", convention='start').mean()
+        df_master_mg = df_master_mg.reset_index().set_index("datetime").resample("1S", convention='start').interpolate(method="linear")
 
         # for iostat get and database (_db) Primary journal (_pri) WIJ (_wij)
         for key in disk_list_d.keys():
@@ -572,7 +573,7 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
 
         df_merged_disks = df_merged_disks[~df_merged_disks.index.duplicated()]
 
-        df_merged_disks = df_merged_disks.reset_index().set_index("datetime").resample("1S", convention='start').mean()
+        df_merged_disks = df_merged_disks.reset_index().set_index("datetime").resample("1S", convention='start').interpolate(method="linear")
 
         # Check the date formats match before merge
         date_vm = df_master_vm.head(1).index.tolist()
@@ -580,7 +581,7 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
         date_disk = df_merged_disks.head(1).index.tolist()
 
         if run_start_date == date_mg[0].strftime('%Y-%m-%d') == date_vm[0].strftime('%Y-%m-%d') == date_disk[0].strftime('%Y-%m-%d'):
-            pass
+            print(f"Dates OK")
         else:
             # run_start_date is in Y-m-d format
             # = dateutil.parser.parse(run_start).strftime('%Y-%m-%d')
@@ -598,7 +599,7 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
                 df_master_vm.index = pd.to_datetime(df_master_vm.index, format='%Y-%m-%d %H:%M:%S')
             if date_disk[0].strftime('%Y-%m-%d') != run_start_date:
                 print(f"iostat date mismatch corrected: "
-                      f"{date_disk[0].strftime('%Y-%m-%d')} start date: {run_start_date}") 
+                      f"{date_disk[0].strftime('%Y-%m-%d')} start date: {run_start_date}")
                 df_merged_disks.index = df_merged_disks.index.strftime('%Y-%d-%m %H:%M:%S')
                 df_merged_disks.index = pd.to_datetime(df_merged_disks.index, format='%Y-%m-%d %H:%M:%S')
 
@@ -610,7 +611,8 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
         df_bigmerge = pd.merge(df_bigmerge, df_master_vm,
                                how="left", left_index=True, right_index=True)
 
-        df_bigmerge = df_bigmerge.dropna()
+        # Text fields are not resampled so are nan
+        # df_bigmerge = df_bigmerge.dropna()
 
         df_bigmerge_zoom = df_bigmerge.between_time(zoom_start, zoom_end)
 
