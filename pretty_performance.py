@@ -14,6 +14,7 @@ import seaborn as sns
 import string
 
 from datetime import date, datetime, timedelta
+import dateutil.parser
 import calendar
 
 from matplotlib import pyplot as plt
@@ -29,6 +30,8 @@ import csv
 import yaml
 
 import sqlite3
+from sqlite3 import Error
+
 import logging
 from functools import reduce
 
@@ -250,6 +253,8 @@ def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name
     else:
         ax2.xaxis.set_major_formatter(mdates.DateFormatter("%a %m/%d - %H:%M"))
 
+    # print(f"Total minutes {TotalMinutes}")
+
     ax2.grid(which="major", axis="both", linestyle="--")
     plt.setp(ax2.get_xticklabels(), rotation=45, ha="right")
     plt.tight_layout()
@@ -441,13 +446,31 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
     plt.close(fig)
 
 
+def execute_single_read_query(connection, query):
+    cursor = connection.cursor()
+    result = None
+    try:
+        cursor.execute(query)
+        result = cursor.fetchone()
+        return result
+    except Error as error:
+        print(f"The error '{error}' occurred")
+
 def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_plots, include_mgstat_plots):
 
     disk_list_d = plot_d["Disk List"]
 
     db = sqlite3.connect(db_filename)
 
-    ## iostat section only
+    # Get the start date for date format validation
+    profile_run = execute_single_read_query(
+        db, "SELECT * FROM overview WHERE field = 'profile run';"
+    )[2]
+    run_start = profile_run.split("on ")[1]
+    run_start = run_start[:-1]
+    run_start_date = dateutil.parser.parse(run_start).strftime('%Y-%m-%d')
+
+    # iostat section only
 
     if include_iostat_plots:
 
@@ -503,27 +526,23 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
     if any(config.values()):
         #
         # Get vmstat
-
         df_master_vm = get_subset_dataframe(db, "vmstat")
         df_master_vm = df_master_vm.add_suffix("_vm")
 
         # Resample
         # This resample at same sample size and base=0
-        # d f_master_vm = df_master_vm.reset_index().set_index('datetime').resample('5S', base=0).mean()
+        # df_master_vm = df_master_vm.reset_index().set_index('datetime').resample('5S').mean()
         # will realign starting on 0, eg 00:01:06 will end up as 12:01:05 am
 
-        # Chooose instead to resample to 1 sec, this way recorded value appears as true, so can later align with app stats
-
-        df_master_vm = df_master_vm.reset_index().set_index("datetime").resample("1S").interpolate(method="linear")
+        # Resample to 1 sec
+        df_master_vm = df_master_vm.reset_index().set_index("datetime").resample("1S", convention='start').mean()
 
         # Get mgstat
-
         df_master_mg = get_subset_dataframe(db, "mgstat")
         df_master_mg = df_master_mg.add_suffix("_mg")
-        df_master_mg = df_master_mg.reset_index().set_index("datetime").resample("1S").interpolate(method="linear")
+        df_master_mg = df_master_mg.reset_index().set_index("datetime").resample("1S", convention='start').mean()
 
         # for iostat get and database (_db) Primary journal (_pri) WIJ (_wij)
-
         for key in disk_list_d.keys():
             print(f"Disk Type {key} Disk {disk_list_d[key]}")
 
@@ -543,42 +562,57 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
 
         dataframes = [df_master_db, df_master_Pri, df_master_WIJ, df_master_IRIS]
 
-        # print(df_master_db.head(10))
-        # print(df_master_Pri.head(10))
-        # print(df_master_WIJ.head(10))
+        df_merged_disks = reduce(lambda left, right: pd.merge(left, right, on="datetime"), dataframes)
 
-        df_bigmerge = reduce(lambda left, right: pd.merge(left, right, on="datetime"), dataframes)
-
-        # No need to resample each iostat as they get the same date and time, but resample down to match vmstat and mgstat
-        #
         # It is possible that you get duplicate rows in the index, I have seen this with iostat, which results in error;
         # raise ValueError("cannot reindex from a duplicate axis")
         # You can display them with:
-        # print(df_bigmerge[df_bigmerge.index.duplicated()])
+        # print(df_merged_disks[df_merged_disks.index.duplicated()])
         # But I dont really care if there is the odd glitch, just remove them:
 
-        df_bigmerge = df_bigmerge[~df_bigmerge.index.duplicated()]
+        df_merged_disks = df_merged_disks[~df_merged_disks.index.duplicated()]
 
-        df_bigmerge = df_bigmerge.reset_index().set_index("datetime").resample("1S").interpolate(method="linear")
+        df_merged_disks = df_merged_disks.reset_index().set_index("datetime").resample("1S", convention='start').mean()
 
-        dataframes = [df_bigmerge, df_master_mg, df_master_vm]
+        # Check the date formats match before merge
+        date_vm = df_master_vm.head(1).index.tolist()
+        date_mg = df_master_mg.head(1).index.tolist()
+        date_disk = df_merged_disks.head(1).index.tolist()
 
-        # print(df_master_mg.head(10))
-        # print(df_master_vm.head(10))
+        if run_start_date == date_mg[0].strftime('%Y-%m-%d') == date_vm[0].strftime('%Y-%m-%d') == date_disk[0].strftime('%Y-%m-%d'):
+            pass
+        else:
+            # run_start_date is in Y-m-d format
+            # = dateutil.parser.parse(run_start).strftime('%Y-%m-%d')
 
-        # MO - 20200403 - Added how='left' to overcome missing data (which should not happen)
-        df_bigmerge = reduce(lambda left, right: pd.merge(left, right, how="left", on="datetime"), dataframes)
-        # After a merge som rows may have NaaN
+            if date_mg[0].strftime('%Y-%m-%d') != run_start_date:
+                print(f"mgstat date mismatch corrected: "
+                      f"{date_mg[0].strftime('%Y-%m-%d')} start date: {run_start_date}")
+                # swap dd mm to mm dd
+                df_master_mg.index = df_master_mg.index.strftime('%Y-%d-%m %H:%M:%S')
+                df_master_mg.index = pd.to_datetime(df_master_mg.index, format='%Y-%m-%d %H:%M:%S')
+            if date_vm[0].strftime('%Y-%m-%d') != run_start_date:
+                print(f"vmstat date mismatch corrected: "
+                      f"{date_disk[0].strftime('%Y-%m-%d')} start date: {run_start_date}")
+                df_master_vm.index = df_master_vm.index.strftime('%Y-%d-%m %H:%M:%S')
+                df_master_vm.index = pd.to_datetime(df_master_vm.index, format='%Y-%m-%d %H:%M:%S')
+            if date_disk[0].strftime('%Y-%m-%d') != run_start_date:
+                print(f"iostat date mismatch corrected: "
+                      f"{date_disk[0].strftime('%Y-%m-%d')} start date: {run_start_date}") 
+                df_merged_disks.index = df_merged_disks.index.strftime('%Y-%d-%m %H:%M:%S')
+                df_merged_disks.index = pd.to_datetime(df_merged_disks.index, format='%Y-%m-%d %H:%M:%S')
 
-        # DO NOT drop NaN (eg string Date and Time)
-        # todo: convert Date and Time to Date Time format if needed. NOt used in charts so probably not
-        # df_bigmerge = df_bigmerge.dropna()
+        # Merge in mgstat
+        df_bigmerge = pd.merge(df_merged_disks, df_master_mg,
+                               how="left", left_index=True, right_index=True)
 
-        # print(df_bigmerge.sample(10))
+        # Merge in vmstat
+        df_bigmerge = pd.merge(df_bigmerge, df_master_vm,
+                               how="left", left_index=True, right_index=True)
+
+        df_bigmerge = df_bigmerge.dropna()
 
         df_bigmerge_zoom = df_bigmerge.between_time(zoom_start, zoom_end)
-        # DO NOT drop NaN (eg string Date and Time)
-        # df_bigmerge_zoom = df_bigmerge_zoom.dropna()
 
         if plot_d["output csv"]:
             # to make a smaller file round to integers... cannot convert, for example a_wait to integer... re-think this...
@@ -603,6 +637,8 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
 
         # Couple of standard reports
         if include_mgstat_plots:
+
+            print(f"Standard reports:")
 
             column_d = {"Text": "CPU Utilisation %", "Name": "Total CPU_vm"}
             zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
