@@ -120,13 +120,14 @@ def system_check(input_file):
             if "kernel.shmall" in line:
                 sp_dict["kernel.shmall"] = (line.split("=")[1]).strip()
 
-            # dirty background ratio = 5
-            if "vm.dirty_background_ratio" in line:
-                sp_dict["vm.dirty_background_ratio"] = (line.split("=")[1]).strip()
-
-            # dirty ratio = 10
-            if "vm.dirty_ratio" in line:
-                sp_dict["vm.dirty_ratio"] = (line.split("=")[1]).strip()
+            # dirty_* parameters are not relevant if using async IO – which any IRIS-based install should be.
+            # # dirty background ratio = 5
+            # if "vm.dirty_background_ratio" in line:
+            #     sp_dict["vm.dirty_background_ratio"] = (line.split("=")[1]).strip()
+            #
+            # # dirty ratio = 10
+            # if "vm.dirty_ratio" in line:
+            #     sp_dict["vm.dirty_ratio"] = (line.split("=")[1]).strip()
 
             # Linux free
 
@@ -342,23 +343,25 @@ def build_log(sp_dict):
                             pass_count += 1
                             sp_dict[f"pass {pass_count}"] = f"Kernel shared memory limit is higher than hugepages"
 
-        if "vm.dirty_background_ratio" in sp_dict:
-            if int(sp_dict["vm.dirty_background_ratio"]) > 5:
-                warn_count += 1
-                sp_dict[
-                    f"warning {warn_count}"] = f"dirty_background_ratio is {sp_dict['vm.dirty_background_ratio']}. InterSystems recommends setting this parameter to 5. This setting is the maximum percentage of active memory that can be filled with dirty pages before pdflush begins to write them."
-            else:
-                pass_count += 1
-                sp_dict[f"pass {pass_count}"] = f"dirty_background_ratio is {sp_dict['vm.dirty_background_ratio']}"
-
-        if "vm.dirty_ratio" in sp_dict:
-            if int(sp_dict["vm.dirty_ratio"]) > 10:
-                warn_count += 1
-                sp_dict[
-                    f"warning {warn_count}"] = f"dirty_ratio is {sp_dict['vm.dirty_ratio']}. InterSystems recommends setting this parameter to 10. This setting is the maximum percentage of total memory that can be filled with dirty pages before processes are forced to write dirty buffers themselves during their time slice instead of being allowed to do more writes. These changes force the Linux pdflush daemon to write out dirty pages more often rather than queue large amounts of updates that can potentially flood the storage with a large burst of updates"
-            else:
-                pass_count += 1
-                sp_dict[f"pass {pass_count}"] = f"dirty_ratio is {sp_dict['vm.dirty_ratio']}"
+        # dirty_* parameters are not relevant if using async IO – which any IRIS-based install should be.
+        # A better question is async io set?
+        # if "vm.dirty_background_ratio" in sp_dict:
+        #     if int(sp_dict["vm.dirty_background_ratio"]) > 5:
+        #         warn_count += 1
+        #         sp_dict[
+        #             f"warning {warn_count}"] = f"dirty_background_ratio is {sp_dict['vm.dirty_background_ratio']}. InterSystems recommends setting this parameter to 5. This setting is the maximum percentage of active memory that can be filled with dirty pages before pdflush begins to write them."
+        #     else:
+        #         pass_count += 1
+        #         sp_dict[f"pass {pass_count}"] = f"dirty_background_ratio is {sp_dict['vm.dirty_background_ratio']}"
+        #
+        # if "vm.dirty_ratio" in sp_dict:
+        #     if int(sp_dict["vm.dirty_ratio"]) > 10:
+        #         warn_count += 1
+        #         sp_dict[
+        #             f"warning {warn_count}"] = f"dirty_ratio is {sp_dict['vm.dirty_ratio']}. InterSystems recommends setting this parameter to 10. This setting is the maximum percentage of total memory that can be filled with dirty pages before processes are forced to write dirty buffers themselves during their time slice instead of being allowed to do more writes. These changes force the Linux pdflush daemon to write out dirty pages more often rather than queue large amounts of updates that can potentially flood the storage with a large burst of updates"
+        #     else:
+        #         pass_count += 1
+        #         sp_dict[f"pass {pass_count}"] = f"dirty_ratio is {sp_dict['vm.dirty_ratio']}"
 
     # Debug
 

@@ -844,7 +844,7 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out)
         df["datetime"] = df["RunDate"] + " " + df["RunTime"]
 
         # Format the data for Altair
-        # Cut down the df to just the the list of categorical data we care about (columns)
+        # Cut down the df to just the list of categorical data we care about (columns)
         columns_to_chart = list(df.columns)
         unwanted_columns = ["id_key", "RunDate", "RunTime", "html name"]
         columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
