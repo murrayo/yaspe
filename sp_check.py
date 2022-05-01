@@ -81,7 +81,7 @@ def system_check(input_file):
 
             if "AlternateDirectory=" in line:
                 sp_dict["alternate journal"] = (line.split("=")[1]).strip()
-            if "CurrentDirectory=" in line:
+            if "CurrentDirectory=" in line and not line[0] == ";":
                 sp_dict["current journal"] = (line.split("=")[1]).strip()
             if "globals=" in line:
                 sp_dict["globals"] = (line.split("=")[1]).strip()
@@ -140,7 +140,6 @@ def system_check(input_file):
             if "<div id=free>" in line:
                 memory_next = True
 
-
             # Windows info
             if "Windows info" in line:
                 windows_info_available = True
@@ -193,8 +192,8 @@ def system_check(input_file):
 
     return sp_dict
 
-def build_log(sp_dict):
 
+def build_log(sp_dict):
     # Build log for cut and paste
 
     ct_dict = {}
@@ -214,7 +213,8 @@ def build_log(sp_dict):
         if sp_dict["freeze"] == "0":
             warn_count += 1
             sp_dict[
-                f"warning {warn_count}"] = f"Journal freeze on error is not enabled. If journal IO errors occur database activity that occurs during this period cannot be restored."
+                f"warning {warn_count}"] = f"Journal freeze on error is not enabled. If journal IO errors occur " \
+                                           f"database activity that occurs during this period cannot be restored. "
         else:
             pass_count += 1
             sp_dict[f"pass {pass_count}"] = f"freeze on error is enabled."
@@ -239,7 +239,9 @@ def build_log(sp_dict):
         if int(sp_dict["swappiness"]) > ct_dict['swappiness']:
             warn_count += 1
             sp_dict[
-                f"warning {warn_count}"] = f"swappiness is {sp_dict['swappiness']}. For databases {ct_dict['swappiness']} is recommended to adjust how aggressive the Linux kernel swaps memory pages to disk."
+                f"warning {warn_count}"] = f"swappiness is {sp_dict['swappiness']}. " \
+                                           f"For databases {ct_dict['swappiness']} " \
+                                           f"is recommended to adjust how aggressive the Linux kernel swaps memory pages to disk."
         else:
             pass_count += 1
             sp_dict[f"pass {pass_count}"] = f"swappiness is {sp_dict['swappiness']}"
@@ -265,11 +267,17 @@ def build_log(sp_dict):
             if int(sp_dict["vm.nr_hugepages"]) == 0:
                 warn_count += 1
                 sp_dict[
-                    f"warning {warn_count}"] = f"Hugepages not set. For performance, memory efficiency and to protect the shared memory from paging out, use huge page memory space. It is not advisable to specify HugePages much higher than the shared memory amount because the unused memory are not be available to other components."
+                    f"warning {warn_count}"] = f"Hugepages not set. For performance, memory efficiency and to protect " \
+                                               f"the shared memory from paging out, use huge page memory space. It is " \
+                                               f"not advisable to specify HugePages much higher than the shared " \
+                                               f"memory amount because the unused memory are not be available to " \
+                                               f"other components. "
 
                 recommend_count += 1
                 sp_dict[
-                    f"recommend {recommend_count}"] = f"Set HugePages, see IRIS documentation: https://docs.intersystems.com/irislatest/csp/docbook/Doc.View.cls?KEY=GCI_prepare_install#GCI_memory_big_linux"
+                    f"recommend {recommend_count}"] = f"Set HugePages, see IRIS documentation: " \
+                                                      f"https://docs.intersystems.com/irislatest/csp/docbook/Doc.View" \
+                                                      f".cls?KEY=GCI_prepare_install#GCI_memory_big_linux "
 
                 recommend_count += 1
                 msg = (
@@ -338,7 +346,8 @@ def build_log(sp_dict):
                     if "hugepages MB" in sp_dict:
                         if int(sp_dict["kernel.shmmax"]) < sp_dict["hugepages MB"] * 1024 * 1024:
                             warn_count += 1
-                            sp_dict[f"warning {warn_count}"] = f"Kernel shared memory limit must be higher than hugepages."
+                            sp_dict[
+                                f"warning {warn_count}"] = f"Kernel shared memory limit must be higher than hugepages."
                         else:
                             pass_count += 1
                             sp_dict[f"pass {pass_count}"] = f"Kernel shared memory limit is higher than hugepages"
@@ -435,5 +444,9 @@ def build_log(sp_dict):
                 first_instance = False
             log += f"- {sp_dict[key]}\n"
 
-    return log
+    log += "\nStorage:\n"\
 
+    log += f"Current journal        : {sp_dict['current journal']}\n"
+    log += f"Alternate journal      : {sp_dict['alternate journal']}\n"
+
+    return log
