@@ -241,7 +241,8 @@ def build_log(sp_dict):
             sp_dict[
                 f"warning {warn_count}"] = f"swappiness is {sp_dict['swappiness']}. " \
                                            f"For databases {ct_dict['swappiness']} " \
-                                           f"is recommended to adjust how aggressive the Linux kernel swaps memory pages to disk."
+                                           f"is recommended to adjust how aggressive the Linux kernel swaps memory " \
+                                           f"pages to disk. "
         else:
             pass_count += 1
             sp_dict[f"pass {pass_count}"] = f"swappiness is {sp_dict['swappiness']}"

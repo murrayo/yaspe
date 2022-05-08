@@ -7,9 +7,7 @@ Chart the results
 """
 
 import sp_check
-
 import argparse
-import locale
 import os
 
 from datetime import datetime
@@ -29,8 +27,12 @@ import seaborn as sns
 import altair as alt
 import pandas as pd
 
+from extract_sections import extract_sections
+
 # Altair
 # Max is 5,000 rows by default
+from yaspe_utilities import make_mdy_date
+
 alt.data_transformers.disable_max_rows()
 
 
@@ -123,88 +125,7 @@ def insert_dict_into_table(connection, table_name, _dict):
         connection.execute(f"INSERT INTO {table_name} ({keys}) VALUES ({question_marks})", values)
 
 
-def get_number_type(s):
-    # Don't know if a European number or US
-    locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
-
-    try:
-        return int(s)
-    except (ValueError, TypeError):
-        try:
-            return locale.atof(s)
-        except (ValueError, TypeError):
-            return s
-
-
-def check_date(section, run_start_date, date_to_check):
-
-    if int(date_to_check[:2]) > 2000:
-        print(f"{section} Check date format (yyyy/xx/xx?): {date_to_check}")
-        return False
-
-    if int(date_to_check[:2]) > 12:
-        print(
-            f"{section} convert dd/mm/yy date to mm/dd/yy {date_to_check} > {make_mdy_date(date_to_check)}")
-        return True
-    else:
-        delta = run_start_date - dateutil.parser.parse(date_to_check)
-
-        if delta.days > 1:
-            print(f"{section} convert dd/mm/yy date to mm/dd/yy {date_to_check}  > {make_mdy_date(date_to_check)}")
-            return True
-
-    return False
-
-
-def make_mdy_date(date_in):
-
-    # Flip ambiguous dd/mm/yyyy dates eg. 09/11/2021 where 11 is in fact Nov not Sept.
-    # Default dates in charting usually fall in to expecting mm/dd/yyyy format
-
-    # Input is a date string. Can be any legal format, returns a datetime.datetime object
-    date_parsed = dateutil.parser.parse(date_in)
-
-    # Output date_in.date() will be %Y-%m-%d, eg 2021-09-11 - plan is to flip the month and day eg output 11/09/2021
-    # date_out = datetime.strptime(str(date_in.date()), "%Y-%m-%d").strftime("%d/%m/%Y")
-    day = datetime.strptime(str(date_parsed.date()), "%Y-%m-%d").strftime("%d")
-    month = datetime.strptime(str(date_parsed.date()), "%Y-%m-%d").strftime("%m")
-    year = datetime.strptime(str(date_parsed.date()), "%Y-%m-%d").strftime("%Y")
-
-    if int(date_in[: 2]) > 12:
-        date_out = f"{month}/{day}/{year}"
-    else:
-        date_out = f"{day}/{month}/{year}"
-
-    return date_out
-
-
 def create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix):
-    vmstat_processing = False
-    vmstat_header = ""
-    vmstat_rows_list = []
-    vmstat_date = ""
-    vmstat_date_convert = False
-
-    iostat_processing = False
-    iostat_header = ""
-    iostat_rows_list = []
-    iostat_device_block_processing = False
-    iostat_am_pm = False
-    iostat_date_included = False
-    iostat_date = ""
-    iostat_date_convert = False
-
-    mgstat_processing = False
-    mgstat_header = ""
-    mgstat_rows_list = []
-    mgstat_date = ""
-    mgstat_date_convert = False
-
-    perfmon_processing = False
-    perfmon_header = ""
-    perfmon_rows_list = []
-    # perfmon_date = ""
-    # perfmon_date_convert = False
 
     operating_system = execute_single_read_query(
         connection, "SELECT * FROM overview WHERE field = 'operating system';"
@@ -215,223 +136,18 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
         connection, "SELECT * FROM overview WHERE field = 'profile run';"
     )[2]
 
-    run_start = profile_run.split("on ")[1]
-    run_start = run_start[:-1]
-    run_start_date = dateutil.parser.parse(run_start)
-
-    with open(input_file, "r", encoding="ISO-8859-1") as file:
-
-        for line in file:
-            if "<!-- beg_mgstat -->" in line:
-                mgstat_processing = True
-            if "<!-- end_mgstat -->" in line:
-                mgstat_processing = False
-            if mgstat_processing and mgstat_header != "":
-                if line.strip() != "":
-                    mgstat_row_dict = {}
-                    values = line.split(",")
-                    values = [i.strip() for i in values]  # strip off carriage return etc
-                    # Convert integers or real from strings if possible
-                    values_converted = [get_number_type(v) for v in values]
-                    # create a dictionary of this row and append to a list of row dictionaries for later add to table
-                    mgstat_row_dict = dict(zip(mgstat_columns, values_converted))
-                    # Add the file name
-                    mgstat_row_dict["html name"] = html_filename
-
-                    # Check date format
-                    if not mgstat_date_convert and mgstat_row_dict['Date'] != mgstat_date:
-                        mgstat_date = mgstat_row_dict['Date']
-                        mgstat_date_convert = check_date("mgstat", run_start_date, mgstat_row_dict['Date'])
-
-                    if mgstat_date_convert:
-                        new_date = make_mdy_date(mgstat_row_dict["Date"])
-                        new_date_dict = {"Date": new_date}
-                        mgstat_row_dict.update(new_date_dict)
-
-                    # Added for pretty processing
-                    mgstat_row_dict["datetime"] = f'{mgstat_row_dict["Date"]} {mgstat_row_dict["Time"]}'
-                    mgstat_rows_list.append(mgstat_row_dict)
-            if mgstat_processing and "Glorefs" in line:
-                mgstat_header = line
-                mgstat_columns = mgstat_header.split(",")
-                mgstat_columns = [i.strip() for i in mgstat_columns]  # strip off carriage return etc
-
-            if operating_system == "Linux" or operating_system == "Ubuntu":
-                if "<!-- beg_vmstat -->" in line:
-                    vmstat_processing = True
-                if "<!-- end_vmstat -->" in line:
-                    vmstat_processing = False
-                if vmstat_processing and vmstat_header != "":
-                    if line.strip() != "":
-                        vmstat_row_dict = {}
-                        values = line.split()
-                        values = [i.strip() for i in values]  # strip off carriage return etc
-                        values_converted = [get_number_type(v) for v in values]
-                        vmstat_row_dict = dict(zip(vmstat_columns, values_converted))
-                        vmstat_row_dict["html name"] = html_filename
-
-                        # Check date format
-                        if not vmstat_date_convert and vmstat_row_dict['Date'] != vmstat_date:
-                            vmstat_date = vmstat_row_dict['Date']
-                            vmstat_date_convert = check_date("vmstat", run_start_date, vmstat_row_dict['Date'])
-
-                        if vmstat_date_convert:
-                            new_date = make_mdy_date(vmstat_row_dict["Date"])
-                            new_date_dict = {"Date": new_date}
-                            vmstat_row_dict.update(new_date_dict)
-
-                        # Added for pretty processing
-                        vmstat_row_dict["datetime"] = f'{vmstat_row_dict["Date"]} {vmstat_row_dict["Time"]}'
-                        vmstat_rows_list.append(vmstat_row_dict)
-                if vmstat_processing and "us sy id wa" in line:
-                    # vmstat !sometimes! has column names on same line as html
-                    if "<pre>" in line:
-                        vmstat_header = line.split("<pre>")[1].strip()
-                    else:
-                        vmstat_header = line
-                    vmstat_header = vmstat_header.split(" r ")[1]
-                    vmstat_header = f"Date Time r {vmstat_header}"
-                    vmstat_columns = vmstat_header.split()
-                    vmstat_columns = [i.strip() for i in vmstat_columns]  # strip off carriage return etc
-
-            if operating_system == "Windows":
-                if "id=perfmon" in line:
-                    perfmon_processing = True
-                if "<!-- end_win_perfmon -->" in line:
-                    perfmon_processing = False
-                if perfmon_processing and perfmon_header != "":
-                    if line.strip() != "":
-                        perfmon_row_dict = {}
-                        values = line.split(",")
-                        values = [i.strip() for i in values]  # strip off carriage return etc
-                        values = list(map(lambda x: x[1:-1].replace('"', ""), values))
-                        values = list(map(lambda x: 0.0 if x == " " else x, values))
-                        values_converted = [get_number_type(v) for v in values]
-                        perfmon_row_dict = dict(zip(perfmon_columns, values_converted))
-                        perfmon_row_dict["html name"] = html_filename
-
-                        # The first column is a date time with timezone
-                        # todo: move datetime column creation to here, include dd/mm/yy check
-
-                        perfmon_rows_list.append(perfmon_row_dict)
-                if perfmon_processing and "Memory" in line:
-                    perfmon_header = line
-                    # get rid of characters that screw with queries or charting
-                    perfmon_header = [s for s in perfmon_header if s.isalnum() or s.isspace() or (s == ",")]
-                    perfmon_header = "".join(perfmon_header)
-                    perfmon_header = perfmon_header.replace(" ", "_")
-
-                    perfmon_columns = perfmon_header.split(",")
-                    perfmon_columns = [i.strip() for i in perfmon_columns]  # strip off carriage return etc
-
-            # iostat has a lot of variations, start as needed
-            if (operating_system == "Linux" or operating_system == "Ubuntu") and include_iostat:
-
-                if iostat_processing and "<div" in line:  # iostat does not flag end
-                    iostat_processing = False
-                else:
-                    # Found iostat
-                    if "id=iostat" in line:
-                        iostat_processing = True
-                    # Is there a date and time line (not in some cases)
-                    if iostat_processing and len(line.split()) == 2:
-                        # If a date is found then device block ended
-                        iostat_device_block_processing = False
-                        iostat_date_included = True
-                        date_time = line.strip()
-                    if iostat_processing and len(line.split()) == 3:  # date time AM
-                        iostat_am_pm = True
-                        # If a date is found then device block ended
-                        iostat_device_block_processing = False
-                        iostat_date_included = True
-                        date_time = line.strip()
-                    # If there is no date then this is the next likely header, device block ended
-                    if "avg-cpu" in line:
-                        iostat_device_block_processing = False
-                    # Add devices to database
-                    if iostat_processing and iostat_device_block_processing and iostat_header != "":
-                        if line.strip() != "":
-                            iostat_row_dict = {}
-                            # if European "," for ".", do that first
-                            line = line.replace(",", ".")
-                            # get rid of multiple whitespaces, then use comma separator so the AM/PM is preserved if its there
-                            line = " ".join(line.split())
-                            line = line.replace(" ", ",")
-                            if iostat_date_included:
-                                if iostat_am_pm:
-                                    line = (
-                                            date_time.split()[0]
-                                            + ","
-                                            + date_time.split()[1]
-                                            + " "
-                                            + date_time.split()[2]
-                                            + ","
-                                            + line
-                                    )
-                                else:
-                                    line = date_time.split()[0] + "," + str(date_time.split()[1]) + "," + line
-                            values = line.split(",")
-                            values = [i.strip() for i in values]  # strip off carriage return etc
-                            values_converted = [get_number_type(v) for v in values]
-                            iostat_row_dict = dict(zip(iostat_columns, values_converted))
-                            iostat_row_dict["html name"] = html_filename
-
-                            # Check date format
-                            if not iostat_date_convert and iostat_row_dict['Date'] != iostat_date:
-                                iostat_date = iostat_row_dict['Date']
-                                iostat_date_convert = check_date("iostat", run_start_date, iostat_row_dict['Date'])
-
-                            if iostat_date_convert:
-                                new_date = make_mdy_date(iostat_row_dict["Date"])
-                                new_date_dict = {"Date": new_date}
-                                iostat_row_dict.update(new_date_dict)
-
-                            # Added for pretty processing
-                            iostat_row_dict["datetime"] = f'{iostat_row_dict["Date"]} {iostat_row_dict["Time"]}'
-                            iostat_rows_list.append(iostat_row_dict)
-                    # Header line found, next line is start of device block
-                    if "Device" in line:
-                        iostat_device_block_processing = True
-                    # First time in create column names
-                    if iostat_processing and iostat_header == "" and "Device" in line:
-                        if iostat_date_included:
-                            iostat_header = f"Date Time {line}"
-                        else:
-                            iostat_header = f"{line}"
-                        iostat_header = iostat_header.replace(":", "")  # "Device:" used later on logic
-                        iostat_columns = iostat_header.split()
-                        iostat_columns = [i.strip() for i in iostat_columns]  # strip off carriage return etc
+    mgstat_df, vmstat_df, iostat_df, perfmon_df = extract_sections(operating_system, profile_run, input_file, include_iostat, html_filename)
 
     # Add each section to the database
 
-    if mgstat_header != "":
-        # Create dataframe of rows. Shortcut here to creating table columns or later charts etc
-        mgstat_df = pd.DataFrame(mgstat_rows_list)
+    if not mgstat_df.empty:
 
-        # "date" and "time" are reserved words in SQL. Rename the columns to avoid clashes later.
-        mgstat_df.rename(columns={"Date": "RunDate", "Time": "RunTime"}, inplace=True)
-
-        # Remove any rows with NaN
-        mgstat_df.dropna(inplace=True)
-
-        # Want to just dump a dataframe to a table and avoid all the roll-your-own steps ;)
-        # SQLAlchemy is included in pandas
-        #
-        # conn = sqlite3.connect('SystemPerformance.sqlite')
-        # mgstat_df.to_sql('mgstat', conn, if_exists='replace', index=False)
-        #
-        # else create the table and load data as below
-
-        create_generic_table(connection, "mgstat", mgstat_df)
-
-        # Add the rows to the table, loop through the list of dictionaries
-        for row in mgstat_rows_list:
-            # "date" and "time" are reserved words in SQL. Rename the columns to avoid clashes later.
-            row["RunDate"] = row.pop("Date")
-            row["RunTime"] = row.pop("Time")
-            insert_dict_into_table(connection, "mgstat", row)
-
-        connection.commit()
+        # Example Dave L can do IRIS function here
+        if True:
+            mgstat_df.to_sql('mgstat', connection, if_exists='append', index=True, index_label="id_key")
+            connection.commit()
+        else:
+            pass
 
         if csv_out:
             mgstat_output_csv = f"{output_filepath_prefix}mgstat.csv"
@@ -442,18 +158,9 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
             else:  # else it exists so append without writing the header
                 mgstat_df.to_csv(mgstat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
 
-    if vmstat_header != "":
-        vmstat_df = pd.DataFrame(vmstat_rows_list)
-        # "date" and "time" are reserved words in SQL. Rename the columns to avoid clashes later.
-        vmstat_df.rename(columns={"Date": "RunDate", "Time": "RunTime"}, inplace=True)
-        vmstat_df.dropna(inplace=True)
+    if not vmstat_df.empty:
 
-        create_generic_table(connection, "vmstat", vmstat_df)
-        for row in vmstat_rows_list:
-            # "date" and "time" are reserved words in SQL. Rename the columns to avoid clashes later.
-            row["RunDate"] = row.pop("Date")
-            row["RunTime"] = row.pop("Time")
-            insert_dict_into_table(connection, "vmstat", row)
+        vmstat_df.to_sql('vmstat', connection, if_exists='append', index=True, index_label="id_key")
         connection.commit()
 
         if csv_out:
@@ -465,12 +172,8 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
             else:  # else it exists so append without writing the header
                 vmstat_df.to_csv(vmstat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
 
-    if perfmon_header != "":
-        perfmon_df = pd.DataFrame(perfmon_rows_list)
-        perfmon_df.dropna(inplace=True)
-        create_generic_table(connection, "perfmon", perfmon_df)
-        for row in perfmon_rows_list:
-            insert_dict_into_table(connection, "perfmon", row)
+    if not perfmon_df.empty:
+        perfmon_df.to_sql('perfmon', connection, if_exists='append', index=True, index_label="id_key")
         connection.commit()
 
         if csv_out:
@@ -482,18 +185,11 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
             else:  # else it exists so append without writing the header
                 perfmon_df.to_csv(perfmon_output_csv, mode='a', header=False, index=False, encoding='utf-8')
 
-    if iostat_header != "":
-        iostat_df = pd.DataFrame(iostat_rows_list)
-        # "date" and "time" are reserved words in SQL. Rename the columns to avoid clashes later.
-        iostat_df.rename(columns={"Date": "RunDate", "Time": "RunTime"}, inplace=True)
-        iostat_df.dropna(inplace=True)
-        create_generic_table(connection, "iostat", iostat_df)
-        for row in iostat_rows_list:
-            # "date" and "time" are reserved words in SQL. Rename the columns to avoid clashes later.
-            row["RunDate"] = row.pop("Date")
-            row["RunTime"] = row.pop("Time")
-            insert_dict_into_table(connection, "iostat", row)
+    if not iostat_df.empty:
+        # id_key is used when there is no time
+        iostat_df.to_sql('iostat', connection, if_exists='append', index=True, index_label="id_key")
         connection.commit()
+
         if csv_out:
             iostat_output_csv = f"{output_filepath_prefix}iostat.csv"
 
@@ -782,10 +478,10 @@ def chart_perfmon(connection, filepath, output_prefix, png_out):
     df.dropna(inplace=True)
 
     # The first column is a date time with timezone
-    df.columns = df.columns[:1].tolist() + ["datetime"] + df.columns[2:].tolist()
+    df.columns = df.columns[:0].tolist() + ["datetime"] + df.columns[1:].tolist()
 
     # In some cases time is a separate column
-    if df.columns[2] == "Time":
+    if df.columns[1] == "Time":
         df["datetime"] = df["datetime"] + " " + df["Time"]
 
     # preprocess time to remove decimal precision
@@ -840,7 +536,7 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out)
     df.dropna(inplace=True)
 
     # If there is no date and time in iostat then just use index as x axis
-    if "Date" in df.columns:
+    if "RunDate" in df.columns:
         df["datetime"] = df["RunDate"] + " " + df["RunTime"]
 
         # Format the data for Altair
@@ -1055,7 +751,7 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
     return
 
 
-# Start here
+# Start here, entry point for command line
 
 if __name__ == "__main__":
 
