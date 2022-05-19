@@ -29,8 +29,6 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
     perfmon_processing = False
     perfmon_header = ""
     perfmon_rows_list = []
-    # perfmon_date = ""
-    # perfmon_date_convert = False
 
     run_start = profile_run.split("on ")[1]
     run_start = run_start[:-1]
