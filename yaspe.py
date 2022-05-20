@@ -125,7 +125,13 @@ def insert_dict_into_table(connection, table_name, _dict):
         connection.execute(f"INSERT INTO {table_name} ({keys}) VALUES ({question_marks})", values)
 
 
-def create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix):
+def create_sections(connection,
+                    input_file,
+                    include_iostat,
+                    include_nfsiostat,
+                    html_filename,
+                    csv_out,
+                    output_filepath_prefix):
 
     operating_system = execute_single_read_query(
         connection, "SELECT * FROM overview WHERE field = 'operating system';"
@@ -136,7 +142,12 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
         connection, "SELECT * FROM overview WHERE field = 'profile run';"
     )[2]
 
-    mgstat_df, vmstat_df, iostat_df, perfmon_df = extract_sections(operating_system, profile_run, input_file, include_iostat, html_filename)
+    mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df = extract_sections(operating_system,
+                                                                                 profile_run,
+                                                                                 input_file,
+                                                                                 include_iostat,
+                                                                                 include_nfsiostat,
+                                                                                 html_filename)
 
     # Add each section to the database
 
@@ -198,6 +209,20 @@ def create_sections(connection, input_file, include_iostat, html_filename, csv_o
                 iostat_df.to_csv(iostat_output_csv, header='column_names', index=False, encoding='utf-8')
             else:  # else it exists so append without writing the header
                 iostat_df.to_csv(iostat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
+
+    if not nfsiostat_df.empty:
+        # id_key is used when there is no time
+        nfsiostat_df.to_sql('nfsiostat', connection, if_exists='append', index=True, index_label="id_key")
+        connection.commit()
+
+        if csv_out:
+            nfsiostat_output_csv = f"{output_filepath_prefix}nfsiostat.csv"
+
+            # if file does not exist write header
+            if not os.path.isfile(nfsiostat_output_csv):
+                nfsiostat_df.to_csv(nfsiostat_output_csv, header='column_names', index=False, encoding='utf-8')
+            else:  # else it exists so append without writing the header
+                nfsiostat_df.to_csv(nfsiostat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
 
 
 def create_overview(connection, sp_dict):
@@ -261,6 +286,52 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     locator = plt_dates.AutoDateLocator()
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(plt_dates.AutoDateFormatter(locator=locator, defaultfmt='%H:%M'))
+
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    plt.tight_layout()
+
+    output_name = column_name.replace("/", "_")
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format='png')
+    plt.close('all')
+
+
+def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
+    file_prefix = kwargs.get("file_prefix", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
+
+    # Convert datetime string to datetime type (data is a _view_ of full dataframe, create a copy to update here)
+    png_data = data.copy()
+
+    colormap_name = "Set1"
+
+    plt.style.use('seaborn-whitegrid')
+    plt.figure(num=None, figsize=(16, 6), dpi=300)
+    palette = plt.get_cmap(colormap_name)
+
+    color = palette(1)
+
+    fig, ax = plt.subplots()
+    plt.gcf().set_size_inches(16, 6)
+    plt.gcf().set_dpi(300)
+
+    ax.plot(png_data['id_key'], png_data['metric'], label=column_name, color=color,
+            marker='.', linestyle="-", alpha=0.7)
+    ax.grid(which='major', axis='both', linestyle='--')
+    ax.set_title(title, fontsize=14)
+    ax.set_ylabel(column_name, fontsize=10)
+    ax.tick_params(labelsize=10)
+    ax.set_ylim(bottom=0)  # Always zero start
+    if max_y != 0:
+        ax.set_ylim(top=max_y)
+
+    if png_data["metric"].max() > 10 or "%" in column_name:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    elif png_data["metric"].max() < 0.002:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.4f}"))
+    else:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
 
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
@@ -619,7 +690,52 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out)
                         linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
 
-def mainline(input_file, include_iostat, append_to_database, existing_database, output_prefix, csv_out, png_out,
+def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out):
+    # print(f"iostat...")
+
+    customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+
+    # Read in to dataframe, drop any bad rows
+    df = pd.read_sql_query("SELECT * FROM nfsiostat", connection)
+    df.dropna(inplace=True)
+
+    # No date or time, chart all columns, index is x axis
+    columns_to_chart = list(df.columns)
+    unwanted_columns = ["id_key", "html name", "Host", "Device", "Mounted on"]
+    columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
+
+    nfsiostat_df = df
+    devices = nfsiostat_df["Device"].unique()
+
+    # Chart each disk
+    for device in devices:
+        device_df = nfsiostat_df.loc[nfsiostat_df["Device"] == device]
+
+        # unpivot the dataframe; first column is index, column name is next, then the value in that column
+        device_df = device_df.melt("id_key", var_name="Type", value_name="metric")
+
+        # For each column create a chart
+        for column_name in columns_to_chart:
+            if not column_name == "Device":
+                title = f"{device} : {column_name} - {customer}"
+                save_name = [s for s in column_name if s.isalnum() or s.isspace()]
+                save_name = "".join(save_name)
+
+                to_chart_df = device_df.loc[device_df["Type"] == column_name]
+
+                # Remove outliers first, will result in nan for zero values, so needs more work
+                # to_chart_df = to_chart_df[((to_chart_df.metric - to_chart_df.metric.mean()) / to_chart_df.metric.std()).abs() < 3]
+                max_y = to_chart_df["metric"].max()
+
+                data = to_chart_df
+
+                if png_out:
+                    simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                else:
+                    linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+
+
+def mainline(input_file, include_iostat, include_nfsiostat, append_to_database, existing_database, output_prefix, csv_out, png_out,
              system_out):
     input_error = False
 
@@ -677,7 +793,13 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
     # if the count is 1, then table exists
     if cursor.fetchone()[0] == 1:
         if database_action != "Chart only":
-            create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix)
+            create_sections(connection,
+                            input_file,
+                            include_iostat,
+                            include_nfsiostat,
+                            html_filename,
+                            csv_out,
+                            output_filepath_prefix)
 
     else:
         if database_action == "Chart only":
@@ -700,7 +822,13 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
                                    mode='w')
 
             create_overview(connection, sp_dict)
-            create_sections(connection, input_file, include_iostat, html_filename, csv_out, output_filepath_prefix)
+            create_sections(connection,
+                            input_file,
+                            include_iostat,
+                            include_nfsiostat,
+                            html_filename,
+                            csv_out,
+                            output_filepath_prefix)
 
     connection.close()
 
@@ -740,6 +868,12 @@ def mainline(input_file, include_iostat, append_to_database, existing_database, 
                     os.mkdir(output_file_path)
                 chart_iostat(connection, output_file_path, output_prefix, operating_system, png_out)
 
+            if include_nfsiostat:
+                output_file_path = f"{output_file_path_base}/nfsiostat/"
+                if not os.path.isdir(output_file_path):
+                    os.mkdir(output_file_path)
+                chart_nfsiostat(connection, output_file_path, output_prefix, operating_system, png_out)
+
         if operating_system == "Windows":
             output_file_path = f"{output_file_path_base}/perfmon/"
             if not os.path.isdir(output_file_path):
@@ -777,6 +911,14 @@ if __name__ == "__main__":
         "--iostat",
         dest="include_iostat",
         help="Also plot iostat data (can take a long time).",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "-n",
+        "--nfsiostat",
+        dest="include_nfsiostat",
+        help="Also plot nfsiostat data.",
         action="store_true",
     )
 
@@ -868,7 +1010,7 @@ if __name__ == "__main__":
                        "IRIS": "dm-10"}
 
     try:
-        mainline(input_file, args.include_iostat, args.append_to_database, existing_database, args.output_prefix,
+        mainline(input_file, args.include_iostat, args.include_nfsiostat, args.append_to_database, existing_database, args.output_prefix,
                  args.csv_out, args.png_out, args.system_out)
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))

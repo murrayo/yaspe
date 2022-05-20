@@ -3,7 +3,7 @@ import pandas as pd
 from yaspe_utilities import get_number_type, make_mdy_date, check_date
 
 
-def extract_sections(operating_system, profile_run, input_file, include_iostat, html_filename):
+def extract_sections(operating_system, profile_run, input_file, include_iostat, include_nfsiostat, html_filename):
 
     vmstat_processing = False
     vmstat_header = ""
@@ -29,6 +29,12 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
     perfmon_processing = False
     perfmon_header = ""
     perfmon_rows_list = []
+
+    nfsiostat_processing = False
+    nfsiostat_header = ""
+    nfsiostat_rows_list = []
+    nfsiostat_read = False
+    nfsiostat_write = False
 
     run_start = profile_run.split("on ")[1]
     run_start = run_start[:-1]
@@ -217,6 +223,70 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                         iostat_columns = iostat_header.split()
                         iostat_columns = [i.strip() for i in iostat_columns]  # strip off carriage return etc
 
+            # nfsiostat
+            if (operating_system == "Linux" or operating_system == "Ubuntu") and include_nfsiostat:
+
+                if nfsiostat_processing and "pre>" in line:  # nfsiostat does not flag end
+                    nfsiostat_processing = False
+                else:
+                    # Found nfsiostat
+                    if "id=nfsiostat" in line:
+                        nfsiostat_processing = True
+                    # There is no date and time
+                    if "mounted on" in line:
+                        nfsiostat_host = line.split(":")[0]
+                        nfsiostat_device = line.split()[0].split(":")[1].replace("/", "_")
+                        nfsiostat_mount_point = line.split()[3].replace(":", "").replace("/", "_")
+                        nfs_output_line = f"{nfsiostat_host},{nfsiostat_device},{nfsiostat_mount_point}"
+                    if nfsiostat_read:
+                        # Get rid of extra spaces
+                        line = " ".join(line.split())
+                        # make percentage (0.0%) a number
+                        line = line.replace("(", "")
+                        line = line.replace(")", "")
+                        line = line.replace("%", "")
+                        line = line.replace(" ", ",")
+                        nfs_output_line += f",{line}"
+                        nfsiostat_read = False
+                    if nfsiostat_write:
+                        # Get rid of extra spaces
+                        line = " ".join(line.split())
+                        # make percentage (0.0%) a number
+                        line = line.replace("(", "")
+                        line = line.replace(")", "")
+                        line = line.replace("%", "")
+                        line = line.replace(" ", ",")
+                        nfs_output_line += f",{line}"
+                        nfsiostat_write = False
+                    if "read:" in line:
+                        nfsiostat_read = True
+                        nfsiostat_write = False
+                        # First time in create column names
+                        if nfsiostat_header == "":
+                            # Hardcoded while debugging
+                            nfsiostat_header = "Host,Device,Mounted on"
+                            nfsiostat_header += f",read ops/s,read kB/s,read kB/op,read retrans,read retrans %," \
+                                                f"read avg RTT (ms),read avg exe (ms),read avg queue (ms)," \
+                                                f"read errors,read errors % "
+                            nfsiostat_header += f",write ops/s,write kB/s,write kB/op,write retrans,write retrans %," \
+                                                f"write avg RTT (ms),write avg exe (ms),write avg queue (ms)," \
+                                                f"write errors,write errors %"
+                            nfsiostat_header += f",html name"
+                            nfsiostat_columns = nfsiostat_header.split(",")
+                            mgstat_columns = [i.strip() for i in nfsiostat_columns]  # strip off carriage return etc
+                    if "write:" in line:
+                        nfsiostat_read = False
+                        nfsiostat_write = True
+                    if nfsiostat_processing and nfsiostat_header != "":
+                        if nfs_output_line.strip() != "":
+                            nfsiostat_row_dict = {}
+                            values = nfs_output_line.split(",")
+                            values = [i.strip() for i in values]  # strip off carriage return etc
+                            values_converted = [get_number_type(v) for v in values]
+                            nfsiostat_row_dict = dict(zip(nfsiostat_columns, values_converted))
+                            nfsiostat_row_dict["html name"] = html_filename
+                            nfsiostat_rows_list.append(nfsiostat_row_dict)
+
     if mgstat_header != "":
         # Create dataframe of rows. Shortcut here to creating table columns or later charts etc
         mgstat_df = pd.DataFrame(mgstat_rows_list)
@@ -252,4 +322,10 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
     else:
         iostat_df = pd.DataFrame({'empty': []})
 
-    return mgstat_df, vmstat_df, iostat_df, perfmon_df
+    if nfsiostat_header != "":
+        nfsiostat_df = pd.DataFrame(nfsiostat_rows_list)
+        nfsiostat_df.dropna(inplace=True)
+    else:
+        nfsiostat_df = pd.DataFrame({'empty': []})
+
+    return mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df
