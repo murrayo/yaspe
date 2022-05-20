@@ -47,7 +47,7 @@ For local version:
 `docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h`
 
 ```commandline
-usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-a]
+usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a]
              [-o "output file prefix"]
              [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-s]
 
@@ -59,6 +59,7 @@ optional arguments:
   -i "/path/file.html", --input_file "/path/file.html"
                         Input html filename with full path.
   -x, --iostat          Also plot iostat data (can take a long time).
+  -n, --nfsiostat       Also plot nfsiostat data.
   -a, --append          Do not overwrite database, append to existing
                         database.
   -o "output file prefix", --output_prefix "output file prefix"
