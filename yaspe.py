@@ -717,7 +717,7 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
         # For each column create a chart
         for column_name in columns_to_chart:
             if not column_name == "Device":
-                title = f"{device} : {column_name} - {customer}"
+                title = f"{device.replace('_', '/')} : {column_name} - {customer}"
                 save_name = [s for s in column_name if s.isalnum() or s.isspace()]
                 save_name = "".join(save_name)
 
