@@ -292,13 +292,18 @@ def build_log(sp_dict):
         if sp_dict["WebServer"] == "1":
             warn_count += 1
             sp_dict[
-                f"warning {warn_count}"] = f"Insecure Private Webserver Enabled!"
+                f"warning {warn_count}"] = f"** Insecure Private Webserver Enabled! **"
 
     if "wijdir" in sp_dict:
         if sp_dict["wijdir"] == "":
             warn_count += 1
             sp_dict[
                 f"warning {warn_count}"] = f"WIJ in Installation Directory"
+
+    if sp_dict['current journal'] == sp_dict['alternate journal']:
+        warn_count += 1
+        sp_dict[
+            f"warning {warn_count}"] = f"Primary Journal is the same as Alternate Journal"
 
     # Linux kernel
 
@@ -519,9 +524,16 @@ def build_log(sp_dict):
                 first_instance = False
             log += f"- {sp_dict[key]}\n"
 
-    log += "\nStorage:\n"\
+    log += "\nStorage:\n"
 
     log += f"Current journal        : {sp_dict['current journal']}\n"
     log += f"Alternate journal      : {sp_dict['alternate journal']}\n"
+    log += f"Days before purge      : {sp_dict['DaysBeforePurge']}\n"
+
+    log += "\nAdditional:\n"
+    if 'IRISSYS' in sp_dict:
+        log += f"IRISSYS                : {sp_dict['IRISSYS']}\n"
+    if 'CACHESYS' in sp_dict:
+        log += f"CACHESYS               : {sp_dict['CACHESYS']}\n"
 
     return log

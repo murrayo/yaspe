@@ -897,7 +897,7 @@ if __name__ == "__main__":
         prog="yaspe", description="Performance file review.", epilog='Be safe, "quote the path"'
     )
 
-    parser.add_argument('-v', '--version', action='version', version='%(prog)s 1.220525.001')
+    parser.add_argument('-v', '--version', action='version', version='%(prog)s 1.220526.001')
 
     parser.add_argument(
         "-i",
