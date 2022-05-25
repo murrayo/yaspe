@@ -216,8 +216,7 @@ def create_sections(connection,
         connection.commit()
 
         if csv_out:
-            nfsiostat_output_csv = f"{output_filepath_prefix}nfsiostat.csv"
-            # nfsiostat_df_copy = nfsiostat_df['Device'] = df['Device'].str.replace('_','/')
+            nfsiostat_output_csv = f'{output_filepath_prefix}nfsiostat.csv'
 
             # if file does not exist write header
             if not os.path.isfile(nfsiostat_output_csv):
@@ -338,7 +337,7 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
     plt.tight_layout()
 
-    output_name = column_name.replace("/", "_")
+    output_name = column_name.replace("/", "_per_").replace(" ", "_")
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format='png')
     plt.close('all')
 
@@ -386,7 +385,7 @@ def interactive_chart(data, column_name, title, max_y, filepath, output_prefix, 
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
-    output_name = column_name.replace("/", "_")
+    output_name = column_name.replace(" ", "_").replace("/", "_per_")
 
     # Create the chart
     alt.Chart(data).mark_line().encode(
@@ -413,8 +412,7 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
             alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
             alt.Color("Type", title="Metric"),
             tooltip=["metric:N"],
-        )
-            .properties(height=500, width=1333, title=title)
+        ).properties(height=500, width=1333, title=title)
     )
 
     # Upper is zoomed area X axis
@@ -427,7 +425,7 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
         strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
     )
 
-    output_name = column_name.replace("/", "_")
+    output_name = column_name.replace(" ", "_").replace("/", "_per_")
 
     (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html", scale_factor=2.0)
 
@@ -708,7 +706,7 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
         # For each column create a chart
         for column_name in columns_to_chart:
             if not column_name == "Device":
-                title = f"{device.replace('_', '/')} : {column_name} - {customer}"
+                title = f"{device} : {column_name} - {customer}"
                 save_name = [s for s in column_name if s.isalnum() or s.isspace()]
                 save_name = "".join(save_name)
 
@@ -721,9 +719,21 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
                 data = to_chart_df
 
                 if png_out:
-                    simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                    simple_chart_no_time(data,
+                                         column_name,
+                                         title,
+                                         max_y,
+                                         filepath,
+                                         output_prefix,
+                                         file_prefix=device.replace("/", "_"))
                 else:
-                    linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                    linked_chart_no_time(data,
+                                         column_name,
+                                         title,
+                                         max_y,
+                                         filepath,
+                                         output_prefix,
+                                         file_prefix=device.replace("/", "_"))
 
 
 def mainline(input_file, include_iostat, include_nfsiostat, append_to_database, existing_database, output_prefix, csv_out, png_out,

@@ -237,8 +237,8 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                     # There is no date and time
                     if "mounted on" in line:
                         nfsiostat_host = line.split(":")[0]
-                        nfsiostat_device = line.split()[0].split(":")[1].replace("/", "_")
-                        nfsiostat_mount_point = line.split()[3].replace(":", "").replace("/", "_")
+                        nfsiostat_device = line.split()[0].split(":")[1]
+                        nfsiostat_mount_point = line.split()[3].replace(":", "")
                         nfs_output_line = f"{nfsiostat_host},{nfsiostat_device},{nfsiostat_mount_point}"
                     if nfsiostat_read:
                         # Get rid of extra spaces
