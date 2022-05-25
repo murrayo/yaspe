@@ -102,6 +102,24 @@ def system_check(input_file):
             if "jrnbufs=" in line:
                 sp_dict["jrnbufs"] = (line.split("=")[1]).strip()
 
+            # Chad's metrics
+            if "bbsiz=" in line:
+                sp_dict["bbsiz"] = (line.split("=")[1]).strip()
+            if "CACHESYS=" in line:
+                sp_dict["CACHESYS"] = (line.split("=")[1]).strip()
+            if "IRISSYS=" in line:
+                sp_dict["IRISSYS"] = (line.split("=")[1]).strip()
+            if "memlock=" in line:
+                sp_dict["memlock"] = (line.split("=")[1]).strip()
+            if "WebServer=" in line:
+                sp_dict["WebServer"] = (line.split("=")[1]).strip()
+            if "MaxServers=" in line:
+                sp_dict["MaxServers"] = (line.split("=")[1]).strip()
+            if "MaxServerConn=" in line:
+                sp_dict["MaxServerConn"] = (line.split("=")[1]).strip()
+            if "DaysBeforePurge=" in line:
+                sp_dict["DaysBeforePurge"] = (line.split("=")[1]).strip()
+
             # Linux kernel
 
             if "kernel.hostname" in line:
@@ -119,6 +137,9 @@ def system_check(input_file):
                 sp_dict["kernel.shmmax"] = (line.split("=")[1]).strip()
             if "kernel.shmall" in line:
                 sp_dict["kernel.shmall"] = (line.split("=")[1]).strip()
+
+            if "max locked memory" in line:
+                sp_dict["max locked memory"] = (line.split(")")[1]).strip()
 
             # dirty_* parameters are not relevant if using async IO – which any IRIS-based install should be.
             # # dirty background ratio = 5
@@ -233,6 +254,52 @@ def build_log(sp_dict):
             routines_total += int(item)
         sp_dict["routines total MB"] = routines_total
 
+    # Chad's metrics
+    if "bbsiz" in sp_dict:
+        if int(sp_dict["bbsiz"]) == 262144:
+            warn_count += 1
+            sp_dict[
+                f"warning {warn_count}"] = f"bbsiz is default"
+
+    if "gmheap" in sp_dict:
+        if int(sp_dict["gmheap"]) == 37568:
+            warn_count += 1
+            sp_dict[
+                f"warning {warn_count}"] = f"gmheap is default"
+
+        if int(sp_dict["gmheap"])/1024 < 200:
+            warn_count += 1
+            sp_dict[
+                f"warning {warn_count}"] = f"gmheap {sp_dict['gmheap']} size does not support parallel dejournaling"
+
+    if "locksiz" in sp_dict:
+        if int(sp_dict["locksiz"]) == 16777216:
+            warn_count += 1
+            sp_dict[
+                f"warning {warn_count}"] = f"locksiz is default"
+        if int(sp_dict["locksiz"]) < 16777216:
+            warn_count += 1
+            sp_dict[
+                f"warning {warn_count}"] = f"locksiz {sp_dict['locksiz']} is less than IRIS default (16777216)"
+
+    if "memlock" in sp_dict:
+        if int(sp_dict["memlock"]) == 0:
+            warn_count += 1
+            sp_dict[
+                f"warning {warn_count}"] = f"memlock={sp_dict['memlock']} does not enforce Huge/Large pages"
+
+    if "WebServer" in sp_dict:
+        if sp_dict["WebServer"] == "1":
+            warn_count += 1
+            sp_dict[
+                f"warning {warn_count}"] = f"Insecure Private Webserver Enabled!"
+
+    if "wijdir" in sp_dict:
+        if sp_dict["wijdir"] == "":
+            warn_count += 1
+            sp_dict[
+                f"warning {warn_count}"] = f"WIJ in Installation Directory"
+
     # Linux kernel
 
     if "swappiness" in sp_dict:
@@ -303,6 +370,13 @@ def build_log(sp_dict):
                 )
                 sp_dict[
                     f"recommend {recommend_count}"] = msg
+
+                if "max locked memory" in sp_dict:
+                    if int(sp_dict["max locked memory"]) < 100:
+                        warn_count += 1
+                        sp_dict[
+                            f"warning {warn_count}"] = f"{sp_dict['max locked memory']} kb too small to lock shared " \
+                                                       f"memory segment in memory without huge pages (see ulimit -a)"
 
             else:
                 sp_dict["hugepages MB"] = round(int(sp_dict["vm.nr_hugepages"]) * huge_page_size_kb / 1024)
