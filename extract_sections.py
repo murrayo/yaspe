@@ -269,7 +269,7 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                             nfsiostat_header = "Host,Device,Mounted on"
                             nfsiostat_header += f",read ops/s,read kB/s,read kB/op,read retrans,read retrans %," \
                                                 f"read avg RTT (ms),read avg exe (ms),read avg queue (ms)," \
-                                                f"read errors,read errors % "
+                                                f"read errors,read errors %"
                             nfsiostat_header += f",write ops/s,write kB/s,write kB/op,write retrans,write retrans %," \
                                                 f"write avg RTT (ms),write avg exe (ms),write avg queue (ms)," \
                                                 f"write errors,write errors %"
