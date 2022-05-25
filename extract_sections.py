@@ -5,6 +5,8 @@ from yaspe_utilities import get_number_type, make_mdy_date, check_date
 
 def extract_sections(operating_system, profile_run, input_file, include_iostat, include_nfsiostat, html_filename):
 
+    once = True
+
     vmstat_processing = False
     vmstat_header = ""
     vmstat_rows_list = []
@@ -309,8 +311,21 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
         vmstat_df = pd.DataFrame({'empty': []})
 
     if perfmon_header != "":
+
         perfmon_df = pd.DataFrame(perfmon_rows_list)
         perfmon_df.dropna(inplace=True)
+
+        # add datetime column
+        # The first column is a date time with timezone
+        perfmon_df.columns = perfmon_df.columns[:0].tolist() + ["datetime"] + perfmon_df.columns[1:].tolist()
+
+        # In some cases time is a separate column
+        if perfmon_df.columns[1] == "Time":
+            perfmon_df["datetime"] = perfmon_df["datetime"] + " " + perfmon_df["Time"]
+
+        # preprocess time to remove decimal precision
+        perfmon_df["datetime"] = perfmon_df["datetime"].apply(lambda x: x.split(".")[0])
+
     else:
         perfmon_df = pd.DataFrame({'empty': []})
 

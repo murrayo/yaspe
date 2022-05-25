@@ -217,6 +217,7 @@ def create_sections(connection,
 
         if csv_out:
             nfsiostat_output_csv = f"{output_filepath_prefix}nfsiostat.csv"
+            # nfsiostat_df_copy = nfsiostat_df['Device'] = df['Device'].str.replace('_','/')
 
             # if file does not exist write header
             if not os.path.isfile(nfsiostat_output_csv):
@@ -547,16 +548,6 @@ def chart_perfmon(connection, filepath, output_prefix, png_out):
     # Read in to dataframe, drop any bad rows
     df = pd.read_sql_query("SELECT * FROM perfmon", connection)
     df.dropna(inplace=True)
-
-    # The first column is a date time with timezone
-    df.columns = df.columns[:0].tolist() + ["datetime"] + df.columns[1:].tolist()
-
-    # In some cases time is a separate column
-    if df.columns[1] == "Time":
-        df["datetime"] = df["datetime"] + " " + df["Time"]
-
-    # preprocess time to remove decimal precision
-    df["datetime"] = df["datetime"].apply(lambda x: x.split(".")[0])
 
     # Format the data for Altair
     # Cut down the df to just the the list of categorical data we care about (columns)
@@ -896,7 +887,7 @@ if __name__ == "__main__":
         prog="yaspe", description="Performance file review.", epilog='Be safe, "quote the path"'
     )
 
-    parser.add_argument('-v', '--version', action='version', version='%(prog)s 1.211217.001')
+    parser.add_argument('-v', '--version', action='version', version='%(prog)s 1.220525.001')
 
     parser.add_argument(
         "-i",
