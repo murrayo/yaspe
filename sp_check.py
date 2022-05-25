@@ -230,6 +230,12 @@ def build_log(sp_dict):
 
     # CPF
 
+    if "WebServer" in sp_dict:
+        if sp_dict["WebServer"] == "1":
+            warn_count += 1
+            sp_dict[
+                f"warning {warn_count}"] = f"** Insecure Private Webserver Enabled! **"
+
     if "freeze" in sp_dict:
         if sp_dict["freeze"] == "0":
             warn_count += 1
@@ -239,6 +245,11 @@ def build_log(sp_dict):
         else:
             pass_count += 1
             sp_dict[f"pass {pass_count}"] = f"freeze on error is enabled."
+
+    if sp_dict['current journal'] == sp_dict['alternate journal']:
+        warn_count += 1
+        sp_dict[
+            f"warning {warn_count}"] = f"Primary Journal is the same as Alternate Journal"
 
     if "globals" in sp_dict:
         globals = sp_dict["globals"].split(",")
@@ -282,28 +293,11 @@ def build_log(sp_dict):
             sp_dict[
                 f"warning {warn_count}"] = f"locksiz {sp_dict['locksiz']} is less than IRIS default (16777216)"
 
-    if "memlock" in sp_dict:
-        if int(sp_dict["memlock"]) == 0:
-            warn_count += 1
-            sp_dict[
-                f"warning {warn_count}"] = f"memlock={sp_dict['memlock']} does not enforce Huge/Large pages"
-
-    if "WebServer" in sp_dict:
-        if sp_dict["WebServer"] == "1":
-            warn_count += 1
-            sp_dict[
-                f"warning {warn_count}"] = f"** Insecure Private Webserver Enabled! **"
-
     if "wijdir" in sp_dict:
         if sp_dict["wijdir"] == "":
             warn_count += 1
             sp_dict[
                 f"warning {warn_count}"] = f"WIJ in Installation Directory"
-
-    if sp_dict['current journal'] == sp_dict['alternate journal']:
-        warn_count += 1
-        sp_dict[
-            f"warning {warn_count}"] = f"Primary Journal is the same as Alternate Journal"
 
     # Linux kernel
 
@@ -320,6 +314,12 @@ def build_log(sp_dict):
             sp_dict[f"pass {pass_count}"] = f"swappiness is {sp_dict['swappiness']}"
 
     # memory comes from Linux free or from Windows info
+
+    if "memlock" in sp_dict:
+        if int(sp_dict["memlock"]) == 0:
+            warn_count += 1
+            sp_dict[
+                f"warning {warn_count}"] = f"memlock={sp_dict['memlock']} does not enforce Huge/Large pages"
 
     if "memory MB" in sp_dict:
 
