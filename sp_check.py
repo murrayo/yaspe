@@ -380,8 +380,9 @@ def build_log(sp_dict):
                     if int(sp_dict["max locked memory"]) < 100:
                         warn_count += 1
                         sp_dict[
-                            f"warning {warn_count}"] = f"{sp_dict['max locked memory']} kb too small to lock shared " \
-                                                       f"memory segment in memory without huge pages (see ulimit -a)"
+                            f"warning {warn_count}"] = f"max locked memory {sp_dict['max locked memory']} kb too " \
+                                                       f"small to lock shared memory segment in memory without huge " \
+                                                       f"pages (see ulimit -a) "
 
             else:
                 sp_dict["hugepages MB"] = round(int(sp_dict["vm.nr_hugepages"]) * huge_page_size_kb / 1024)
@@ -529,6 +530,8 @@ def build_log(sp_dict):
     log += f"Current journal        : {sp_dict['current journal']}\n"
     log += f"Alternate journal      : {sp_dict['alternate journal']}\n"
     log += f"Days before purge      : {sp_dict['DaysBeforePurge']}\n"
+    if "wijdir" in sp_dict:
+        log += f"WIJ directory          : {sp_dict['wijdir']}\n"
 
     log += "\nAdditional:\n"
     if 'IRISSYS' in sp_dict:
