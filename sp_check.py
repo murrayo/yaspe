@@ -377,12 +377,13 @@ def build_log(sp_dict):
                     f"recommend {recommend_count}"] = msg
 
                 if "max locked memory" in sp_dict:
-                    if int(sp_dict["max locked memory"]) < 100:
-                        warn_count += 1
-                        sp_dict[
-                            f"warning {warn_count}"] = f"max locked memory {sp_dict['max locked memory']} kb too " \
-                                                       f"small to lock shared memory segment in memory without huge " \
-                                                       f"pages (see ulimit -a) "
+                    if sp_dict["max locked memory"].isdigit():
+                        if int(sp_dict["max locked memory"]) < 100:
+                            warn_count += 1
+                            sp_dict[
+                                f"warning {warn_count}"] = f"max locked memory {sp_dict['max locked memory']} kb too " \
+                                                           f"small to lock shared memory segment in memory without huge " \
+                                                           f"pages (see ulimit -a) "
 
             else:
                 sp_dict["hugepages MB"] = round(int(sp_dict["vm.nr_hugepages"]) * huge_page_size_kb / 1024)
