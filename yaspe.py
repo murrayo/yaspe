@@ -258,14 +258,16 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     colormap_name = "Set1"
 
     plt.style.use('seaborn-whitegrid')
-    plt.figure(num=None, figsize=(16, 6), dpi=300)
+    plt.figure(num=None, figsize=(16, 6))
+    plt.tight_layout()
+
     palette = plt.get_cmap(colormap_name)
 
     color = palette(1)
 
     fig, ax = plt.subplots()
     plt.gcf().set_size_inches(16, 6)
-    plt.gcf().set_dpi(300)
+    # plt.gcf().set_dpi(300)
 
     ax.plot(png_data['datetime'], png_data['metric'], label=column_name, color=color, marker='.', linestyle="none", alpha=0.7)
     ax.grid(which='major', axis='both', linestyle='--')
@@ -289,10 +291,10 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
-    plt.tight_layout()
+    # plt.tight_layout()
 
     output_name = column_name.replace("/", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format='png')
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format='png', dpi=100)
     plt.close('all')
 
 
@@ -307,14 +309,14 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     colormap_name = "Set1"
 
     plt.style.use('seaborn-whitegrid')
-    plt.figure(num=None, figsize=(16, 6), dpi=300)
+    plt.figure(num=None, figsize=(16, 6))
     palette = plt.get_cmap(colormap_name)
 
     color = palette(1)
 
     fig, ax = plt.subplots()
     plt.gcf().set_size_inches(16, 6)
-    plt.gcf().set_dpi(300)
+    # plt.gcf().set_dpi(300)
 
     ax.plot(png_data['id_key'], png_data['metric'], label=column_name, color=color,
             marker='.', linestyle="-", alpha=0.7)
@@ -338,7 +340,7 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     plt.tight_layout()
 
     output_name = column_name.replace("/", "_per_").replace(" ", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format='png')
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format='png', dpi=100)
     plt.close('all')
 
 
@@ -445,9 +447,9 @@ def chart_vmstat(connection, filepath, output_prefix, png_out):
     df["datetime"] = df["RunDate"] + " " + df["RunTime"]
 
     # Format the data for Altair
-    # Cut down the df to just the the list of categorical data we care about (columns)
+    # Cut down the df to just the list of categorical data we care about (columns)
     columns_to_chart = list(df.columns)
-    unwanted_columns = ["id_key", "RunDate", "RunTime", "html name"]
+    unwanted_columns = ["id_key", "RunDate", "RunTime", "html name", "hr"]
     columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
     vmstat_df = df[columns_to_chart]
@@ -856,7 +858,7 @@ def mainline(input_file, include_iostat, include_nfsiostat, append_to_database, 
         chart_mgstat(connection, output_file_path, output_prefix, png_out)
 
         # vmstat and iostat
-        if operating_system == "Linux" or operating_system == "Ubuntu":
+        if operating_system == "Linux" or operating_system == "Ubuntu" or operating_system == "AIX":
 
             output_file_path = f"{output_file_path_base}/vmstat/"
             if not os.path.isdir(output_file_path):

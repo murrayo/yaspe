@@ -10,6 +10,7 @@ and suggested fixes.
 
 def system_check(input_file):
     sp_dict = {}
+    operating_system = ""
 
     with open(input_file, "r", encoding="ISO-8859-1") as file:
 
@@ -40,12 +41,16 @@ def system_check(input_file):
 
                 if "Windows" in line:
                     sp_dict["operating system"] = "Windows"
+                    operating_system = "Windows"
                 if "Linux" in line:
                     sp_dict["operating system"] = "Linux"
+                    operating_system = "Linux"
                 if "AIX" in line:
                     sp_dict["operating system"] = "AIX"
+                    operating_system = "AIX"
                 if "Ubuntu Server LTS" in line:
                     sp_dict["operating system"] = "Ubuntu"
+                    operating_system = "Ubuntu"
 
             if "Profile run " in line:
                 sp_dict["profile run"] = line.strip()
@@ -55,6 +60,7 @@ def system_check(input_file):
 
             if "on machine" in line:
                 sp_dict[f"instance"] = (line.split(" on machine ", 1)[0]).strip()
+                sp_dict[f"linux hostname"] = (line.split(" on machine ", 1)[1]).strip()
 
             if line.startswith("up "):
                 up_counter += 1
@@ -122,9 +128,6 @@ def system_check(input_file):
 
             # Linux kernel
 
-            if "kernel.hostname" in line:
-                sp_dict["linux hostname"] = (line.split("=")[1]).strip()
-
             if "swappiness" in line:
                 sp_dict["swappiness"] = (line.split("=")[1]).strip()
 
@@ -186,6 +189,21 @@ def system_check(input_file):
                 perfmon_next = False
             if "beg_win_perfmon" in line:
                 perfmon_next = True
+
+            # AIX
+            if operating_system == "AIX":
+                if "Processor Type:" in line:
+                    sp_dict["processor model"] = (line.split(":")[1]).strip()
+                if "Number Of Processors:" in line:
+                    sp_dict["AIX number cpus"] = f'{(line.split(":")[1]).strip()} cores '
+                if "smt_threads" in line:
+                    sp_dict["AIX number cpus"] = f'{sp_dict["AIX number cpus"]} SMT {(line.split(" ")[1]).strip()}'
+                if "Memory Size:" in line:
+                    sp_dict["memory MB"] = (line.split(":")[1]).split()[0].strip()
+
+                # Number Of Processors: 10
+                # Memory Size: 24576 MB
+                # smt_threads 8
 
     # # Debug
     # for key in sp_dict:
@@ -482,6 +500,8 @@ def build_log(sp_dict):
     log += f"Operating system : {sp_dict['operating system']}\n"
     log += f"Platform         : {sp_dict['platform']}\n"
     log += f"CPUs             : {sp_dict['number cpus']}\n"
+    if sp_dict['operating system'] == "AIX":
+        log += f"SMT              : {sp_dict['AIX number cpus']}\n"
     log += f"Processor model  : {sp_dict['processor model']}\n"
     log += f"Memory           : {sp_dict['memory GB']} GB\n"
     log += f"Shared memory    : {sp_dict['shared memory calc']} = {int(sp_dict['shared memory MB']):,} MB\n"

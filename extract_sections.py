@@ -1,4 +1,6 @@
 import dateutil.parser
+from dateutil.relativedelta import *
+
 import pandas as pd
 from yaspe_utilities import get_number_type, make_mdy_date, check_date
 
@@ -12,6 +14,7 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
     vmstat_rows_list = []
     vmstat_date = ""
     vmstat_date_convert = False
+    previous_time = "00:00:00"
 
     iostat_processing = False
     iostat_header = ""
@@ -41,6 +44,7 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
     run_start = profile_run.split("on ")[1]
     run_start = run_start[:-1]
     run_start_date = dateutil.parser.parse(run_start)
+    aix_vmstat_line_date = run_start_date
 
     with open(input_file, "r", encoding="ISO-8859-1") as file:
 
@@ -116,6 +120,62 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                     vmstat_header = f"Date Time r {vmstat_header}"
                     vmstat_columns = vmstat_header.split()
                     vmstat_columns = [i.strip() for i in vmstat_columns]  # strip off carriage return etc
+
+            if operating_system == "AIX":
+                if "<!-- beg_vmstat -->" in line:
+                    vmstat_processing = True
+                if "<!-- end_vmstat -->" in line:
+                    vmstat_processing = False
+                if vmstat_processing and vmstat_header != "":
+                    if line.strip() != "":
+                        vmstat_row_dict = {}
+                        values = line.split()
+                        values = [i.strip() for i in values]  # strip off carriage return etc
+
+                        # AIX insert date and time in first two columns, Time is the last column
+                        this_time = values[-1]
+                        values.insert(0, this_time)
+
+                        # Have no date, only time. Make sure we haven't rolled over midnight
+                        # Comparing time as strings is a bit hacky, but we only care about the hour
+                        if this_time < previous_time:
+                            aix_vmstat_line_date = run_start_date + relativedelta(days=+1)
+                        previous_time = this_time
+                        values.insert(0, aix_vmstat_line_date.strftime("%Y-%m-%d"))
+
+                        values_converted = [get_number_type(v) for v in values]
+                        vmstat_row_dict = dict(zip(vmstat_columns, values_converted))
+                        vmstat_row_dict["html name"] = html_filename
+
+                        # Check date format
+                        if not vmstat_date_convert and vmstat_row_dict['Date'] != vmstat_date:
+                            vmstat_date = vmstat_row_dict['Date']
+                            vmstat_date_convert = check_date("aix_vmstat", run_start_date, vmstat_row_dict['Date'])
+
+                        if vmstat_date_convert:
+                            new_date = make_mdy_date(vmstat_row_dict["Date"])
+                            new_date_dict = {"Date": new_date}
+                            vmstat_row_dict.update(new_date_dict)
+
+                        # Added for pretty processing
+                        vmstat_row_dict["datetime"] = f'{vmstat_row_dict["Date"]} {vmstat_row_dict["Time"]}'
+                        vmstat_rows_list.append(vmstat_row_dict)
+                if vmstat_processing and "us sy id wa" in line:
+                    # vmstat !sometimes! has column names on same line as html
+                    if "<pre>" in line:
+                        vmstat_header = line.split("<pre>")[1].strip()
+                    else:
+                        vmstat_header = line
+                    vmstat_header = vmstat_header.split(" r ")[1]
+                    vmstat_header = f"Date Time r {vmstat_header}"
+                    vmstat_columns = vmstat_header.split()
+                    vmstat_columns = [i.strip() for i in vmstat_columns]  # strip off carriage return etc
+
+                    # Duplicate column names in AIX
+                    for i in range(len(vmstat_columns)):
+                        if vmstat_columns[i] == 'sy':
+                            vmstat_columns[i] = 'sy_calls'
+                            break
 
             if operating_system == "Windows":
                 if "id=perfmon" in line:

@@ -168,7 +168,7 @@ def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name
     # Two plots on the same figure
     fig, (ax1, ax2) = plt.subplots(2, 1)
     plt.gcf().set_size_inches(plot_d["WIDTH"], plot_d["HEIGHT"])
-    plt.gcf().set_dpi(plot_d["DPI"])
+    # plt.gcf().set_dpi(plot_d["DPI"])
 
     ax1.grid(which="major", axis="both", linestyle="--")
     ax1.set_title(TITLE, fontsize=14)
@@ -273,7 +273,7 @@ def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name
             + ".png"
         ).replace(" ", "_")
     )
-    plt.savefig(FinalFileName, format="png")
+    plt.savefig(FinalFileName, format="png", dpi=plot_d["DPI"])
     plt.close(fig)
 
 
@@ -301,7 +301,7 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
 
     fig, ax1 = plt.subplots()
     plt.gcf().set_size_inches(plot_d["WIDTH"], plot_d["HEIGHT"])
-    plt.gcf().set_dpi(plot_d["DPI"])
+    # plt.gcf().set_dpi(plot_d["DPI"])
 
     ax1.grid(which="major", axis="both", linestyle="--")
     ax1.set_title(TITLE, fontsize=14)
@@ -442,7 +442,7 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
         + (TITLE + ".png").replace(": ", "_").replace(",", "_").replace(" ", "_").replace("__", "_")
     )
 
-    plt.savefig(FinalFileName, format="png")
+    plt.savefig(FinalFileName, format="png", dpi=plot_d["DPI"])
     plt.close(fig)
 
 
