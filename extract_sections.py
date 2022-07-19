@@ -160,13 +160,15 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                         # Added for pretty processing
                         vmstat_row_dict["datetime"] = f'{vmstat_row_dict["Date"]} {vmstat_row_dict["Time"]}'
                         vmstat_rows_list.append(vmstat_row_dict)
+
                 if vmstat_processing and "us sy id wa" in line:
                     # vmstat !sometimes! has column names on same line as html
                     if "<pre>" in line:
                         vmstat_header = line.split("<pre>")[1].strip()
                     else:
                         vmstat_header = line
-                    vmstat_header = vmstat_header.split(" r ")[1]
+
+                    vmstat_header = vmstat_header.split("r ",1)[1]
                     vmstat_header = f"Date Time r {vmstat_header}"
                     vmstat_columns = vmstat_header.split()
                     vmstat_columns = [i.strip() for i in vmstat_columns]  # strip off carriage return etc
