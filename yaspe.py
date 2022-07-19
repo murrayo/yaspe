@@ -439,6 +439,10 @@ def chart_vmstat(connection, filepath, output_prefix, png_out):
     number_cpus = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'number cpus';")[2]
     processor = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'processor model';")[2]
 
+    if execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'operating system';")[2] == "AIX":
+        aix_cpus = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'AIX number cpus';")[2]
+        processor += f" {aix_cpus}"
+
     # Read in to dataframe
     df = pd.read_sql_query("SELECT * FROM vmstat", connection)
 
