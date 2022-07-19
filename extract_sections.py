@@ -14,6 +14,7 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
     vmstat_rows_list = []
     vmstat_date = ""
     vmstat_date_convert = False
+    aix_vmstat_line_date = ""
     previous_time = "00:00:00"
 
     iostat_processing = False
@@ -44,7 +45,6 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
     run_start = profile_run.split("on ")[1]
     run_start = run_start[:-1]
     run_start_date = dateutil.parser.parse(run_start)
-    aix_vmstat_line_date = run_start_date
 
     with open(input_file, "r", encoding="ISO-8859-1") as file:
 
@@ -74,6 +74,10 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                         new_date = make_mdy_date(mgstat_row_dict["Date"])
                         new_date_dict = {"Date": new_date}
                         mgstat_row_dict.update(new_date_dict)
+
+                    if operating_system == "AIX":
+                        if aix_vmstat_line_date == "":
+                            aix_vmstat_line_date = mgstat_row_dict["Date"]
 
                     # Added for pretty processing
                     mgstat_row_dict["datetime"] = f'{mgstat_row_dict["Date"]} {mgstat_row_dict["Time"]}'
@@ -139,9 +143,10 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                         # Have no date, only time. Make sure we haven't rolled over midnight
                         # Comparing time as strings is a bit hacky, but we only care about the hour
                         if this_time < previous_time:
-                            aix_vmstat_line_date = run_start_date + relativedelta(days=+1)
+                            next_day = dateutil.parser.parse(aix_vmstat_line_date) + relativedelta(days=+1)
+                            aix_vmstat_line_date = next_day.strftime("%m/%d/%Y")
                         previous_time = this_time
-                        values.insert(0, aix_vmstat_line_date.strftime("%Y-%m-%d"))
+                        values.insert(0, aix_vmstat_line_date)
 
                         values_converted = [get_number_type(v) for v in values]
                         vmstat_row_dict = dict(zip(vmstat_columns, values_converted))
@@ -168,7 +173,7 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                     else:
                         vmstat_header = line
 
-                    vmstat_header = vmstat_header.split("r ",1)[1]
+                    vmstat_header = vmstat_header.split("r ", 1)[1]
                     vmstat_header = f"Date Time r {vmstat_header}"
                     vmstat_columns = vmstat_header.split()
                     vmstat_columns = [i.strip() for i in vmstat_columns]  # strip off carriage return etc
