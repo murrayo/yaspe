@@ -125,29 +125,20 @@ def insert_dict_into_table(connection, table_name, _dict):
         connection.execute(f"INSERT INTO {table_name} ({keys}) VALUES ({question_marks})", values)
 
 
-def create_sections(connection,
-                    input_file,
-                    include_iostat,
-                    include_nfsiostat,
-                    html_filename,
-                    csv_out,
-                    output_filepath_prefix):
+def create_sections(
+    connection, input_file, include_iostat, include_nfsiostat, html_filename, csv_out, output_filepath_prefix
+):
 
     operating_system = execute_single_read_query(
         connection, "SELECT * FROM overview WHERE field = 'operating system';"
     )[2]
 
     # Get the start date for date format validation
-    profile_run = execute_single_read_query(
-        connection, "SELECT * FROM overview WHERE field = 'profile run';"
-    )[2]
+    profile_run = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'profile run';")[2]
 
-    mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df = extract_sections(operating_system,
-                                                                                 profile_run,
-                                                                                 input_file,
-                                                                                 include_iostat,
-                                                                                 include_nfsiostat,
-                                                                                 html_filename)
+    mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df = extract_sections(
+        operating_system, profile_run, input_file, include_iostat, include_nfsiostat, html_filename
+    )
 
     # Add each section to the database
 
@@ -155,7 +146,7 @@ def create_sections(connection,
 
         # Example Dave L can do IRIS function here
         if True:
-            mgstat_df.to_sql('mgstat', connection, if_exists='append', index=True, index_label="id_key")
+            mgstat_df.to_sql("mgstat", connection, if_exists="append", index=True, index_label="id_key")
             connection.commit()
         else:
             pass
@@ -165,13 +156,13 @@ def create_sections(connection,
 
             # if file does not exist write header
             if not os.path.isfile(mgstat_output_csv):
-                mgstat_df.to_csv(mgstat_output_csv, header='column_names', index=False, encoding='utf-8')
+                mgstat_df.to_csv(mgstat_output_csv, header="column_names", index=False, encoding="utf-8")
             else:  # else it exists so append without writing the header
-                mgstat_df.to_csv(mgstat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
+                mgstat_df.to_csv(mgstat_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
     if not vmstat_df.empty:
 
-        vmstat_df.to_sql('vmstat', connection, if_exists='append', index=True, index_label="id_key")
+        vmstat_df.to_sql("vmstat", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
 
         if csv_out:
@@ -179,12 +170,12 @@ def create_sections(connection,
 
             # if file does not exist write header
             if not os.path.isfile(vmstat_output_csv):
-                vmstat_df.to_csv(vmstat_output_csv, header='column_names', index=False, encoding='utf-8')
+                vmstat_df.to_csv(vmstat_output_csv, header="column_names", index=False, encoding="utf-8")
             else:  # else it exists so append without writing the header
-                vmstat_df.to_csv(vmstat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
+                vmstat_df.to_csv(vmstat_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
     if not perfmon_df.empty:
-        perfmon_df.to_sql('perfmon', connection, if_exists='append', index=True, index_label="id_key")
+        perfmon_df.to_sql("perfmon", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
 
         if csv_out:
@@ -192,13 +183,13 @@ def create_sections(connection,
 
             # if file does not exist write header
             if not os.path.isfile(perfmon_output_csv):
-                perfmon_df.to_csv(perfmon_output_csv, header='column_names', index=False, encoding='utf-8')
+                perfmon_df.to_csv(perfmon_output_csv, header="column_names", index=False, encoding="utf-8")
             else:  # else it exists so append without writing the header
-                perfmon_df.to_csv(perfmon_output_csv, mode='a', header=False, index=False, encoding='utf-8')
+                perfmon_df.to_csv(perfmon_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
     if not iostat_df.empty:
         # id_key is used when there is no time
-        iostat_df.to_sql('iostat', connection, if_exists='append', index=True, index_label="id_key")
+        iostat_df.to_sql("iostat", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
 
         if csv_out:
@@ -206,23 +197,23 @@ def create_sections(connection,
 
             # if file does not exist write header
             if not os.path.isfile(iostat_output_csv):
-                iostat_df.to_csv(iostat_output_csv, header='column_names', index=False, encoding='utf-8')
+                iostat_df.to_csv(iostat_output_csv, header="column_names", index=False, encoding="utf-8")
             else:  # else it exists so append without writing the header
-                iostat_df.to_csv(iostat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
+                iostat_df.to_csv(iostat_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
     if not nfsiostat_df.empty:
         # id_key is used when there is no time
-        nfsiostat_df.to_sql('nfsiostat', connection, if_exists='append', index=True, index_label="id_key")
+        nfsiostat_df.to_sql("nfsiostat", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
 
         if csv_out:
-            nfsiostat_output_csv = f'{output_filepath_prefix}nfsiostat.csv'
+            nfsiostat_output_csv = f"{output_filepath_prefix}nfsiostat.csv"
 
             # if file does not exist write header
             if not os.path.isfile(nfsiostat_output_csv):
-                nfsiostat_df.to_csv(nfsiostat_output_csv, header='column_names', index=False, encoding='utf-8')
+                nfsiostat_df.to_csv(nfsiostat_output_csv, header="column_names", index=False, encoding="utf-8")
             else:  # else it exists so append without writing the header
-                nfsiostat_df.to_csv(nfsiostat_output_csv, mode='a', header=False, index=False, encoding='utf-8')
+                nfsiostat_df.to_csv(nfsiostat_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
 
 def create_overview(connection, sp_dict):
@@ -253,11 +244,11 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     # Convert datetime string to datetime type (data is a _view_ of full dataframe, create a copy to update here)
     png_data = data.copy()
-    png_data.loc[:, 'datetime'] = pd.to_datetime(data['datetime'], infer_datetime_format=True)
+    png_data.loc[:, "datetime"] = pd.to_datetime(data["datetime"], infer_datetime_format=True)
 
     colormap_name = "Set1"
 
-    plt.style.use('seaborn-whitegrid')
+    plt.style.use("seaborn-whitegrid")
     plt.figure(num=None, figsize=(16, 6))
     plt.tight_layout()
 
@@ -269,8 +260,16 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     plt.gcf().set_size_inches(16, 6)
     # plt.gcf().set_dpi(300)
 
-    ax.plot(png_data['datetime'], png_data['metric'], label=column_name, color=color, marker='.', linestyle="none", alpha=0.7)
-    ax.grid(which='major', axis='both', linestyle='--')
+    ax.plot(
+        png_data["datetime"],
+        png_data["metric"],
+        label=column_name,
+        color=color,
+        marker=".",
+        linestyle="none",
+        alpha=0.7,
+    )
+    ax.grid(which="major", axis="both", linestyle="--")
     ax.set_title(title, fontsize=14)
     ax.set_ylabel(column_name, fontsize=10)
     ax.tick_params(labelsize=10)
@@ -287,15 +286,15 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     locator = plt_dates.AutoDateLocator()
     ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(plt_dates.AutoDateFormatter(locator=locator, defaultfmt='%H:%M'))
+    ax.xaxis.set_major_formatter(plt_dates.AutoDateFormatter(locator=locator, defaultfmt="%H:%M"))
 
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     # plt.tight_layout()
 
     output_name = column_name.replace("/", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format='png', dpi=100)
-    plt.close('all')
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=100)
+    plt.close("all")
 
 
 def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -308,7 +307,7 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
     colormap_name = "Set1"
 
-    plt.style.use('seaborn-whitegrid')
+    plt.style.use("seaborn-whitegrid")
     plt.figure(num=None, figsize=(16, 6))
     palette = plt.get_cmap(colormap_name)
 
@@ -318,9 +317,10 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     plt.gcf().set_size_inches(16, 6)
     # plt.gcf().set_dpi(300)
 
-    ax.plot(png_data['id_key'], png_data['metric'], label=column_name, color=color,
-            marker='.', linestyle="-", alpha=0.7)
-    ax.grid(which='major', axis='both', linestyle='--')
+    ax.plot(
+        png_data["id_key"], png_data["metric"], label=column_name, color=color, marker=".", linestyle="-", alpha=0.7
+    )
+    ax.grid(which="major", axis="both", linestyle="--")
     ax.set_title(title, fontsize=14)
     ax.set_ylabel(column_name, fontsize=10)
     ax.tick_params(labelsize=10)
@@ -340,8 +340,8 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     plt.tight_layout()
 
     output_name = column_name.replace("/", "_per_").replace(" ", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format='png', dpi=100)
-    plt.close('all')
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=100)
+    plt.close("all")
 
 
 def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -356,8 +356,8 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     # Create the chart
     base = (
         alt.Chart(data)
-            .mark_line()
-            .encode(
+        .mark_line()
+        .encode(
             # alt.X("datetime:T", title="Time", axis=alt.Axis(format='%e %b, %Y')),
             alt.X("datetime:T", title="Time"),
             alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
@@ -395,7 +395,9 @@ def interactive_chart(data, column_name, title, max_y, filepath, output_prefix, 
         alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
         alt.Color("Type", title="Metric"),
         tooltip=["metric"],
-    ).properties(height=500, width=1333, title=title).interactive().save(f"{filepath}{output_prefix}{file_prefix}int_{output_name}.html", scale_factor=2.0)
+    ).properties(height=500, width=1333, title=title).interactive().save(
+        f"{filepath}{output_prefix}{file_prefix}int_{output_name}.html", scale_factor=2.0
+    )
 
 
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -408,13 +410,14 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     # Create the chart
     base = (
         alt.Chart(data)
-            .mark_line()
-            .encode(
+        .mark_line()
+        .encode(
             alt.X("id_key:Q", title="Count"),
             alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
             alt.Color("Type", title="Metric"),
             tooltip=["metric:N"],
-        ).properties(height=500, width=1333, title=title)
+        )
+        .properties(height=500, width=1333, title=title)
     )
 
     # Upper is zoomed area X axis
@@ -505,9 +508,7 @@ def chart_mgstat(connection, filepath, output_prefix, png_out):
 
     # hack until good way to detect date format is mmm/dd/yyyy or not
     if False:
-        df["RunDate"] = df.apply(
-            lambda row: make_mdy_date(row["RunDate"]), axis=1
-        )
+        df["RunDate"] = df.apply(lambda row: make_mdy_date(row["RunDate"]), axis=1)
 
     # Add a datetime column
     df["datetime"] = df["RunDate"] + " " + df["RunTime"]
@@ -645,7 +646,9 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out)
                         linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
                         if False:
-                            interactive_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                            interactive_chart(
+                                data, column_name, title, max_y, filepath, output_prefix, file_prefix=device
+                            )
 
     else:
         # No date or time, chart all columns, index is x axis
@@ -682,7 +685,9 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out)
                     if png_out:
                         pass
                     else:
-                        linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                        linked_chart_no_time(
+                            data, column_name, title, max_y, filepath, output_prefix, file_prefix=device
+                        )
 
 
 def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out):
@@ -725,25 +730,26 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
                 data = to_chart_df
 
                 if png_out:
-                    simple_chart_no_time(data,
-                                         column_name,
-                                         title,
-                                         max_y,
-                                         filepath,
-                                         output_prefix,
-                                         file_prefix=device.replace("/", "_"))
+                    simple_chart_no_time(
+                        data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
+                    )
                 else:
-                    linked_chart_no_time(data,
-                                         column_name,
-                                         title,
-                                         max_y,
-                                         filepath,
-                                         output_prefix,
-                                         file_prefix=device.replace("/", "_"))
+                    linked_chart_no_time(
+                        data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
+                    )
 
 
-def mainline(input_file, include_iostat, include_nfsiostat, append_to_database, existing_database, output_prefix, csv_out, png_out,
-             system_out):
+def mainline(
+    input_file,
+    include_iostat,
+    include_nfsiostat,
+    append_to_database,
+    existing_database,
+    output_prefix,
+    csv_out,
+    png_out,
+    system_out,
+):
     input_error = False
 
     # What are we doing?
@@ -770,7 +776,7 @@ def mainline(input_file, include_iostat, include_nfsiostat, append_to_database, 
         filepath = "."
 
     # get the prefix
-    html_filename = filename.split('.')[0]
+    html_filename = filename.split(".")[0]
 
     if output_prefix is None:
         output_prefix = f"{html_filename}_"
@@ -800,13 +806,15 @@ def mainline(input_file, include_iostat, include_nfsiostat, append_to_database, 
     # if the count is 1, then table exists
     if cursor.fetchone()[0] == 1:
         if database_action != "Chart only":
-            create_sections(connection,
-                            input_file,
-                            include_iostat,
-                            include_nfsiostat,
-                            html_filename,
-                            csv_out,
-                            output_filepath_prefix)
+            create_sections(
+                connection,
+                input_file,
+                include_iostat,
+                include_nfsiostat,
+                html_filename,
+                csv_out,
+                output_filepath_prefix,
+            )
 
     else:
         if database_action == "Chart only":
@@ -825,17 +833,20 @@ def mainline(input_file, include_iostat, include_nfsiostat, append_to_database, 
 
                 # Simple dump of all data in overview
                 overview_df = pd.DataFrame(list(sp_dict.items()), columns=["key", "value"])
-                overview_df.to_csv(f"{output_filepath_prefix}overview_all.csv", header=True, index=False, sep=',',
-                                   mode='w')
+                overview_df.to_csv(
+                    f"{output_filepath_prefix}overview_all.csv", header=True, index=False, sep=",", mode="w"
+                )
 
             create_overview(connection, sp_dict)
-            create_sections(connection,
-                            input_file,
-                            include_iostat,
-                            include_nfsiostat,
-                            html_filename,
-                            csv_out,
-                            output_filepath_prefix)
+            create_sections(
+                connection,
+                input_file,
+                include_iostat,
+                include_nfsiostat,
+                html_filename,
+                csv_out,
+                output_filepath_prefix,
+            )
 
     connection.close()
 
@@ -903,14 +914,10 @@ if __name__ == "__main__":
         prog="yaspe", description="Performance file review.", epilog='Be safe, "quote the path"'
     )
 
-    parser.add_argument('-v', '--version', action='version', version='%(prog)s 1.220526.001')
+    parser.add_argument("-v", "--version", action="version", version="0.2.10")
 
     parser.add_argument(
-        "-i",
-        "--input_file",
-        help="Input html filename with full path.",
-        action="store",
-        metavar='"/path/file.html"',
+        "-i", "--input_file", help="Input html filename with full path.", action="store", metavar='"/path/file.html"',
     )
 
     parser.add_argument(
@@ -922,11 +929,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "-n",
-        "--nfsiostat",
-        dest="include_nfsiostat",
-        help="Also plot nfsiostat data.",
-        action="store_true",
+        "-n", "--nfsiostat", dest="include_nfsiostat", help="Also plot nfsiostat data.", action="store_true",
     )
 
     parser.add_argument(
@@ -963,19 +966,11 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "-p",
-        "--png",
-        dest="png_out",
-        help="Create png files of metrics. Instead of html",
-        action="store_true",
+        "-p", "--png", dest="png_out", help="Create png files of metrics. Instead of html", action="store_true",
     )
 
     parser.add_argument(
-        "-s",
-        "--system",
-        dest="system_out",
-        help="Output system overview. ",
-        action="store_true",
+        "-s", "--system", dest="system_out", help="Output system overview. ", action="store_true",
     )
 
     args = parser.parse_args()
@@ -1010,14 +1005,25 @@ if __name__ == "__main__":
                 sys.exit()
 
     # This section is a precursor to config file replacement/override of parameters
-    disk_dictionary = {"Database": "dm-9",
-                       "Primary Journal": "sdg1",
-                       "Alternate Journal": "sdh1",
-                       "WIJ": "dm-10",
-                       "IRIS": "dm-10"}
+    disk_dictionary = {
+        "Database": "dm-9",
+        "Primary Journal": "sdg1",
+        "Alternate Journal": "sdh1",
+        "WIJ": "dm-10",
+        "IRIS": "dm-10",
+    }
 
     try:
-        mainline(input_file, args.include_iostat, args.include_nfsiostat, args.append_to_database, existing_database, args.output_prefix,
-                 args.csv_out, args.png_out, args.system_out)
+        mainline(
+            input_file,
+            args.include_iostat,
+            args.include_nfsiostat,
+            args.append_to_database,
+            existing_database,
+            args.output_prefix,
+            args.csv_out,
+            args.png_out,
+            args.system_out,
+        )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
