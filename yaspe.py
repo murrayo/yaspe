@@ -914,7 +914,8 @@ if __name__ == "__main__":
         prog="yaspe", description="Performance file review.", epilog='Be safe, "quote the path"'
     )
 
-    parser.add_argument("-v", "--version", action="version", version="0.2.10")
+    current_version = "0.2.12"
+    parser.add_argument("-v", "--version", action="version", version=current_version)
 
     parser.add_argument(
         "-i", "--input_file", help="Input html filename with full path.", action="store", metavar='"/path/file.html"',
