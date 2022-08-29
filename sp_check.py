@@ -48,9 +48,12 @@ def system_check(input_file):
                 if "AIX" in line:
                     sp_dict["operating system"] = "AIX"
                     operating_system = "AIX"
-                if "Ubuntu Server LTS" in line:
+                if "Ubuntu" in line:
                     sp_dict["operating system"] = "Ubuntu"
                     operating_system = "Ubuntu"
+                else:
+                    sp_dict["operating system"] = "Unknown"
+                    operating_system = "Unknown"
 
             if "Profile run " in line:
                 sp_dict["profile run"] = line.strip()
@@ -225,9 +228,9 @@ def system_check(input_file):
     if "memory MB" not in sp_dict:
         if "windows total memory" in sp_dict:
             # Extract numbers only. Eg there may be point, commas, letters, and others from around the world.
-            sp_dict['memory MB'] = int(''.join(i for i in sp_dict["windows total memory"] if i.isdigit()))
+            sp_dict["memory MB"] = int("".join(i for i in sp_dict["windows total memory"] if i.isdigit()))
         else:
-            sp_dict['memory MB'] = 0
+            sp_dict["memory MB"] = 0
 
     return sp_dict
 
@@ -237,7 +240,7 @@ def build_log(sp_dict):
 
     ct_dict = {}
     pass_count = warn_count = recommend_count = 0
-    ct_dict['swappiness'] = 5
+    ct_dict["swappiness"] = 5
 
     # split up mgstat header
 
@@ -251,23 +254,22 @@ def build_log(sp_dict):
     if "WebServer" in sp_dict:
         if sp_dict["WebServer"] == "1":
             warn_count += 1
-            sp_dict[
-                f"warning {warn_count}"] = f"** Insecure Private Webserver Enabled! **"
+            sp_dict[f"warning {warn_count}"] = f"** Insecure Private Webserver Enabled! **"
 
     if "freeze" in sp_dict:
         if sp_dict["freeze"] == "0":
             warn_count += 1
-            sp_dict[
-                f"warning {warn_count}"] = f"Journal freeze on error is not enabled. If journal IO errors occur " \
-                                           f"database activity that occurs during this period cannot be restored. "
+            sp_dict[f"warning {warn_count}"] = (
+                f"Journal freeze on error is not enabled. If journal IO errors occur "
+                f"database activity that occurs during this period cannot be restored. "
+            )
         else:
             pass_count += 1
             sp_dict[f"pass {pass_count}"] = f"freeze on error is enabled."
 
-    if sp_dict['current journal'] == sp_dict['alternate journal']:
+    if sp_dict["current journal"] == sp_dict["alternate journal"]:
         warn_count += 1
-        sp_dict[
-            f"warning {warn_count}"] = f"Primary Journal is the same as Alternate Journal"
+        sp_dict[f"warning {warn_count}"] = f"Primary Journal is the same as Alternate Journal"
 
     if "globals" in sp_dict:
         globals = sp_dict["globals"].split(",")
@@ -287,46 +289,41 @@ def build_log(sp_dict):
     if "bbsiz" in sp_dict:
         if int(sp_dict["bbsiz"]) == 262144:
             warn_count += 1
-            sp_dict[
-                f"warning {warn_count}"] = f"bbsiz is default"
+            sp_dict[f"warning {warn_count}"] = f"bbsiz is default"
 
     if "gmheap" in sp_dict:
         if int(sp_dict["gmheap"]) == 37568:
             warn_count += 1
-            sp_dict[
-                f"warning {warn_count}"] = f"gmheap is default"
+            sp_dict[f"warning {warn_count}"] = f"gmheap is default"
 
-        if int(sp_dict["gmheap"])/1024 < 200:
+        if int(sp_dict["gmheap"]) / 1024 < 200:
             warn_count += 1
-            sp_dict[
-                f"warning {warn_count}"] = f"gmheap {sp_dict['gmheap']} size does not support parallel dejournaling"
+            sp_dict[f"warning {warn_count}"] = f"gmheap {sp_dict['gmheap']} size does not support parallel dejournaling"
 
     if "locksiz" in sp_dict:
         if int(sp_dict["locksiz"]) == 16777216:
             warn_count += 1
-            sp_dict[
-                f"warning {warn_count}"] = f"locksiz is default"
+            sp_dict[f"warning {warn_count}"] = f"locksiz is default"
         if int(sp_dict["locksiz"]) < 16777216:
             warn_count += 1
-            sp_dict[
-                f"warning {warn_count}"] = f"locksiz {sp_dict['locksiz']} is less than IRIS default (16777216)"
+            sp_dict[f"warning {warn_count}"] = f"locksiz {sp_dict['locksiz']} is less than IRIS default (16777216)"
 
     if "wijdir" in sp_dict:
         if sp_dict["wijdir"] == "":
             warn_count += 1
-            sp_dict[
-                f"warning {warn_count}"] = f"WIJ in Installation Directory"
+            sp_dict[f"warning {warn_count}"] = f"WIJ in Installation Directory"
 
     # Linux kernel
 
     if "swappiness" in sp_dict:
-        if int(sp_dict["swappiness"]) > ct_dict['swappiness']:
+        if int(sp_dict["swappiness"]) > ct_dict["swappiness"]:
             warn_count += 1
-            sp_dict[
-                f"warning {warn_count}"] = f"swappiness is {sp_dict['swappiness']}. " \
-                                           f"For databases {ct_dict['swappiness']} " \
-                                           f"is recommended to adjust how aggressive the Linux kernel swaps memory " \
-                                           f"pages to disk. "
+            sp_dict[f"warning {warn_count}"] = (
+                f"swappiness is {sp_dict['swappiness']}. "
+                f"For databases {ct_dict['swappiness']} "
+                f"is recommended to adjust how aggressive the Linux kernel swaps memory "
+                f"pages to disk. "
+            )
         else:
             pass_count += 1
             sp_dict[f"pass {pass_count}"] = f"swappiness is {sp_dict['swappiness']}"
@@ -336,8 +333,7 @@ def build_log(sp_dict):
     if "memlock" in sp_dict:
         if int(sp_dict["memlock"]) == 0:
             warn_count += 1
-            sp_dict[
-                f"warning {warn_count}"] = f"memlock={sp_dict['memlock']} does not enforce Huge/Large pages"
+            sp_dict[f"warning {warn_count}"] = f"memlock={sp_dict['memlock']} does not enforce Huge/Large pages"
 
     if "memory MB" in sp_dict:
 
@@ -345,63 +341,63 @@ def build_log(sp_dict):
 
         sp_dict["memory GB"] = f"{round(int(sp_dict['memory MB']) / 1024)}"
 
-        sp_dict["shared memory MB"] = sp_dict["globals total MB"] + sp_dict["routines total MB"] + round(
-            int(sp_dict['gmheap']) / 1024)
+        sp_dict["shared memory MB"] = (
+            sp_dict["globals total MB"] + sp_dict["routines total MB"] + round(int(sp_dict["gmheap"]) / 1024)
+        )
         sp_dict[
-            "shared memory calc"] = f"globals {sp_dict['globals total MB']} MB + routines {sp_dict['routines total MB']} MB + gmheap {round(int(sp_dict['gmheap']) / 1024)} MB"
+            "shared memory calc"
+        ] = f"globals {sp_dict['globals total MB']} MB + routines {sp_dict['routines total MB']} MB + gmheap {round(int(sp_dict['gmheap']) / 1024)} MB"
 
-        sp_dict["75pct memory MB"] = round(int(sp_dict['memory MB']) * .75)
+        sp_dict["75pct memory MB"] = round(int(sp_dict["memory MB"]) * 0.75)
         sp_dict["75pct memory number huge pages"] = round((sp_dict["75pct memory MB"] * 1024) / huge_page_size_kb)
 
         if "vm.nr_hugepages" in sp_dict:
 
             if int(sp_dict["vm.nr_hugepages"]) == 0:
                 warn_count += 1
-                sp_dict[
-                    f"warning {warn_count}"] = f"Hugepages not set. For performance, memory efficiency and to protect " \
-                                               f"the shared memory from paging out, use huge page memory space. It is " \
-                                               f"not advisable to specify HugePages much higher than the shared " \
-                                               f"memory amount because the unused memory are not be available to " \
-                                               f"other components. "
-
-                recommend_count += 1
-                sp_dict[
-                    f"recommend {recommend_count}"] = f"Set HugePages, see IRIS documentation: " \
-                                                      f"https://docs.intersystems.com/irislatest/csp/docbook/Doc.View" \
-                                                      f".cls?KEY=GCI_prepare_install#GCI_memory_big_linux "
-
-                recommend_count += 1
-                msg = (
-                    f"Total memory is {int(sp_dict['memory MB']):,} MB, 75% of total memory is {int(sp_dict['75pct memory MB']):,} MB."
+                sp_dict[f"warning {warn_count}"] = (
+                    f"Hugepages not set. For performance, memory efficiency and to protect "
+                    f"the shared memory from paging out, use huge page memory space. It is "
+                    f"not advisable to specify HugePages much higher than the shared "
+                    f"memory amount because the unused memory are not be available to "
+                    f"other components. "
                 )
-                sp_dict[
-                    f"recommend {recommend_count}"] = msg
+
+                recommend_count += 1
+                sp_dict[f"recommend {recommend_count}"] = (
+                    f"Set HugePages, see IRIS documentation: "
+                    f"https://docs.intersystems.com/irislatest/csp/docbook/Doc.View"
+                    f".cls?KEY=GCI_prepare_install#GCI_memory_big_linux "
+                )
+
+                recommend_count += 1
+                msg = f"Total memory is {int(sp_dict['memory MB']):,} MB, 75% of total memory is {int(sp_dict['75pct memory MB']):,} MB."
+                sp_dict[f"recommend {recommend_count}"] = msg
 
                 recommend_count += 1
                 msg = (
                     f"Shared memory (globals+routines+gmheap) is {sp_dict['shared memory MB']:,} MB. "
                     f"({round((sp_dict['shared memory MB'] / int(sp_dict['memory MB'])) * 100):,}% of total memory)."
                 )
-                sp_dict[
-                    f"recommend {recommend_count}"] = msg
+                sp_dict[f"recommend {recommend_count}"] = msg
 
                 recommend_count += 1
-                shared_memory_plus_5pct = round(sp_dict['shared memory MB'] * 1.05)
+                shared_memory_plus_5pct = round(sp_dict["shared memory MB"] * 1.05)
                 msg = (
                     f"Number of HugePages for {huge_page_size_kb} KB page size for ({sp_dict['shared memory MB']:,} MB + 5% buffer = {shared_memory_plus_5pct:,} MB) "
                     f"is {round((shared_memory_plus_5pct * 1024) / huge_page_size_kb)}"
                 )
-                sp_dict[
-                    f"recommend {recommend_count}"] = msg
+                sp_dict[f"recommend {recommend_count}"] = msg
 
                 if "max locked memory" in sp_dict:
                     if sp_dict["max locked memory"].isdigit():
                         if int(sp_dict["max locked memory"]) < 100:
                             warn_count += 1
-                            sp_dict[
-                                f"warning {warn_count}"] = f"max locked memory {sp_dict['max locked memory']} kb too " \
-                                                           f"small to lock shared memory segment in memory without huge " \
-                                                           f"pages (see ulimit -a) "
+                            sp_dict[f"warning {warn_count}"] = (
+                                f"max locked memory {sp_dict['max locked memory']} kb too "
+                                f"small to lock shared memory segment in memory without huge "
+                                f"pages (see ulimit -a) "
+                            )
 
             else:
                 sp_dict["hugepages MB"] = round(int(sp_dict["vm.nr_hugepages"]) * huge_page_size_kb / 1024)
@@ -409,24 +405,21 @@ def build_log(sp_dict):
                 if sp_dict["hugepages MB"] < sp_dict["shared memory MB"]:
                     warn_count += 1
                     sp_dict[
-                        f"warning {warn_count}"] = f"shared memory is {sp_dict['shared memory MB']:,} MB hugepages is {sp_dict['hugepages MB']:,} MB"
+                        f"warning {warn_count}"
+                    ] = f"shared memory is {sp_dict['shared memory MB']:,} MB hugepages is {sp_dict['hugepages MB']:,} MB"
                 else:
                     pass_count += 1
                     sp_dict[f"pass {pass_count}"] = f"HugePages is set:"
                     pass_count += 1
-                    msg = (
-                        f"Total memory is {int(sp_dict['memory MB']):,} MB. "
-                    )
-                    sp_dict[
-                        f"pass {pass_count}"] = msg
+                    msg = f"Total memory is {int(sp_dict['memory MB']):,} MB. "
+                    sp_dict[f"pass {pass_count}"] = msg
 
                     pass_count += 1
                     msg = (
                         f"75% of total memory is {int(sp_dict['75pct memory MB']):,} MB. "
                         f"Shared memory is {sp_dict['shared memory MB']:,}, {round(sp_dict['shared memory MB'] / int(sp_dict['memory MB']) * 100):,}% of total memory."
                     )
-                    sp_dict[
-                        f"pass {pass_count}"] = msg
+                    sp_dict[f"pass {pass_count}"] = msg
 
                     pass_count += 1
                     msg = (
@@ -434,8 +427,7 @@ def build_log(sp_dict):
                         f"gap is {sp_dict['hugepages MB'] - sp_dict['shared memory MB']:,} MB. "
                         f"Shared memory is {round((sp_dict['shared memory MB']) / int(sp_dict['hugepages MB']) * 100):,}% of huge pages."
                     )
-                    sp_dict[
-                        f"pass {pass_count}"] = msg
+                    sp_dict[f"pass {pass_count}"] = msg
 
             if "kernel.shmmax" in sp_dict:
 
@@ -447,7 +439,8 @@ def build_log(sp_dict):
                         if int(sp_dict["kernel.shmmax"]) < sp_dict["hugepages MB"] * 1024 * 1024:
                             warn_count += 1
                             sp_dict[
-                                f"warning {warn_count}"] = f"Kernel shared memory limit must be higher than hugepages."
+                                f"warning {warn_count}"
+                            ] = f"Kernel shared memory limit must be higher than hugepages."
                         else:
                             pass_count += 1
                             sp_dict[f"pass {pass_count}"] = f"Kernel shared memory limit is higher than hugepages"
@@ -481,15 +474,15 @@ def build_log(sp_dict):
 
     if "platform" not in sp_dict:
         sp_dict["platform"] = "N/A"
-    if 'shared memory calc' not in sp_dict:
-        sp_dict['shared memory calc'] = ""
-    if 'shared memory MB' not in sp_dict:
-        sp_dict['shared memory MB'] = 0
+    if "shared memory calc" not in sp_dict:
+        sp_dict["shared memory calc"] = ""
+    if "shared memory MB" not in sp_dict:
+        sp_dict["shared memory MB"] = 0
     hostname = "N/A"
-    if 'linux hostname' in sp_dict:
-        hostname = sp_dict['linux hostname']
-    if 'windows host name' in sp_dict:
-        hostname = sp_dict['windows host name']
+    if "linux hostname" in sp_dict:
+        hostname = sp_dict["linux hostname"]
+    if "windows host name" in sp_dict:
+        hostname = sp_dict["windows host name"]
 
     # Build log
 
@@ -500,7 +493,7 @@ def build_log(sp_dict):
     log += f"Operating system : {sp_dict['operating system']}\n"
     log += f"Platform         : {sp_dict['platform']}\n"
     log += f"CPUs             : {sp_dict['number cpus']}\n"
-    if sp_dict['operating system'] == "AIX":
+    if sp_dict["operating system"] == "AIX":
         log += f"SMT              : {sp_dict['AIX number cpus']}\n"
     log += f"Processor model  : {sp_dict['processor model']}\n"
     log += f"Memory           : {sp_dict['memory GB']} GB\n"
@@ -555,9 +548,9 @@ def build_log(sp_dict):
         log += f"WIJ directory          : {sp_dict['wijdir']}\n"
 
     log += "\nAdditional:\n"
-    if 'IRISSYS' in sp_dict:
+    if "IRISSYS" in sp_dict:
         log += f"IRISSYS                : {sp_dict['IRISSYS']}\n"
-    if 'CACHESYS' in sp_dict:
+    if "CACHESYS" in sp_dict:
         log += f"CACHESYS               : {sp_dict['CACHESYS']}\n"
 
     return log
