@@ -495,7 +495,7 @@ def build_log(sp_dict):
     log += f"Operating system : {sp_dict['operating system']}\n"
     log += f"Platform         : {sp_dict['platform']}\n"
     log += f"CPUs             : {sp_dict['number cpus']}\n"
-    if sp_dict["operating system"] == "AIX":
+    if sp_dict["operating system"] == "AIX" and "AIX number cpus" in sp_dict:
         log += f"SMT              : {sp_dict['AIX number cpus']}\n"
     log += f"Processor model  : {sp_dict['processor model']}\n"
     log += f"Memory           : {sp_dict['memory GB']} GB\n"
