@@ -194,6 +194,8 @@ def system_check(input_file):
                 perfmon_next = True
 
             # AIX
+            sp_dict["AIX number cpus"] = "0"
+
             if operating_system == "AIX":
                 if "Processor Type:" in line:
                     sp_dict["processor model"] = (line.split(":")[1]).strip()
