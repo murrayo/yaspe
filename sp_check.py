@@ -36,19 +36,20 @@ def system_check(input_file):
             if "overview=" in line:
                 sp_dict["overview"] = (line.split("=")[1]).strip()
 
+            # Product Version String:
             if "Version String: " in line or "Product Version String: " in line:
                 sp_dict["version string"] = (line.split(":", 1)[1]).strip()
 
                 if "Windows" in line:
                     sp_dict["operating system"] = "Windows"
                     operating_system = "Windows"
-                if "Linux" in line:
+                elif "Linux" in line:
                     sp_dict["operating system"] = "Linux"
                     operating_system = "Linux"
-                if "AIX" in line:
+                elif "AIX" in line:
                     sp_dict["operating system"] = "AIX"
                     operating_system = "AIX"
-                if "Ubuntu" in line:
+                elif "Ubuntu" in line:
                     sp_dict["operating system"] = "Ubuntu"
                     operating_system = "Ubuntu"
                 else:
@@ -194,18 +195,13 @@ def system_check(input_file):
                 perfmon_next = True
 
             # AIX
-            sp_dict["AIX number cpus"] = "0"
-
             if operating_system == "AIX":
                 if "Processor Type:" in line:
                     sp_dict["processor model"] = (line.split(":")[1]).strip()
-                if "Number Of Processors:" in line:
-                    sp_dict["AIX number cpus"] = f'{(line.split(":")[1]).strip()} cores '
                 if "smt_threads" in line:
-                    sp_dict["AIX number cpus"] = f'{sp_dict["AIX number cpus"]} SMT {(line.split(" ")[1]).strip()}'
+                    sp_dict["AIX SMT"] = f'{(line.split(" ")[1]).strip()}'
                 if "Memory Size:" in line:
                     sp_dict["memory MB"] = (line.split(":")[1]).split()[0].strip()
-
                 # Number Of Processors: 10
                 # Memory Size: 24576 MB
                 # smt_threads 8
@@ -223,7 +219,7 @@ def system_check(input_file):
 
     if "processor model" not in sp_dict:
         if "windows processor" not in sp_dict:
-            sp_dict["processor model"] = "Ask customer"
+            sp_dict["processor model"] = "Unknown Processor"
         else:
             sp_dict["processor model"] = sp_dict["windows processor"]
 
@@ -488,15 +484,15 @@ def build_log(sp_dict):
 
     # Build log
 
-    log = f"\nSystem Summary for {sp_dict['customer']}\n\n"
+    log = f"System Summary for {sp_dict['customer']}\n\n"
     log += f"Hostname         : {hostname}\n"
     log += f"Instance         : {sp_dict['instance']}\n"
 
     log += f"Operating system : {sp_dict['operating system']}\n"
     log += f"Platform         : {sp_dict['platform']}\n"
     log += f"CPUs             : {sp_dict['number cpus']}\n"
-    if sp_dict["operating system"] == "AIX" and "AIX number cpus" in sp_dict:
-        log += f"SMT              : {sp_dict['AIX number cpus']}\n"
+    if sp_dict["operating system"] == "AIX" and "AIX SMT" in sp_dict:
+        log += f"SMT              : {sp_dict['AIX SMT']}\n"
     log += f"Processor model  : {sp_dict['processor model']}\n"
     log += f"Memory           : {sp_dict['memory GB']} GB\n"
     log += f"Shared memory    : {sp_dict['shared memory calc']} = {int(sp_dict['shared memory MB']):,} MB\n"

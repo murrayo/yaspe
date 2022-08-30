@@ -443,8 +443,8 @@ def chart_vmstat(connection, filepath, output_prefix, png_out):
     processor = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'processor model';")[2]
 
     if execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'operating system';")[2] == "AIX":
-        aix_cpus = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'AIX number cpus';")[2]
-        processor += f" {aix_cpus}"
+        aix_cpus = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'AIX SMT';")[2]
+        processor += f" SMT {aix_cpus}"
 
     # Read in to dataframe
     df = pd.read_sql_query("SELECT * FROM vmstat", connection)
@@ -918,7 +918,11 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--version", action="version", version=current_version)
 
     parser.add_argument(
-        "-i", "--input_file", help="Input html filename with full path.", action="store", metavar='"/path/file.html"',
+        "-i",
+        "--input_file",
+        help="Input html filename with full path.",
+        action="store",
+        metavar='"/path/file.html"',
     )
 
     parser.add_argument(
@@ -930,7 +934,11 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "-n", "--nfsiostat", dest="include_nfsiostat", help="Also plot nfsiostat data.", action="store_true",
+        "-n",
+        "--nfsiostat",
+        dest="include_nfsiostat",
+        help="Also plot nfsiostat data.",
+        action="store_true",
     )
 
     parser.add_argument(
@@ -967,11 +975,19 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "-p", "--png", dest="png_out", help="Create png files of metrics. Instead of html", action="store_true",
+        "-p",
+        "--png",
+        dest="png_out",
+        help="Create png files of metrics. Instead of html",
+        action="store_true",
     )
 
     parser.add_argument(
-        "-s", "--system", dest="system_out", help="Output system overview. ", action="store_true",
+        "-s",
+        "--system",
+        dest="system_out",
+        help="Output system overview. ",
+        action="store_true",
     )
 
     args = parser.parse_args()
