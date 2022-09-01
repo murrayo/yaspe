@@ -456,6 +456,7 @@ def execute_single_read_query(connection, query):
     except Error as error:
         print(f"The error '{error}' occurred")
 
+
 def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_plots, include_mgstat_plots):
 
     disk_list_d = plot_d["Disk List"]
@@ -463,14 +464,14 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
     db = sqlite3.connect(db_filename)
 
     # Get the start date for date format validation
-    profile_run = execute_single_read_query(
-        db, "SELECT * FROM overview WHERE field = 'profile run';"
-    )[2]
+    profile_run = execute_single_read_query(db, "SELECT * FROM overview WHERE field = 'profile run';")[2]
     run_start = profile_run.split("on ")[1]
     run_start = run_start[:-1]
-    run_start_date = dateutil.parser.parse(run_start).strftime('%Y-%m-%d')
+    run_start_date = dateutil.parser.parse(run_start).strftime("%Y-%m-%d")
 
     # iostat section only
+
+    print(f"{include_iostat_plots}")
 
     if include_iostat_plots:
 
@@ -480,6 +481,7 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
 
             # Get disk metrics
             df_master = get_disk_dataframe(db, disk_list_d[key])
+
             df_master_zoom = df_master.between_time(zoom_start, zoom_end)
 
             # Create headings
@@ -537,11 +539,16 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
         # Resample to 1 sec
         # df_master_vm = df_master_vm.reset_index().set_index("datetime").resample("1S", convention='start').interpolate(method="linear")
         df_master_vm = df_master_vm.reset_index().set_index("datetime").resample("1S").interpolate(method="linear")
- 
+
         # Get mgstat
         df_master_mg = get_subset_dataframe(db, "mgstat")
         df_master_mg = df_master_mg.add_suffix("_mg")
-        df_master_mg = df_master_mg.reset_index().set_index("datetime").resample("1S", convention='start').interpolate(method="linear")
+        df_master_mg = (
+            df_master_mg.reset_index()
+            .set_index("datetime")
+            .resample("1S", convention="start")
+            .interpolate(method="linear")
+        )
 
         # for iostat get and database (_db) Primary journal (_pri) WIJ (_wij)
         for key in disk_list_d.keys():
@@ -573,43 +580,57 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
 
         df_merged_disks = df_merged_disks[~df_merged_disks.index.duplicated()]
 
-        df_merged_disks = df_merged_disks.reset_index().set_index("datetime").resample("1S", convention='start').interpolate(method="linear")
+        df_merged_disks = (
+            df_merged_disks.reset_index()
+            .set_index("datetime")
+            .resample("1S", convention="start")
+            .interpolate(method="linear")
+        )
 
         # Check the date formats match before merge
         date_vm = df_master_vm.head(1).index.tolist()
         date_mg = df_master_mg.head(1).index.tolist()
         date_disk = df_merged_disks.head(1).index.tolist()
 
-        if run_start_date == date_mg[0].strftime('%Y-%m-%d') == date_vm[0].strftime('%Y-%m-%d') == date_disk[0].strftime('%Y-%m-%d'):
+        if (
+            run_start_date
+            == date_mg[0].strftime("%Y-%m-%d")
+            == date_vm[0].strftime("%Y-%m-%d")
+            == date_disk[0].strftime("%Y-%m-%d")
+        ):
             print(f"Dates OK")
         else:
             # run_start_date is in Y-m-d format
             # = dateutil.parser.parse(run_start).strftime('%Y-%m-%d')
 
-            if date_mg[0].strftime('%Y-%m-%d') != run_start_date:
-                print(f"mgstat date mismatch corrected: "
-                      f"{date_mg[0].strftime('%Y-%m-%d')} start date: {run_start_date}")
+            if date_mg[0].strftime("%Y-%m-%d") != run_start_date:
+                print(
+                    f"mgstat date mismatch corrected: "
+                    f"{date_mg[0].strftime('%Y-%m-%d')} start date: {run_start_date}"
+                )
                 # swap dd mm to mm dd
-                df_master_mg.index = df_master_mg.index.strftime('%Y-%d-%m %H:%M:%S')
-                df_master_mg.index = pd.to_datetime(df_master_mg.index, format='%Y-%m-%d %H:%M:%S')
-            if date_vm[0].strftime('%Y-%m-%d') != run_start_date:
-                print(f"vmstat date mismatch corrected: "
-                      f"{date_disk[0].strftime('%Y-%m-%d')} start date: {run_start_date}")
-                df_master_vm.index = df_master_vm.index.strftime('%Y-%d-%m %H:%M:%S')
-                df_master_vm.index = pd.to_datetime(df_master_vm.index, format='%Y-%m-%d %H:%M:%S')
-            if date_disk[0].strftime('%Y-%m-%d') != run_start_date:
-                print(f"iostat date mismatch corrected: "
-                      f"{date_disk[0].strftime('%Y-%m-%d')} start date: {run_start_date}")
-                df_merged_disks.index = df_merged_disks.index.strftime('%Y-%d-%m %H:%M:%S')
-                df_merged_disks.index = pd.to_datetime(df_merged_disks.index, format='%Y-%m-%d %H:%M:%S')
+                df_master_mg.index = df_master_mg.index.strftime("%Y-%d-%m %H:%M:%S")
+                df_master_mg.index = pd.to_datetime(df_master_mg.index, format="%Y-%m-%d %H:%M:%S")
+            if date_vm[0].strftime("%Y-%m-%d") != run_start_date:
+                print(
+                    f"vmstat date mismatch corrected: "
+                    f"{date_disk[0].strftime('%Y-%m-%d')} start date: {run_start_date}"
+                )
+                df_master_vm.index = df_master_vm.index.strftime("%Y-%d-%m %H:%M:%S")
+                df_master_vm.index = pd.to_datetime(df_master_vm.index, format="%Y-%m-%d %H:%M:%S")
+            if date_disk[0].strftime("%Y-%m-%d") != run_start_date:
+                print(
+                    f"iostat date mismatch corrected: "
+                    f"{date_disk[0].strftime('%Y-%m-%d')} start date: {run_start_date}"
+                )
+                df_merged_disks.index = df_merged_disks.index.strftime("%Y-%d-%m %H:%M:%S")
+                df_merged_disks.index = pd.to_datetime(df_merged_disks.index, format="%Y-%m-%d %H:%M:%S")
 
         # Merge in mgstat
-        df_bigmerge = pd.merge(df_merged_disks, df_master_mg,
-                               how="left", left_index=True, right_index=True)
+        df_bigmerge = pd.merge(df_merged_disks, df_master_mg, how="left", left_index=True, right_index=True)
 
         # Merge in vmstat
-        df_bigmerge = pd.merge(df_bigmerge, df_master_vm,
-                               how="left", left_index=True, right_index=True)
+        df_bigmerge = pd.merge(df_bigmerge, df_master_vm, how="left", left_index=True, right_index=True)
 
         # Text fields are not resampled so are nan
         # df_bigmerge = df_bigmerge.dropna()
