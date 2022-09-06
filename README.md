@@ -48,9 +48,8 @@ For local version:
 `docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h`
 
 ```commandline
-usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a]
-             [-o "output file prefix"]
-             [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-s]
+usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c]
+             [-p] [-s] [-d DISK_LIST [DISK_LIST ...]]
 
 Performance file review.
 
@@ -61,18 +60,16 @@ optional arguments:
                         Input html filename with full path.
   -x, --iostat          Also plot iostat data (can take a long time).
   -n, --nfsiostat       Also plot nfsiostat data.
-  -a, --append          Do not overwrite database, append to existing
-                        database.
+  -a, --append          Do not overwrite database, append to existing database.
   -o "output file prefix", --output_prefix "output file prefix"
-                        Output filename prefix, defaults to html file name,
-                        blank (-o '') is legal.
+                        Output filename prefix, defaults to html file name, blank (-o '') is legal.
   -e "/path/filename_SystemPerformance.sqlite", --existing_database "/path/filename_SystemPerformance.sqlite"
-                        Chart existing database, full path and filename to
-                        existing database.
-  -c, --csv             Create csv files of each html files metrics, append if
-                        csv file exists.
+                        Chart existing database, full path and filename to existing database.
+  -c, --csv             Create csv files of each html files metrics, append if csv file exists.
   -p, --png             Create png files of metrics. Instead of html
   -s, --system          Output system overview.
+  -d DISK_LIST [DISK_LIST ...], --disk_list DISK_LIST [DISK_LIST ...]
+                        List of disks, if not entered all are processed
 
 Be safe, "quote the path"
 ```
@@ -89,6 +86,11 @@ If you want simple png files rather than html: smaller and quicker to look throu
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p
 ```
 
+If you care only about a selected list of disks you can optionally add a disk list. A list of devices without the `/dev/` for example:
+
+```commandline
+docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p -x -d dm-0 dm-1
+```
 
 <hr>
 

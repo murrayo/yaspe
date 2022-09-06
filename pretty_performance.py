@@ -754,7 +754,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "-l", "--limit_yaxis", help="limit y axis to 3 sigma maximum", required=False, action="store_true"
     )
-
     args = parser.parse_args()
 
     if args.db_filename is not None:

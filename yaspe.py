@@ -593,7 +593,7 @@ def chart_perfmon(connection, filepath, output_prefix, png_out):
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
-def chart_iostat(connection, filepath, output_prefix, operating_system, png_out):
+def chart_iostat(connection, filepath, output_prefix, operating_system, png_out, disk_list):
     # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -615,12 +615,21 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out)
         iostat_df = df[columns_to_chart]
         devices = iostat_df["Device"].unique()
 
+        # If a disk list has been passed in. Validate the list.
+
+        if disk_list:
+            disk_list = list(set(disk_list).intersection(devices))
+            if disk_list:
+                print(f"Only devices: {disk_list}")
+                devices = disk_list
+
         # Chart each disk
         for device in devices:
 
             device_df = iostat_df.loc[iostat_df["Device"] == device]
 
-            # unpivot the dataframe; first column is date time column, column name is next, then the value in that column
+            # unpivot the dataframe; first column is date time column, column name is next, then the value in that
+            # column
             device_df = device_df.melt("datetime", var_name="Type", value_name="metric")
 
             # For each column create a chart
@@ -749,6 +758,7 @@ def mainline(
     csv_out,
     png_out,
     system_out,
+    disk_list,
 ):
     input_error = False
 
@@ -884,7 +894,7 @@ def mainline(
                 output_file_path = f"{output_file_path_base}/iostat/"
                 if not os.path.isdir(output_file_path):
                     os.mkdir(output_file_path)
-                chart_iostat(connection, output_file_path, output_prefix, operating_system, png_out)
+                chart_iostat(connection, output_file_path, output_prefix, operating_system, png_out, disk_list)
 
             if include_nfsiostat:
                 output_file_path = f"{output_file_path_base}/nfsiostat/"
@@ -990,6 +1000,10 @@ if __name__ == "__main__":
         action="store_true",
     )
 
+    parser.add_argument(
+        "-d", "--disk_list", nargs="+", default=[], help="List of disks, if not entered all are " "processed"
+    )
+
     args = parser.parse_args()
 
     # Validate input file
@@ -1041,6 +1055,7 @@ if __name__ == "__main__":
             args.csv_out,
             args.png_out,
             args.system_out,
+            args.disk_list,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
