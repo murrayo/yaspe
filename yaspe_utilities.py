@@ -16,6 +16,23 @@ def get_number_type(s):
             return s
 
 
+def get_aix_wacky_numbers(s):
+
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        try:
+            if "K" in s:
+                value = s.split("K")[0]
+                return int(float(value) * 1000)
+            elif "M" in s:
+                value = s.split("M")[0]
+                return int(float(value) * 1000000)
+            return locale.atof(s)
+        except (ValueError, TypeError):
+            return s
+
+
 def check_date(section, run_start_date, date_to_check):
 
     if int(date_to_check[:2]) > 2000:
@@ -23,8 +40,7 @@ def check_date(section, run_start_date, date_to_check):
         return False
 
     if int(date_to_check[:2]) > 12:
-        print(
-            f"{section} convert dd/mm/yy date to mm/dd/yy {date_to_check} > {make_mdy_date(date_to_check)}")
+        print(f"{section} convert dd/mm/yy date to mm/dd/yy {date_to_check} > {make_mdy_date(date_to_check)}")
         return True
     else:
         delta = run_start_date - dateutil.parser.parse(date_to_check)
@@ -50,7 +66,7 @@ def make_mdy_date(date_in):
     month = datetime.strptime(str(date_parsed.date()), "%Y-%m-%d").strftime("%m")
     year = datetime.strptime(str(date_parsed.date()), "%Y-%m-%d").strftime("%Y")
 
-    if int(date_in[: 2]) > 12:
+    if int(date_in[:2]) > 12:
         date_out = f"{month}/{day}/{year}"
     else:
         date_out = f"{day}/{month}/{year}"

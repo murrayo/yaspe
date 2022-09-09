@@ -2,7 +2,7 @@ import dateutil.parser
 from dateutil.relativedelta import *
 
 import pandas as pd
-from yaspe_utilities import get_number_type, make_mdy_date, check_date
+from yaspe_utilities import get_number_type, make_mdy_date, check_date, get_aix_wacky_numbers
 
 
 def extract_sections(operating_system, profile_run, input_file, include_iostat, include_nfsiostat, html_filename):
@@ -66,9 +66,9 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                     mgstat_row_dict["html name"] = html_filename
 
                     # Check date format
-                    if not mgstat_date_convert and mgstat_row_dict['Date'] != mgstat_date:
-                        mgstat_date = mgstat_row_dict['Date']
-                        mgstat_date_convert = check_date("mgstat", run_start_date, mgstat_row_dict['Date'])
+                    if not mgstat_date_convert and mgstat_row_dict["Date"] != mgstat_date:
+                        mgstat_date = mgstat_row_dict["Date"]
+                        mgstat_date_convert = check_date("mgstat", run_start_date, mgstat_row_dict["Date"])
 
                     if mgstat_date_convert:
                         new_date = make_mdy_date(mgstat_row_dict["Date"])
@@ -102,9 +102,9 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                         vmstat_row_dict["html name"] = html_filename
 
                         # Check date format
-                        if not vmstat_date_convert and vmstat_row_dict['Date'] != vmstat_date:
-                            vmstat_date = vmstat_row_dict['Date']
-                            vmstat_date_convert = check_date("vmstat", run_start_date, vmstat_row_dict['Date'])
+                        if not vmstat_date_convert and vmstat_row_dict["Date"] != vmstat_date:
+                            vmstat_date = vmstat_row_dict["Date"]
+                            vmstat_date_convert = check_date("vmstat", run_start_date, vmstat_row_dict["Date"])
 
                         if vmstat_date_convert:
                             new_date = make_mdy_date(vmstat_row_dict["Date"])
@@ -153,9 +153,9 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                         vmstat_row_dict["html name"] = html_filename
 
                         # Check date format
-                        if not vmstat_date_convert and vmstat_row_dict['Date'] != vmstat_date:
-                            vmstat_date = vmstat_row_dict['Date']
-                            vmstat_date_convert = check_date("aix_vmstat", run_start_date, vmstat_row_dict['Date'])
+                        if not vmstat_date_convert and vmstat_row_dict["Date"] != vmstat_date:
+                            vmstat_date = vmstat_row_dict["Date"]
+                            vmstat_date_convert = check_date("aix_vmstat", run_start_date, vmstat_row_dict["Date"])
 
                         if vmstat_date_convert:
                             new_date = make_mdy_date(vmstat_row_dict["Date"])
@@ -180,8 +180,8 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
 
                     # Duplicate column names in AIX
                     for i in range(len(vmstat_columns)):
-                        if vmstat_columns[i] == 'sy':
-                            vmstat_columns[i] = 'sy_calls'
+                        if vmstat_columns[i] == "sy":
+                            vmstat_columns[i] = "sy_calls"
                             break
 
             if operating_system == "Windows":
@@ -250,13 +250,13 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                             if iostat_date_included:
                                 if iostat_am_pm:
                                     line = (
-                                            date_time.split()[0]
-                                            + ","
-                                            + date_time.split()[1]
-                                            + " "
-                                            + date_time.split()[2]
-                                            + ","
-                                            + line
+                                        date_time.split()[0]
+                                        + ","
+                                        + date_time.split()[1]
+                                        + " "
+                                        + date_time.split()[2]
+                                        + ","
+                                        + line
                                     )
                                 else:
                                     line = date_time.split()[0] + "," + str(date_time.split()[1]) + "," + line
@@ -267,9 +267,9 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                             iostat_row_dict["html name"] = html_filename
 
                             # Check date format
-                            if not iostat_date_convert and iostat_row_dict['Date'] != iostat_date:
-                                iostat_date = iostat_row_dict['Date']
-                                iostat_date_convert = check_date("iostat", run_start_date, iostat_row_dict['Date'])
+                            if not iostat_date_convert and iostat_row_dict["Date"] != iostat_date:
+                                iostat_date = iostat_row_dict["Date"]
+                                iostat_date_convert = check_date("iostat", run_start_date, iostat_row_dict["Date"])
 
                             if iostat_date_convert:
                                 new_date = make_mdy_date(iostat_row_dict["Date"])
@@ -334,12 +334,16 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                         if nfsiostat_header == "":
                             # Hardcoded while debugging
                             nfsiostat_header = "Host,Device,Mounted on"
-                            nfsiostat_header += f",read ops/s,read kB/s,read kB/op,read retrans,read retrans %," \
-                                                f"read avg RTT (ms),read avg exe (ms),read avg queue (ms)," \
-                                                f"read errors,read errors %"
-                            nfsiostat_header += f",write ops/s,write kB/s,write kB/op,write retrans,write retrans %," \
-                                                f"write avg RTT (ms),write avg exe (ms),write avg queue (ms)," \
-                                                f"write errors,write errors %"
+                            nfsiostat_header += (
+                                f",read ops/s,read kB/s,read kB/op,read retrans,read retrans %,"
+                                f"read avg RTT (ms),read avg exe (ms),read avg queue (ms),"
+                                f"read errors,read errors %"
+                            )
+                            nfsiostat_header += (
+                                f",write ops/s,write kB/s,write kB/op,write retrans,write retrans %,"
+                                f"write avg RTT (ms),write avg exe (ms),write avg queue (ms),"
+                                f"write errors,write errors %"
+                            )
                             nfsiostat_header += f",html name"
                             nfsiostat_columns = nfsiostat_header.split(",")
                             mgstat_columns = [i.strip() for i in nfsiostat_columns]  # strip off carriage return etc
@@ -356,6 +360,80 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                             nfsiostat_row_dict["html name"] = html_filename
                             nfsiostat_rows_list.append(nfsiostat_row_dict)
 
+            # AIX iostat has variations, start as needed
+            #
+            #  ....<div id=iostat></div>iostat</font></b><br><pre>
+            # System configuration: lcpu=80 drives=2 paths=4 vdisks=2
+            # Disks:                      xfers                                read                                write                                  queue                    time
+            #                   %tm    bps   tps  bread  bwrtn   rps    avg    min    max time fail   wps    avg    min    max time fail    avg    min    max   avg   avg  serv
+            #                   act                                    serv   serv   serv outs              serv   serv   serv outs        time   time   time  wqsz  sqsz qfull
+            # hdisk0            2.0  65.5K  13.0  57.3K   8.2K  11.0   0.6    0.5    0.9     0    0   2.0   0.4    0.3    0.4     0    0   0.0    0.0    0.0    0.0   0.0   3.0  12:41:43
+            # hdisk1            7.0   4.2M 135.0  57.3K   4.2M   7.0   6.9    0.5   20.2     0    0 128.0   0.4    0.3    0.6     0    0   0.0    0.0    0.1    0.0   0.0   4.0  12:41:43
+
+            # Fake header columns
+            aix_iostat_columns = [
+                "Device",
+                "xfer tm act",
+                "xfer bps",
+                "xfer tps",
+                "xfer bread",
+                "xfer bwrtn",
+                "read rps",
+                "read avg serv",
+                "read min serv",
+                "read max serv",
+                "read time outs",
+                "read fail",
+                "write rps",
+                "write avg serv",
+                "write min serv",
+                "write max serv",
+                "write time outs",
+                "write fail",
+                "queue avg time",
+                "queue min time",
+                "queue max time",
+                "queue avg wqsz",
+                "queue avg sqsz",
+                "queue serv qfull",
+                "Time",
+            ]
+            aix_column_count = len(aix_iostat_columns)
+
+            if operating_system == "AIX" and include_iostat:
+
+                if iostat_processing and "<div" in line:  # iostat does not flag end
+                    iostat_processing = False
+                else:
+                    # Found iostat
+                    if "id=iostat" in line:
+                        iostat_processing = True
+                    # Is this a data line
+                    if iostat_processing and len(line.split()) == aix_column_count:
+                        iostat_row_dict = {}
+                        # get rid of multiple whitespaces, then use comma separator
+                        line = " ".join(line.split())
+                        line = line.replace(" ", ",")
+
+                        # Get the values add devices to database
+                        values = line.split(",")
+                        values = [i.strip() for i in values]  # strip off carriage return etc
+
+                        values_converted = [get_aix_wacky_numbers(v) for v in values]
+
+                        iostat_row_dict = dict(zip(aix_iostat_columns, values_converted))
+                        iostat_row_dict["html name"] = html_filename
+                        iostat_row_dict["Date"] = run_start_date.strftime("%m/%d/%y")
+
+                        # Added for pretty processing
+                        iostat_row_dict["datetime"] = f'{iostat_row_dict["Date"]} {iostat_row_dict["Time"]}'
+                        iostat_rows_list.append(iostat_row_dict)
+
+                    # First time in create column names
+                    if iostat_processing and iostat_header == "":
+                        aix_iostat_columns.extend(["Date"])
+                        iostat_header = ",".join(aix_iostat_columns)
+
     if mgstat_header != "":
         # Create dataframe of rows. Shortcut here to creating table columns or later charts etc
         mgstat_df = pd.DataFrame(mgstat_rows_list)
@@ -367,7 +445,7 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
         mgstat_df.dropna(inplace=True)
 
     else:
-        mgstat_df = pd.DataFrame({'empty': []})
+        mgstat_df = pd.DataFrame({"empty": []})
 
     if vmstat_header != "":
         vmstat_df = pd.DataFrame(vmstat_rows_list)
@@ -375,7 +453,7 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
         vmstat_df.rename(columns={"Date": "RunDate", "Time": "RunTime"}, inplace=True)
         vmstat_df.dropna(inplace=True)
     else:
-        vmstat_df = pd.DataFrame({'empty': []})
+        vmstat_df = pd.DataFrame({"empty": []})
 
     if perfmon_header != "":
 
@@ -394,7 +472,7 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
         perfmon_df["datetime"] = perfmon_df["datetime"].apply(lambda x: x.split(".")[0])
 
     else:
-        perfmon_df = pd.DataFrame({'empty': []})
+        perfmon_df = pd.DataFrame({"empty": []})
 
     if iostat_header != "":
         iostat_df = pd.DataFrame(iostat_rows_list)
@@ -402,12 +480,12 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
         iostat_df.rename(columns={"Date": "RunDate", "Time": "RunTime"}, inplace=True)
         iostat_df.dropna(inplace=True)
     else:
-        iostat_df = pd.DataFrame({'empty': []})
+        iostat_df = pd.DataFrame({"empty": []})
 
     if nfsiostat_header != "":
         nfsiostat_df = pd.DataFrame(nfsiostat_rows_list)
         nfsiostat_df.dropna(inplace=True)
     else:
-        nfsiostat_df = pd.DataFrame({'empty': []})
+        nfsiostat_df = pd.DataFrame({"empty": []})
 
     return mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df
