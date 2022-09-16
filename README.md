@@ -19,13 +19,16 @@ However, if you find bugs, or are looking for enhancements let me know!
 >- Windows (Perfmon)
 >- AIX (vmstat, iostat)
 
-## Latest version at docker hub
-
-For Intel: `docker pull murray1oldfield/yaspe:latest`
+## Recent version at docker hub
 
 For Apple M1: `docker pull murray1oldfield/yaspe:latest_M1`
 
-## Create docker container image
+Note: I don't have desktop access to an Intel server, so this image can fall behind. I suggest **Create docker container image** below.
+
+For Intel: `docker pull murray1oldfield/yaspe:latest`
+
+
+## Create docker container image for latest version
 
 To create a docker image on your own system:
 
@@ -235,7 +238,7 @@ There are many references for creating Python environments on the web. You can s
 
 ```commandline
 python --version
-Python 3.9.5
+Python 3.9.13
 ```
 
 **Once you have set up your Python environment:**
