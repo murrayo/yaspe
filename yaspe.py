@@ -620,7 +620,7 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
         if disk_list:
             disk_list = list(set(disk_list).intersection(devices))
             if disk_list:
-                print(f"Only devices: {disk_list}")
+                # print(f"Only devices: {disk_list}")
                 devices = disk_list
 
         # Chart each disk
