@@ -537,12 +537,18 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
         # will realign starting on 0, eg 00:01:06 will end up as 12:01:05 am
 
         # Resample to 1 sec
+
+        # Get rid of duplicates. e.g. if appending
+        df_master_vm = df_master_vm.loc[~df_master_vm.index.duplicated(), :]
+
         # df_master_vm = df_master_vm.reset_index().set_index("datetime").resample("1S", convention='start').interpolate(method="linear")
         df_master_vm = df_master_vm.reset_index().set_index("datetime").resample("1S").interpolate(method="linear")
 
         # Get mgstat
         df_master_mg = get_subset_dataframe(db, "mgstat")
         df_master_mg = df_master_mg.add_suffix("_mg")
+        # Get rid of duplicates. e.g. if appending
+        df_master_mg = df_master_mg.loc[~df_master_mg.index.duplicated(), :]
         df_master_mg = (
             df_master_mg.reset_index()
             .set_index("datetime")
