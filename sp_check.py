@@ -11,6 +11,7 @@ and suggested fixes.
 def system_check(input_file):
     sp_dict = {}
     operating_system = ""
+    cpf_section = False
 
     with open(input_file, "r", encoding="ISO-8859-1") as file:
 
@@ -23,6 +24,11 @@ def system_check(input_file):
         up_counter = 0
 
         for line in file:
+
+            if "[ConfigFile]" in line:
+                cpf_section = True
+            elif "!-- beg_mgstat --" in line:
+                cpf_section = False
 
             # Summary
 
@@ -89,28 +95,29 @@ def system_check(input_file):
 
             # CPF file
 
-            if "AlternateDirectory=" in line:
-                sp_dict["alternate journal"] = (line.split("=")[1]).strip()
-            if "CurrentDirectory=" in line and not line[0] == ";":
-                sp_dict["current journal"] = (line.split("=")[1]).strip()
-            if "globals=" in line:
-                sp_dict["globals"] = (line.split("=")[1]).strip()
-            if "gmheap=" in line:
-                sp_dict["gmheap"] = (line.split("=")[1]).strip()
-            if "locksiz=" in line:
-                sp_dict["locksiz"] = (line.split("=")[1]).strip()
-            if "routines=" in line:
-                sp_dict["routines"] = (line.split("=")[1]).strip()
-            if "wijdir=" in line:
-                sp_dict["wijdir"] = (line.split("=")[1]).strip()
-            if "Freeze" in line:
-                sp_dict["freeze"] = (line.split("=")[1]).strip()
-            if "Asyncwij=" in line:
-                sp_dict["asyncwij"] = (line.split("=")[1]).strip()
-            if "wduseasyncio=" in line:
-                sp_dict["wduseasyncio"] = (line.split("=")[1]).strip()
-            if "jrnbufs=" in line:
-                sp_dict["jrnbufs"] = (line.split("=")[1]).strip()
+            if cpf_section:
+                if "AlternateDirectory=" in line:
+                    sp_dict["alternate journal"] = (line.split("=")[1]).strip()
+                if "CurrentDirectory=" in line and not line[0] == ";":
+                    sp_dict["current journal"] = (line.split("=")[1]).strip()
+                if "globals=" in line:
+                    sp_dict["globals"] = (line.split("=")[1]).strip()
+                if "gmheap=" in line:
+                    sp_dict["gmheap"] = (line.split("=")[1]).strip()
+                if "locksiz=" in line:
+                    sp_dict["locksiz"] = (line.split("=")[1]).strip()
+                if "routines=" in line:
+                    sp_dict["routines"] = (line.split("=")[1]).strip()
+                if "wijdir=" in line:
+                    sp_dict["wijdir"] = (line.split("=")[1]).strip()
+                if "FreezeOnError" in line:
+                    sp_dict["freeze"] = (line.split("=")[1]).strip()
+                if "Asyncwij=" in line:
+                    sp_dict["asyncwij"] = (line.split("=")[1]).strip()
+                if "wduseasyncio=" in line:
+                    sp_dict["wduseasyncio"] = (line.split("=")[1]).strip()
+                if "jrnbufs=" in line:
+                    sp_dict["jrnbufs"] = (line.split("=")[1]).strip()
 
             # Chad's metrics
             if "bbsiz=" in line:
