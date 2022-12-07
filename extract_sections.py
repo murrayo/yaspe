@@ -555,6 +555,4 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
     else:
         aix_sar_d_df = pd.DataFrame({"empty": []})
 
-    print(f"{aix_sar_d_df.head(5).to_string()}")
-
-    return mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df
+    return mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df, aix_sar_d_df

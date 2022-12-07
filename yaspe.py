@@ -136,7 +136,7 @@ def create_sections(
     # Get the start date for date format validation
     profile_run = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'profile run';")[2]
 
-    mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df = extract_sections(
+    mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df, aix_sar_d_df = extract_sections(
         operating_system, profile_run, input_file, include_iostat, include_nfsiostat, html_filename
     )
 
@@ -214,6 +214,20 @@ def create_sections(
                 nfsiostat_df.to_csv(nfsiostat_output_csv, header="column_names", index=False, encoding="utf-8")
             else:  # else it exists so append without writing the header
                 nfsiostat_df.to_csv(nfsiostat_output_csv, mode="a", header=False, index=False, encoding="utf-8")
+
+    if not aix_sar_d_df.empty:
+
+        aix_sar_d_df.to_sql("aix_sar_d", connection, if_exists="append", index=True, index_label="id_key")
+        connection.commit()
+
+        if csv_out:
+            aix_sar_d_output_csv = f"{output_filepath_prefix}aix_sar_d.csv"
+
+            # if file does not exist write header
+            if not os.path.isfile(aix_sar_d_output_csv):
+                aix_sar_d_df.to_csv(aix_sar_d_output_csv, header="column_names", index=False, encoding="utf-8")
+            else:  # else it exists so append without writing the header
+                aix_sar_d_df.to_csv(aix_sar_d_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
 
 def create_overview(connection, sp_dict):
@@ -748,6 +762,64 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
                     )
 
 
+def chart_aix_sar_d(connection, filepath, output_prefix, operating_system, png_out, disk_list):
+
+    customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+
+    # Read in to dataframe, drop any bad rows
+    df = pd.read_sql_query("SELECT * FROM aix_sar_d", connection)
+    df.dropna(inplace=True)
+
+    # df["datetime"] = df["RunDate"] + " " + df["RunTime"]
+
+    columns_to_chart = list(df.columns)
+    unwanted_columns = ["id_key", "RunDate", "RunTime", "html name", "device"]
+    columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
+
+    aix_sar_d_df = df
+    devices = aix_sar_d_df["device"].unique()
+
+    # If a disk list has been passed in. Validate the list.
+    if disk_list:
+        disk_list = list(set(disk_list).intersection(devices))
+        if disk_list:
+            # print(f"Only devices: {disk_list}")
+            devices = disk_list
+
+    # Chart each disk
+    for device in devices:
+        device_df = aix_sar_d_df.loc[aix_sar_d_df["device"] == device]
+
+        # unpivot the dataframe; first column is index, column name is next, then the value in that column
+        device_df = device_df.melt("id_key", var_name="Type", value_name="metric")
+
+        # For each column create a chart
+        for column_name in columns_to_chart:
+            if column_name == "datetime" or column_name == "device":
+                pass
+            else:
+                title = f"{device} : {column_name} - {customer}"
+                save_name = [s for s in column_name if s.isalnum() or s.isspace()]
+                save_name = "".join(save_name)
+
+                to_chart_df = device_df.loc[device_df["Type"] == column_name]
+                print(f"{to_chart_df.head(5).to_string()}")
+
+                # Remove outliers first, will result in nan for zero values, so needs more work
+                # to_chart_df = to_chart_df[((to_chart_df.metric - to_chart_df.metric.mean()) / to_chart_df.metric.std()).abs() < 3]
+                max_y = to_chart_df["metric"].max()
+
+                data = to_chart_df
+
+                if png_out:
+                    simple_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                else:
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+
+                    if False:
+                        interactive_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+
+
 def mainline(
     input_file,
     include_iostat,
@@ -895,6 +967,12 @@ def mainline(
                 if not os.path.isdir(output_file_path):
                     os.mkdir(output_file_path)
                 chart_iostat(connection, output_file_path, output_prefix, operating_system, png_out, disk_list)
+
+                if operating_system == "AIX":
+                    output_file_path = f"{output_file_path_base}/sar_d/"
+                    if not os.path.isdir(output_file_path):
+                        os.mkdir(output_file_path)
+                    chart_aix_sar_d(connection, output_file_path, output_prefix, operating_system, png_out, disk_list)
 
             if include_nfsiostat:
                 output_file_path = f"{output_file_path_base}/nfsiostat/"
