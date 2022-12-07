@@ -42,6 +42,14 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
     nfsiostat_read = False
     nfsiostat_write = False
 
+    aix_sar_d_processing = False
+    aix_sar_d_header = ""
+    aix_sar_d_rows_list = []
+    aix_sar_d_date = ""
+    aix_sar_d_date_convert = False
+    aix_sar_d_line_date = ""
+    aix_sar_d_previous_time = "00:00:00"
+
     run_start = profile_run.split("on ")[1]
     run_start = run_start[:-1]
     run_start_date = dateutil.parser.parse(run_start)
@@ -78,6 +86,7 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                     if operating_system == "AIX":
                         if aix_vmstat_line_date == "":
                             aix_vmstat_line_date = mgstat_row_dict["Date"]
+                            aix_sar_d_line_date = mgstat_row_dict["Date"]
 
                     # Added for pretty processing
                     mgstat_row_dict["datetime"] = f'{mgstat_row_dict["Date"]} {mgstat_row_dict["Time"]}'
@@ -183,6 +192,58 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                         if vmstat_columns[i] == "sy":
                             vmstat_columns[i] = "sy_calls"
                             break
+
+                if "<div id=sar-d>" in line:
+                    aix_sar_d_processing = True
+                if "</pre><p align=" in line and "<div id=sar-d>" not in line:
+                    aix_sar_d_processing = False
+                if aix_sar_d_processing and aix_sar_d_header != "":
+                    if line.strip() != "":
+                        aix_sar_d_row_dict = {}
+                        values = line.split()
+                        values = [i.strip() for i in values]  # strip off carriage return etc
+
+                        # AIX insert date and time in first two columns, Time is the first column
+                        # except when it is missing.
+                        if "disk" in values[0]:
+                            values.insert(0, aix_sar_d_previous_time)
+                        else:
+                            this_time = values[0]
+
+                        # Have no date, only time. Make sure we haven't rolled over midnight
+                        # Comparing time as strings is a bit hacky, but we only care about the hour
+                        if this_time < aix_sar_d_previous_time:
+                            next_day = dateutil.parser.parse(aix_sar_d_line_date) + relativedelta(days=+1)
+                            aix_sar_d_line_date = next_day.strftime("%m/%d/%Y")
+                        aix_sar_d_previous_time = this_time
+                        values.insert(0, aix_sar_d_line_date)
+
+                        values_converted = [get_number_type(v) for v in values]
+                        aix_sar_d_row_dict = dict(zip(aix_sar_d_columns, values_converted))
+                        aix_sar_d_row_dict["html name"] = html_filename
+
+                        # Check date format
+                        if not aix_sar_d_date_convert and aix_sar_d_row_dict["Date"] != aix_sar_d_date:
+                            aix_sar_d_date = aix_sar_d_row_dict["Date"]
+                            aix_sar_d_date_convert = check_date("aix_sar_d", run_start_date, aix_sar_d_row_dict["Date"])
+
+                        if aix_sar_d_date_convert:
+                            new_date = make_mdy_date(aix_sar_d_row_dict["Date"])
+                            new_date_dict = {"Date": new_date}
+                            aix_sar_d_row_dict.update(new_date_dict)
+
+                        # Added for pretty processing
+                        aix_sar_d_row_dict["datetime"] = f'{aix_sar_d_row_dict["Date"]} {aix_sar_d_row_dict["Time"]}'
+                        aix_sar_d_rows_list.append(aix_sar_d_row_dict)
+
+                if aix_sar_d_processing and "device" in line:
+                    # sar d time on the same row as column names
+                    aix_sar_d_header = line
+
+                    aix_sar_d_header = aix_sar_d_header.split("device ", 1)[1]
+                    aix_sar_d_header = f"Date Time device {aix_sar_d_header}"
+                    aix_sar_d_columns = aix_sar_d_header.split()
+                    aix_sar_d_columns = [i.strip() for i in aix_sar_d_columns]  # strip off carriage return etc
 
             if operating_system == "Windows":
                 if "id=perfmon" in line:
@@ -487,5 +548,13 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
         nfsiostat_df.dropna(inplace=True)
     else:
         nfsiostat_df = pd.DataFrame({"empty": []})
+
+    if aix_sar_d_header != "":
+        aix_sar_d_df = pd.DataFrame(aix_sar_d_rows_list)
+        aix_sar_d_df.dropna(inplace=True)
+    else:
+        aix_sar_d_df = pd.DataFrame({"empty": []})
+
+    print(f"{aix_sar_d_df.head(5).to_string()}")
 
     return mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df
