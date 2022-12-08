@@ -791,7 +791,7 @@ def chart_aix_sar_d(connection, filepath, output_prefix, operating_system, png_o
         device_df = aix_sar_d_df.loc[aix_sar_d_df["device"] == device]
 
         # unpivot the dataframe; first column is index, column name is next, then the value in that column
-        device_df = device_df.melt("id_key", var_name="Type", value_name="metric")
+        device_df = device_df.melt("datetime", var_name="Type", value_name="metric")
 
         # For each column create a chart
         for column_name in columns_to_chart:
@@ -802,8 +802,7 @@ def chart_aix_sar_d(connection, filepath, output_prefix, operating_system, png_o
                 save_name = [s for s in column_name if s.isalnum() or s.isspace()]
                 save_name = "".join(save_name)
 
-                to_chart_df = device_df.loc[device_df["Type"] == column_name]
-                print(f"{to_chart_df.head(5).to_string()}")
+                to_chart_df = device_df.loc[device_df["Type"] == column_name])
 
                 # Remove outliers first, will result in nan for zero values, so needs more work
                 # to_chart_df = to_chart_df[((to_chart_df.metric - to_chart_df.metric.mean()) / to_chart_df.metric.std()).abs() < 3]

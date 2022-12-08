@@ -551,6 +551,7 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
 
     if aix_sar_d_header != "":
         aix_sar_d_df = pd.DataFrame(aix_sar_d_rows_list)
+        aix_sar_d_df.rename(columns={"Date": "RunDate", "Time": "RunTime"}, inplace=True)
         aix_sar_d_df.dropna(inplace=True)
     else:
         aix_sar_d_df = pd.DataFrame({"empty": []})
