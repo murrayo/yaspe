@@ -802,7 +802,7 @@ def chart_aix_sar_d(connection, filepath, output_prefix, operating_system, png_o
                 save_name = [s for s in column_name if s.isalnum() or s.isspace()]
                 save_name = "".join(save_name)
 
-                to_chart_df = device_df.loc[device_df["Type"] == column_name])
+                to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
                 # Remove outliers first, will result in nan for zero values, so needs more work
                 # to_chart_df = to_chart_df[((to_chart_df.metric - to_chart_df.metric.mean()) / to_chart_df.metric.std()).abs() < 3]
