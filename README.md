@@ -17,7 +17,7 @@ However, if you find bugs, or are looking for enhancements let me know!
 >- IRIS/Caché (mgstat)
 >- Linux (vmstat, iostat)
 >- Windows (Perfmon)
->- AIX (vmstat, iostat)
+>- AIX (vmstat, iostat, sar -d)
 
 ## Recent version at docker hub
 
