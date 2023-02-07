@@ -128,8 +128,6 @@ def system_check(input_file):
                     sp_dict["jrnbufs"] = (line.split("=")[1]).strip()
 
             # Chad's metrics
-            if "bbsiz=" in line:
-                sp_dict["bbsiz"] = (line.split("=")[1]).strip()
             if "CACHESYS=" in line:
                 sp_dict["CACHESYS"] = (line.split("=")[1]).strip()
             if "IRISSYS=" in line:
@@ -333,10 +331,6 @@ def build_log(sp_dict):
         sp_dict["routines total MB"] = routines_total
 
     # Chad's metrics
-    if "bbsiz" in sp_dict:
-        if int(sp_dict["bbsiz"]) == 262144:
-            warn_count += 1
-            sp_dict[f"warning {warn_count}"] = f"bbsiz is default"
 
     if "gmheap" in sp_dict:
         if int(sp_dict["gmheap"]) == 37568:
