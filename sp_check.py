@@ -13,6 +13,14 @@ def system_check(input_file):
     operating_system = ""
     cpf_section = False
 
+    linux_info_available = False
+    dev_mapper_section = True
+    dev_mapper_counter = 0
+
+    filesystem_info_available = False
+    filesystem_section = True
+    filesystem_counter = 0
+
     with open(input_file, "r", encoding="ISO-8859-1") as file:
 
         model_name = True
@@ -136,6 +144,40 @@ def system_check(input_file):
                 sp_dict["MaxServerConn"] = (line.split("=")[1]).strip()
             if "DaysBeforePurge=" in line:
                 sp_dict["DaysBeforePurge"] = (line.split("=")[1]).strip()
+
+            # Linux filesystem info
+
+            if "<div id=Linuxinfo>" in line:
+                linux_info_available = True
+
+            if linux_info_available:
+
+                if "/dev/mapper:" in line:
+                    dev_mapper_section = True
+
+                if dev_mapper_section:
+
+                    if "->" in line:
+                        sp_dict[f"dev mapper {dev_mapper_counter}"] = line.strip()
+                        dev_mapper_counter += 1
+
+                    if dev_mapper_counter > 0 and "->" not in line:
+                        dev_mapper_section = False
+
+            if "<div id=df-m>" in line:
+                filesystem_info_available = True
+
+            if filesystem_info_available:
+
+                if "Filesystem" in line:
+                    filesystem_section = True
+
+                if filesystem_section and "</pre>" in line:
+                    filesystem_section = False
+
+                if filesystem_section:
+                    sp_dict[f"filesystem df {filesystem_counter}"] = line.strip()
+                    filesystem_counter += 1
 
             # Linux kernel
 
@@ -557,5 +599,21 @@ def build_log(sp_dict):
         log += f"IRISSYS                : {sp_dict['IRISSYS']}\n"
     if "CACHESYS" in sp_dict:
         log += f"CACHESYS               : {sp_dict['CACHESYS']}\n"
+
+    first_dev_mapper = True
+    for key in sp_dict:
+        if "dev mapper" in key:
+            if first_dev_mapper:
+                log += "\n/dev/mapper:\n"
+                first_dev_mapper = False
+            log += f"{sp_dict[key]}\n"
+
+    first_filesystem = True
+    for key in sp_dict:
+        if "filesystem df" in key:
+            if first_filesystem:
+                log += "\nFilesystem (df):\n"
+                first_filesystem = False
+            log += f"{sp_dict[key]}\n"
 
     return log
