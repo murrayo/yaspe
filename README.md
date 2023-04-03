@@ -72,8 +72,7 @@ optional arguments:
   -p, --png             Create png files of metrics. Instead of html
   -s, --system          Output system overview.
   -d DISK_LIST [DISK_LIST ...], --disk_list DISK_LIST [DISK_LIST ...]
-                        List of disks, if not entered all are processed
-
+                        List of disks, if not entered all are processed. No commas or quotes, e.g. -d dm-0 dm-1
 Be safe, "quote the path"
 ```
 

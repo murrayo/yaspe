@@ -5,7 +5,9 @@ import pandas as pd
 from yaspe_utilities import get_number_type, make_mdy_date, check_date, get_aix_wacky_numbers
 
 
-def extract_sections(operating_system, profile_run, input_file, include_iostat, include_nfsiostat, html_filename):
+def extract_sections(
+    operating_system, profile_run, input_file, include_iostat, include_nfsiostat, html_filename, disk_list
+):
 
     once = True
 
@@ -302,44 +304,52 @@ def extract_sections(operating_system, profile_run, input_file, include_iostat, 
                     # Add devices to database
                     if iostat_processing and iostat_device_block_processing and iostat_header != "":
                         if line.strip() != "":
-                            iostat_row_dict = {}
-                            # if European "," for ".", do that first
-                            line = line.replace(",", ".")
-                            # get rid of multiple whitespaces, then use comma separator so the AM/PM is preserved if its there
-                            line = " ".join(line.split())
-                            line = line.replace(" ", ",")
-                            if iostat_date_included:
-                                if iostat_am_pm:
-                                    line = (
-                                        date_time.split()[0]
-                                        + ","
-                                        + date_time.split()[1]
-                                        + " "
-                                        + date_time.split()[2]
-                                        + ","
-                                        + line
-                                    )
-                                else:
-                                    line = date_time.split()[0] + "," + str(date_time.split()[1]) + "," + line
-                            values = line.split(",")
-                            values = [i.strip() for i in values]  # strip off carriage return etc
-                            values_converted = [get_number_type(v) for v in values]
-                            iostat_row_dict = dict(zip(iostat_columns, values_converted))
-                            iostat_row_dict["html name"] = html_filename
+                            print_line = False
+                            if disk_list:
+                                for item in disk_list:
+                                    if item in line:
+                                        print_line = True
+                            else:
+                                print_line = True
+                            if print_line:
+                                iostat_row_dict = {}
+                                # if European "," for ".", do that first
+                                line = line.replace(",", ".")
+                                # get rid of multiple whitespaces, then use comma separator so the AM/PM is preserved if its there
+                                line = " ".join(line.split())
+                                line = line.replace(" ", ",")
+                                if iostat_date_included:
+                                    if iostat_am_pm:
+                                        line = (
+                                            date_time.split()[0]
+                                            + ","
+                                            + date_time.split()[1]
+                                            + " "
+                                            + date_time.split()[2]
+                                            + ","
+                                            + line
+                                        )
+                                    else:
+                                        line = date_time.split()[0] + "," + str(date_time.split()[1]) + "," + line
+                                values = line.split(",")
+                                values = [i.strip() for i in values]  # strip off carriage return etc
+                                values_converted = [get_number_type(v) for v in values]
+                                iostat_row_dict = dict(zip(iostat_columns, values_converted))
+                                iostat_row_dict["html name"] = html_filename
 
-                            # Check date format
-                            if not iostat_date_convert and iostat_row_dict["Date"] != iostat_date:
-                                iostat_date = iostat_row_dict["Date"]
-                                iostat_date_convert = check_date("iostat", run_start_date, iostat_row_dict["Date"])
+                                # Check date format
+                                if not iostat_date_convert and iostat_row_dict["Date"] != iostat_date:
+                                    iostat_date = iostat_row_dict["Date"]
+                                    iostat_date_convert = check_date("iostat", run_start_date, iostat_row_dict["Date"])
 
-                            if iostat_date_convert:
-                                new_date = make_mdy_date(iostat_row_dict["Date"])
-                                new_date_dict = {"Date": new_date}
-                                iostat_row_dict.update(new_date_dict)
+                                if iostat_date_convert:
+                                    new_date = make_mdy_date(iostat_row_dict["Date"])
+                                    new_date_dict = {"Date": new_date}
+                                    iostat_row_dict.update(new_date_dict)
 
-                            # Added for pretty processing
-                            iostat_row_dict["datetime"] = f'{iostat_row_dict["Date"]} {iostat_row_dict["Time"]}'
-                            iostat_rows_list.append(iostat_row_dict)
+                                # Added for pretty processing
+                                iostat_row_dict["datetime"] = f'{iostat_row_dict["Date"]} {iostat_row_dict["Time"]}'
+                                iostat_rows_list.append(iostat_row_dict)
                     # Header line found, next line is start of device block
                     if "Device" in line:
                         iostat_device_block_processing = True

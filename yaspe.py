@@ -126,7 +126,7 @@ def insert_dict_into_table(connection, table_name, _dict):
 
 
 def create_sections(
-    connection, input_file, include_iostat, include_nfsiostat, html_filename, csv_out, output_filepath_prefix
+    connection, input_file, include_iostat, include_nfsiostat, html_filename, csv_out, output_filepath_prefix, disk_list
 ):
 
     operating_system = execute_single_read_query(
@@ -137,7 +137,7 @@ def create_sections(
     profile_run = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'profile run';")[2]
 
     mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df, aix_sar_d_df = extract_sections(
-        operating_system, profile_run, input_file, include_iostat, include_nfsiostat, html_filename
+        operating_system, profile_run, input_file, include_iostat, include_nfsiostat, html_filename, disk_list
     )
 
     # Add each section to the database
@@ -895,6 +895,7 @@ def mainline(
                 html_filename,
                 csv_out,
                 output_filepath_prefix,
+                disk_list,
             )
 
     else:
@@ -927,6 +928,7 @@ def mainline(
                 html_filename,
                 csv_out,
                 output_filepath_prefix,
+                disk_list,
             )
 
     connection.close()
@@ -1078,7 +1080,11 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "-d", "--disk_list", nargs="+", default=[], help="List of disks, if not entered all are " "processed"
+        "-d",
+        "--disk_list",
+        nargs="+",
+        default=[],
+        help="List of disks, if not entered all are processed. No commas or quotes, e.g. -d dm-0 dm-1",
     )
 
     args = parser.parse_args()

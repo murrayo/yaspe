@@ -66,6 +66,10 @@ def system_check(input_file):
                 elif "Ubuntu" in line:
                     sp_dict["operating system"] = "Ubuntu"
                     operating_system = "Ubuntu"
+                # Placeholder for when I care.
+                elif "Oracle Solaris" in line:
+                    sp_dict["operating system"] = "Unknown"
+                    operating_system = "Unknown"
                 else:
                     sp_dict["operating system"] = "Unknown"
                     operating_system = "Unknown"
