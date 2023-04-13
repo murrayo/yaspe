@@ -908,7 +908,7 @@ def mainline(
             sp_dict = sp_check.system_check(input_file)
 
             if system_out:
-                output_log = sp_check.build_log(sp_dict)
+                output_log, yaspe_yaml = sp_check.build_log(sp_dict)
 
                 with open(f"{output_filepath_prefix}overview.txt", "w") as text_file:
                     print(f"{output_log}", file=text_file)
@@ -918,6 +918,10 @@ def mainline(
                 overview_df.to_csv(
                     f"{output_filepath_prefix}overview_all.csv", header=True, index=False, sep=",", mode="w"
                 )
+
+                # yaml file for pretty input
+                with open(f"{output_filepath_prefix}overview.yaml", "w") as text_file:
+                    print(f"{yaspe_yaml}", file=text_file)
 
             create_overview(connection, sp_dict)
             create_sections(

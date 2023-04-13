@@ -614,4 +614,19 @@ def build_log(sp_dict):
                 first_filesystem = False
             log += f"{sp_dict[key]}\n"
 
-    return log
+    yaspe_yaml = "yaspe:\n"
+    yaspe_yaml += f"  Site: {sp_dict['customer'].replace(':','-')}\n"
+    yaspe_yaml += f"  Hostname: {hostname}\n"
+    yaspe_yaml += f"  Instance: {sp_dict['instance']}\n"
+
+    yaspe_yaml += f"  Operating system: {sp_dict['operating system']}\n"
+    yaspe_yaml += f"  Platform: {sp_dict['platform']}\n"
+    yaspe_yaml += f"  CPUs: {sp_dict['number cpus']}\n"
+
+    yaspe_yaml += f"  Processor model: {sp_dict['processor model'].replace(':','-')}\n"
+    yaspe_yaml += f"  Memory: {sp_dict['memory GB']} GB\n"
+    yaspe_yaml += f"  Shared memory: {sp_dict['shared memory calc']} = {int(sp_dict['shared memory MB']):,} MB\n"
+    yaspe_yaml += f"  Version: {sp_dict['version string'].replace(':','-')}\n"
+    yaspe_yaml += f"  Date collected: {sp_dict['profile run'].replace(':','-')}\n"
+
+    return log, yaspe_yaml
