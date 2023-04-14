@@ -9,6 +9,7 @@ Chart the results
 import sp_check
 import argparse
 import os
+import yaml
 
 from datetime import datetime
 import dateutil.parser
@@ -1122,14 +1123,15 @@ if __name__ == "__main__":
                 print("Could not process files because: {}".format(str(e)))
                 sys.exit()
 
-    # This section is a precursor to config file replacement/override of parameters
-    disk_dictionary = {
-        "Database": "dm-9",
-        "Primary Journal": "sdg1",
-        "Alternate Journal": "sdh1",
-        "WIJ": "dm-10",
-        "IRIS": "dm-10",
-    }
+    # yaml input
+    site_survey_input = {}
+
+    if os.path.isfile("./site_survey_input.yml"):
+        with open("./site_survey_input.yml", "r") as ymlfile:
+            site_survey_input = yaml.safe_load(ymlfile)
+        extended_charts = True
+    else:
+        extended_charts = False
 
     try:
         mainline(
