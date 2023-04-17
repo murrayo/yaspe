@@ -3,6 +3,17 @@ from datetime import datetime
 import dateutil
 
 
+def check_keyword_exists(data, keyword):
+    if isinstance(data, dict):
+        if keyword in data:
+            return True
+        return any(check_keyword_exists(value, keyword) for value in data.values())
+    elif isinstance(data, list):
+        return any(check_keyword_exists(value, keyword) for value in data)
+    else:
+        return False
+
+
 def get_number_type(s):
     # Don't know if a European number or US
     locale.setlocale(locale.LC_ALL, "en_US.UTF-8")

@@ -29,6 +29,7 @@ import altair as alt
 import pandas as pd
 
 from extract_sections import extract_sections
+import system_review
 
 # Altair
 # Max is 5,000 rows by default
@@ -857,6 +858,11 @@ def mainline(
     if filepath == "":
         filepath = "."
 
+    extended_charts = False
+    if os.path.isfile(f"{filepath}/site_survey_input.yml"):
+        extended_charts = True
+        print("Extended charts included...")
+
     # get the prefix
     html_filename = filename.split(".")[0]
 
@@ -942,6 +948,8 @@ def mainline(
 
     if "Chart" in database_action and not input_error:
 
+        print("Charting...")
+
         output_file_path_base = f"{output_filepath_prefix}metrics"
 
         if not os.path.isdir(output_file_path_base):
@@ -962,6 +970,10 @@ def mainline(
 
         # vmstat and iostat
         if operating_system == "Linux" or operating_system == "Ubuntu" or operating_system == "AIX":
+
+            # Detailed system charts for performance reports
+            if extended_charts:
+                system_review.system_charts(filepath)
 
             output_file_path = f"{output_file_path_base}/vmstat/"
             if not os.path.isdir(output_file_path):
@@ -1125,13 +1137,6 @@ if __name__ == "__main__":
 
     # yaml input
     site_survey_input = {}
-
-    if os.path.isfile("./site_survey_input.yml"):
-        with open("./site_survey_input.yml", "r") as ymlfile:
-            site_survey_input = yaml.safe_load(ymlfile)
-        extended_charts = True
-    else:
-        extended_charts = False
 
     try:
         mainline(
