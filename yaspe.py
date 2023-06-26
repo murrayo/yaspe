@@ -7,6 +7,7 @@ Chart the results
 """
 
 import sp_check
+import split_large_file
 import argparse
 import os
 import yaml
@@ -832,6 +833,7 @@ def mainline(
     png_out,
     system_out,
     disk_list,
+    split_on,
 ):
     input_error = False
 
@@ -858,10 +860,13 @@ def mainline(
     if filepath == "":
         filepath = "."
 
+    # This is a hidden option for now. Only activated if the yml file exists
     extended_charts = False
     if os.path.isfile(f"{filepath}/site_survey_input.yml"):
         extended_charts = True
         print("Extended charts included...")
+    else:
+        print(f"Extended charts not included...")
 
     # get the prefix
     html_filename = filename.split(".")[0]
@@ -873,6 +878,9 @@ def mainline(
             output_prefix = f"{output_prefix}_"
 
     output_filepath_prefix = f"{filepath}/{output_prefix}"
+
+    if split_on is not None:
+        split_large_file.split_large_file(input_file, split_string=split_on)
 
     if existing_database:
         sql_filename = existing_database
@@ -1104,6 +1112,15 @@ if __name__ == "__main__":
         help="List of disks, if not entered all are processed. No commas or quotes, e.g. -d dm-0 dm-1",
     )
 
+    parser.add_argument(
+        "-l",
+        "--large_file_split_on_string",
+        dest="split_on",
+        help='Split large input file on first occurrence of this string. Blank -l "" defaults to "div id=iostat"',
+        action="store",
+        metavar='"string to split on"',
+    )
+
     args = parser.parse_args()
 
     # Validate input file
@@ -1150,6 +1167,7 @@ if __name__ == "__main__":
             args.png_out,
             args.system_out,
             args.disk_list,
+            args.split_on,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))

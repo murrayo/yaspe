@@ -51,8 +51,7 @@ For local version:
 `docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h`
 
 ```commandline
-usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c]
-             [-p] [-s] [-d DISK_LIST [DISK_LIST ...]]
+usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-s] [-d DISK_LIST [DISK_LIST ...]] [-l "string to split on"]
 
 Performance file review.
 
@@ -73,6 +72,9 @@ optional arguments:
   -s, --system          Output system overview.
   -d DISK_LIST [DISK_LIST ...], --disk_list DISK_LIST [DISK_LIST ...]
                         List of disks, if not entered all are processed. No commas or quotes, e.g. -d dm-0 dm-1
+  -l "string to split on", --large_file_split_on_string "string to split on"
+                        Split large input file on first occurrence of this string. Blank -l "" defaults to "div id=iostat"
+
 Be safe, "quote the path"
 ```
 

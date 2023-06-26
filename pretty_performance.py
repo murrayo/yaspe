@@ -343,8 +343,8 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
     else:
         ax1.set_title(TITLE, fontsize=14)
 
-    ax1.set_ylabel(y_label_l, fontsize=10)
-    ax1.tick_params(labelsize=10)
+    ax1.set_ylabel(y_label_l, fontsize=14)
+    ax1.tick_params(labelsize=14)
     ax1.set_ylim(bottom=0)  # Always zero start
 
     if plot_d["limit_yaxis"] and y_max_l == 0:
@@ -371,7 +371,7 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
     else:
         ax1.xaxis.set_major_formatter(mdates.DateFormatter("%a %m/%d - %H:%M"))
 
-    ax1.legend(loc="upper left")
+    ax1.legend(loc="upper left", fontsize=14)
 
     if Right_axis_used:
 
@@ -401,8 +401,8 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
                 )
                 colour_count = colour_count + 1
 
-        ax2.set_ylabel(y_label_r, fontsize=10)
-        ax2.tick_params(labelsize=10)
+        ax2.set_ylabel(y_label_r, fontsize=14)
+        ax2.tick_params(labelsize=14)
         ax2.set_ylim(bottom=0)  # Always zero start
 
         if plot_d["limit_yaxis"] and y_max_r == 0:
@@ -431,9 +431,9 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
         else:
             ax2.xaxis.set_major_formatter(mdates.DateFormatter("%a %m/%d - %H:%M"))
 
-        ax2.legend(loc="upper right")
+        ax2.legend(loc="upper right", fontsize=14)
 
-    plt.setp(ax1.get_xticklabels(), rotation=45, ha="right")
+    plt.setp(ax1.get_xticklabels(), rotation=45, ha="right", fontsize=10)
     plt.tight_layout()
 
     FinalFileName = (
