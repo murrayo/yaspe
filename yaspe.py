@@ -864,9 +864,10 @@ def mainline(
     extended_charts = False
     if os.path.isfile(f"{filepath}/site_survey_input.yml"):
         extended_charts = True
-        print("Extended charts included...")
+        # print("Extended charts included...")
     else:
-        print(f"Extended charts not included...")
+        # print(f"Extended charts not included...")
+        pass
 
     # get the prefix
     html_filename = filename.split(".")[0]
@@ -956,7 +957,7 @@ def mainline(
 
     if "Chart" in database_action and not input_error:
 
-        print("Charting...")
+        # print("Charting...")
 
         output_file_path_base = f"{output_filepath_prefix}metrics"
 
