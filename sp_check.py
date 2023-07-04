@@ -8,6 +8,36 @@ and suggested fixes.
 """
 
 
+def shared_memory_estimate(
+    global_buffers_mb,
+    routine_buffers_mb,
+    gmheap_in_mb,
+    number_of_logical_cpus,
+    jrnbufs_in_mb,
+    MaxServerConn,
+    MaxServers,
+):
+
+    # Shared memory size in MB =
+    # [global buffers in MB] * 1.08 + [routine buffers in MB] * 1.02
+    # + [gmheap in KB]/1024 + 2 * [number of logical CPUs] + [jrnbufs in MB] +
+    # 2 * ( [MaxServerConn] + [MaxServers]) + 300 [overall fixed padding]
+
+    overall_fixed_padding = 300
+
+    total_shared_memory = (
+        (global_buffers_mb * 1.08)
+        + (routine_buffers_mb * 1.02)
+        + gmheap_in_mb
+        + (2 * number_of_logical_cpus)
+        + jrnbufs_in_mb
+        + (2 * (MaxServerConn + MaxServers))
+        + overall_fixed_padding
+    )
+
+    return int(total_shared_memory)
+
+
 def system_check(input_file):
     sp_dict = {}
     operating_system = ""
@@ -386,12 +416,55 @@ def build_log(sp_dict):
 
         sp_dict["memory GB"] = f"{round(int(sp_dict['memory MB']) / 1024)}"
 
+        # Basic shared memory calculation
         sp_dict["shared memory MB"] = (
             sp_dict["globals total MB"] + sp_dict["routines total MB"] + round(int(sp_dict["gmheap"]) / 1024)
         )
         sp_dict[
             "shared memory calc"
         ] = f"globals {sp_dict['globals total MB']} MB + routines {sp_dict['routines total MB']} MB + gmheap {round(int(sp_dict['gmheap']) / 1024)} MB"
+
+        # Estimate total shared memory (e.g. for huge pages) based on 2022.1 calculations
+        all_present = False
+        if "routines total MB" in sp_dict:
+            routine_buffers_mb = int(sp_dict["routines total MB"])
+            if "gmheap" in sp_dict:
+                gmheap_in_mb = int(int(sp_dict["gmheap"]) / 1024)
+                if "number cpus" in sp_dict:
+                    number_of_logical_cpus = int(sp_dict["number cpus"])
+                if "jrnbufs" in sp_dict:
+                    jrnbufs_in_mb = int(sp_dict["jrnbufs"])
+                    if "MaxServerConn" in sp_dict:
+                        MaxServerConn = int(sp_dict["MaxServerConn"])
+                        if "MaxServers" in sp_dict:
+                            MaxServers = int(sp_dict["MaxServers"])
+                            if "globals total MB" in sp_dict:
+                                global_buffers_mb = int(sp_dict["globals total MB"])
+                                all_present = True
+
+        if all_present:
+            total_shared_memory = shared_memory_estimate(
+                global_buffers_mb,
+                routine_buffers_mb,
+                gmheap_in_mb,
+                number_of_logical_cpus,
+                jrnbufs_in_mb,
+                MaxServerConn,
+                MaxServers,
+            )
+
+            sp_dict["Estimated total IRIS shared memory"] = total_shared_memory
+            sp_dict["Estimated total IRIS shared memory text"] = (
+                f"Estimated total shared memory (MB):\n"
+                f"[global buffers in MB] * 1.08 + [routine buffers in MB] * 1.02 + [gmheap in MB] + \n"
+                f"  2 * [number of logical CPUs] + [jrnbufs in MB] + 2 * ( [MaxServerConn] + [MaxServers]) + "
+                f"300 [overall fixed padding]\n\n"
+                f"[{global_buffers_mb}] * 1.08 + [{routine_buffers_mb}] * 1.02 + [{gmheap_in_mb}] + \n"
+                f"  2 * [{number_of_logical_cpus}] + [{jrnbufs_in_mb}] + 2 * ( [{MaxServerConn}] + [{MaxServers}]) + "
+                f"300 [overall fixed padding]\n\n"
+                f"See https://docs.intersystems.com/irislatest/csp/docbook/DocBook.UI.Page.cls"
+                f"?KEY=ARES#ARES_memory_plan_estimate\n"
+            )
 
         sp_dict["75pct memory MB"] = round(int(sp_dict["memory MB"]) * 0.75)
         sp_dict["75pct memory number huge pages"] = round((sp_dict["75pct memory MB"] * 1024) / huge_page_size_kb)
@@ -401,11 +474,10 @@ def build_log(sp_dict):
             if int(sp_dict["vm.nr_hugepages"]) == 0:
                 warn_count += 1
                 sp_dict[f"warning {warn_count}"] = (
-                    f"Hugepages not set. For performance, memory efficiency and to protect "
-                    f"the shared memory from paging out, use huge page memory space. It is "
-                    f"not advisable to specify HugePages much higher than the shared "
-                    f"memory amount because the unused memory are not be available to "
-                    f"other components. "
+                    f"HugePages are not set. Consider huge page memory space for production instances to improve "
+                    f"performance and efficiency and to protect the shared memory from paging out. "
+                    f"Specifying HugePages much higher than the shared memory amount is not advisable because the "
+                    f"unused memory is not available to other components."
                 )
 
                 recommend_count += 1
@@ -421,17 +493,25 @@ def build_log(sp_dict):
 
                 recommend_count += 1
                 msg = (
-                    f"Shared memory (globals+routines+gmheap) is {sp_dict['shared memory MB']:,} MB. "
+                    f"Shared memory (globals+routines+gmheap+other) is {sp_dict['shared memory MB']:,} MB. "
                     f"({round((sp_dict['shared memory MB'] / int(sp_dict['memory MB'])) * 100):,}% of total memory)."
                 )
                 sp_dict[f"recommend {recommend_count}"] = msg
 
                 recommend_count += 1
-                shared_memory_plus_5pct = round(sp_dict["shared memory MB"] * 1.05)
-                msg = (
-                    f"Number of HugePages for {huge_page_size_kb} KB page size for ({sp_dict['shared memory MB']:,} MB + 5% buffer = {shared_memory_plus_5pct:,} MB) "
-                    f"is {round((shared_memory_plus_5pct * 1024) / huge_page_size_kb)}"
-                )
+                # If all the info for full estimate use that, else ballpark
+                if "Estimated total IRIS shared memory" in sp_dict:
+                    msg = (
+                        f"Number of HugePages for {huge_page_size_kb} KB page size for {sp_dict['Estimated total IRIS shared memory']:,} MB "
+                        f"is {round((sp_dict['Estimated total IRIS shared memory'] * 1024) / huge_page_size_kb)}"
+                    )
+                else:
+                    shared_memory_plus_8pct = round(sp_dict["shared memory MB"] * 1.08)
+                    msg = (
+                        f"Number of HugePages for {huge_page_size_kb} KB page size for ({sp_dict['shared memory MB']:,} MB + 8% buffer = {shared_memory_plus_8pct:,} MB) "
+                        f"is {round((shared_memory_plus_8pct * 1024) / huge_page_size_kb)}"
+                    )
+
                 sp_dict[f"recommend {recommend_count}"] = msg
 
                 if "max locked memory" in sp_dict:
@@ -444,6 +524,7 @@ def build_log(sp_dict):
                                 f"pages (see ulimit -a) "
                             )
 
+            # Huge pages is specified, validate
             else:
                 sp_dict["hugepages MB"] = round(int(sp_dict["vm.nr_hugepages"]) * huge_page_size_kb / 1024)
 
@@ -468,7 +549,7 @@ def build_log(sp_dict):
 
                     pass_count += 1
                     msg = (
-                        f"Shared memory (globals+routines+gmheap) is {sp_dict['shared memory MB']:,} MB, hugepages is {sp_dict['hugepages MB']:,} MB, "
+                        f"Shared memory (globals+routines+gmheap+other) is {sp_dict['shared memory MB']:,} MB, hugepages is {sp_dict['hugepages MB']:,} MB, "
                         f"gap is {sp_dict['hugepages MB'] - sp_dict['shared memory MB']:,} MB. "
                         f"Shared memory is {round((sp_dict['shared memory MB']) / int(sp_dict['hugepages MB']) * 100):,}% of huge pages."
                     )
@@ -613,6 +694,46 @@ def build_log(sp_dict):
                 log += "\nFilesystem (df):\n"
                 first_filesystem = False
             log += f"{sp_dict[key]}\n"
+
+    if "Estimated total IRIS shared memory" in sp_dict:
+        log += f"-----------------------------------------------------------------------------------------------------"
+        log += f"\n\nTotal shared memory estimate for IRIS 2022.1 and later: "
+        log += f"{int(sp_dict['Estimated total IRIS shared memory']):,} (MB)\n\n"
+        log += f'{sp_dict["Estimated total IRIS shared memory text"]}\n'
+
+        if "hugepages MB" in sp_dict and "memory MB" in sp_dict:
+            if sp_dict["hugepages MB"] < sp_dict["Estimated total IRIS shared memory"]:
+                log += f"Warning:\n"
+                log += f"Estimated shared memory is {sp_dict['Estimated total IRIS shared memory']:,} MB, "
+                log += f"hugepages is {sp_dict['hugepages MB']:,} MB\n\n"
+
+            log += f"Total memory is {int(sp_dict['memory MB']):,} MB.\n"
+            log += (
+                f"75% of total memory is {int(sp_dict['75pct memory MB']):,} MB. "
+                f"Estimated shared memory is {sp_dict['Estimated total IRIS shared memory']:,}, "
+                f"{round(sp_dict['Estimated total IRIS shared memory'] / int(sp_dict['memory MB']) * 100):,}% "
+                f"of total memory.\n"
+            )
+            log += (
+                f"Estimated shared memory (globals+routines+gmheap+other) is {sp_dict['Estimated total IRIS shared memory']:,} MB"
+                f", hugepages is {sp_dict['hugepages MB']:,} MB, "
+                f"gap is {sp_dict['hugepages MB'] - sp_dict['Estimated total IRIS shared memory']:,} MB. "
+                f"Shared memory is "
+                f"{round((sp_dict['Estimated total IRIS shared memory']) / int(sp_dict['hugepages MB']) * 100):,}"
+                f"% of huge pages.\n\n"
+            )
+
+            log += f"Note:\n"
+            log += f"Estimated shared memory only accounts for IRIS. "
+            log += f"Other components such as JVM for reports are not included.\n"
+
+            log += f"Confirm Huge Pages setting on the first IRIS startup. Especially for instances with low RAM."
+            log += f" Adjust global buffers down if needed.\n"
+            log += f"Start IRIS with all your CPF parameters set to desired values without HugePages allocated, record "
+            log += f"the total shared memory segment size from the messages.log,\nand then use that as the figure for "
+            log += f"calculating/allocating HugePages and then restart IRIS.\n"
+
+    log += "\nEnd of report."
 
     yaspe_yaml = "yaspe:\n"
     yaspe_yaml += f"  Site: {sp_dict['customer'].replace(':','-')}\n"
