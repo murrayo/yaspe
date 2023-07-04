@@ -201,7 +201,7 @@ def system_check(input_file):
 
             if filesystem_info_available:
 
-                if "Filesystem" in line:
+                if "Filesystem " in line:
                     filesystem_section = True
 
                 if filesystem_section and "</pre>" in line:
