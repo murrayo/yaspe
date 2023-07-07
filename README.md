@@ -44,6 +44,12 @@ See the help text (note the differences in image name depending on your situatio
 
 For docker hub version:
 
+For Apple M1:
+
+`docker run -v "$(pwd)":/data --rm --name yaspe murray1oldfield/yaspe:latest_M1 ./yaspe.py -h`
+
+For Intel:
+
 `docker run -v "$(pwd)":/data --rm --name yaspe murray1oldfield/yaspe:latest ./yaspe.py -h`
 
 For local version:
