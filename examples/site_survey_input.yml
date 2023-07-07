@@ -1,0 +1,67 @@
+Site Name: XYZ Hospital Group
+Data collected: Jan 2023
+Disk List:
+  Database: dm-3
+  Primary journal: dm-7
+  WIJ: dm-2
+  Backup: dm-6
+  TrakCare: dm-4
+MonitorApp:
+  Date format: yyyy/mm/dd
+  File format: 2018
+  Name: example_MonitorApp.txt
+  Sub folder: monitor
+Busiest day:
+  Episodes: dd/mm/yyyy
+Business Hours:
+  use business hours: True
+  start of day: 0800
+  end of day: 1800
+Peak minutes: 20
+Chart:
+  chart sub folder: report charts 300dpi 
+  chart style: seaborn-whitegrid
+  dpi: 300
+  format: png
+  height: 6
+  width: 16
+  line style: 'none'
+  marker: '.'
+Episodes:
+  average episodes per day: 6579
+  episodes per year: 1657372
+System:
+  iostat filename: yaspe_iostat.csv
+  iostat date format: mm/dd/yyyy
+  mgstat filename: yaspe_mgstat.csv
+  mgstat date format: mm/dd/yyyy
+  vmstat filename: yaspe_vmstat.csv
+  vmstat date format: mm/dd/yyyy
+vmstat columns:
+  - r
+  - wa
+mgstat columns:
+  - Glorefs
+  - PhyRds
+  - PhyWrs
+  - WIJwri
+  - Jrnwrts
+iostat columns:
+  - r/s
+  - w/s
+  - r_await
+  - w_await
+  - rkB/s
+  - wkB/s
+yaspe:
+  Site: The XYZ Hospital Group
+  Hostname         : trakcare02
+  Instance         : TRAKCAREHS
+  Operating system : Linux
+  Platform         : N/A
+  CPUs             : 26
+  Processor model  : Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz
+  Memory           : 204 GB
+  Shared memory    : globals 149000 MB + routines 1000 MB + gmheap 1664 MB = 151,664 MB
+  Version          : Cache for UNIX (Red Hat Enterprise Linux for x86-64) 2017.2.2 (Build 865_3_20144U) Mon Aug 17 2020 13:28:18 EDT [HealthShare Modules:Core:15.032.9688 + Linkage Engine:15.032.9688]
+  Date collected   : Profile run "24hour2sec" started at 00:00:00 on Jan 04 2023.

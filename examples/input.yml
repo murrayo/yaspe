@@ -1,10 +1,10 @@
-Site Name: "- Sample site name"
+Site Name: "- XYZ Hospital Group"
 Disk List:
-    Database: "dm-7"
-    Primary Journal: "dm-2"
-    Alternate Journal: "dm-4"
-    WIJ: "dm-3"
-    IRIS: "dm-3"
+    Database: "dm-3"
+    Primary Journal: "dm-7"
+    Alternate Journal: "dm-8"
+    WIJ: "dm-2"
+    IRIS: "dm-2"
 Colormap Name: "Set1"
 DPI: 300
 WIDTH: 16

@@ -1,3 +1,94 @@
+DB Jnl and WIJ Writes latency and DB Read latency:
+    Title: "DB Jnl and WIJ Writes latency and DB Read latency"
+    columns_to_show:
+        column1: {"Text": "Database Write await", "Name": "w_await_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Journal Write await", "Name": "w_await_pri", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column3: {"Text": "WIJ Write await", "Name": "w_await_wij", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column4: {"Text": "Database Read await", "Name": "r_await_db", "axis": "left", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "Latency (ms)"
+    y_label_r: ""
+    y_max_l: 0
+    y_max_r: 0
+
+DB Writes and DB Read latency:  
+    Title: "DB Writes and DB Read latency"
+    columns_to_show:
+        column1: {"Text": "Database Writes", "Name": "w/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Database Read await", "Name": "r_await_db", "axis": "right", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "Write IOPS"
+    y_label_r: "Read Latency (ms)"
+    y_max_l: 0
+    y_max_r: 0
+
+WIJ Writes and DB Read latency:  
+    Title: "WIJ Writes and DB Read latency"
+    columns_to_show:
+        column1: {"Text": "WIJ Writes", "Name": "w/s_wij", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Database Read await", "Name": "r_await_db", "axis": "right", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "WIJ IOPS"
+    y_label_r: "Read Latency (ms)"
+    y_max_l: 0
+    y_max_r: 0
+
+WIJ Writes and Journal write latency:  
+    Title: "WIJ Writes and Journal write latency"
+    columns_to_show:
+        column1: {"Text": "Database Writes", "Name": "w/s_wij", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Journal w_await", "Name": "w_await_pri", "axis": "right", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "WIJ IOPS"
+    y_label_r: "Write Latency (ms)"
+    y_max_l: 0
+    y_max_r: 0
+
+DB Writes and DB Reads:  
+    Title: "DB Writes and DB Reads"
+    columns_to_show:
+        column1: {"Text": "Database Writes", "Name": "w/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Database Reads", "Name": "r/s_db", "axis": "right", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "Write IOPS"
+    y_label_r: "Read IOPS"
+    y_max_l: 0
+    y_max_r: 0
+    
+DB Reads and DB Read latency:  
+    Title: "DB Reads and DB Read latency"
+    columns_to_show:
+        column1: {"Text": "Database Reads", "Name": "r/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Database Read await", "Name": "r_await_db", "axis": "right", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "Read IOPS"
+    y_label_r: "Read Latency (ms)"
+    y_max_l: 0
+    y_max_r: 0
+    
+DB Writes and DB Write latency:  
+    Title: "DB Writes and DB Write latency"
+    columns_to_show:
+        column1: {"Text": "Database Writes", "Name": "w/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "Database Write await", "Name": "w_await_db", "axis": "right", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "Write IOPS"
+    y_label_r: "Write Latency (ms)"
+    y_max_l: 0
+    y_max_r: 0
+
+WIJ Writes and WIJ latency:  
+    Title: "WIJ writes and WIJ latency"
+    columns_to_show:
+        column1: {"Text": "WIJ Writes", "Name": "w/s_wij", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "", "Markersize": 1 }
+        column2: {"Text": "WIJ Write await", "Name": "w_await_wij", "axis": "right", "Style": "-", "Linewidth": 3, "Markerstyle": "", "Markersize": 1 }
+    zoom: True
+    y_label_l: "Write IOPS"
+    y_label_r: "Write Latency (ms)"
+    y_max_l: 0
+    y_max_r: 0
+
+
 DB Read size:  
     Title: "DB Read Size"
     columns_to_show:
@@ -39,8 +130,8 @@ Mgstat DB Writes and iostat DB Writes zoom:
         column1: {"Text": "DB Writes mgstat", "Name": "PhyWrs_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
         column2: {"Text": "DB Writes iostat", "Name": "w/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
     zoom: True
-    y_label_l: "mgstat DB writes/sec"
-    y_label_r: "iostat DB Writes/sec" 
+    y_label_l: "writes/sec"
+    y_label_r: "" 
     y_max_l: 0
     y_max_r: 0  
 
@@ -50,8 +141,8 @@ Mgstat DB Reads and iostat DB Reads zoom:
         column1: {"Text": "DB Reads mgstat", "Name": "PhyRds_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
         column2: {"Text": "DB Reads iostat", "Name": "r/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
     zoom: True
-    y_label_l: "mgstat DB Reads/sec"
-    y_label_r: "iostat DB Reads/sec" 
+    y_label_l: "Reads/sec"
+    y_label_r: "" 
     y_max_l: 0
     y_max_r: 0  
 
@@ -61,8 +152,8 @@ Mgstat DB Writes and iostat DB Writes:
         column1: {"Text": "DB Writes mgstat", "Name": "PhyWrs_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
         column2: {"Text": "DB Writes iostat", "Name": "w/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
     zoom: False
-    y_label_l: "mgstat DB writes/sec"
-    y_label_r: "iostat DB Writes/sec" 
+    y_label_l: "writes/sec"
+    y_label_r: "" 
     y_max_l: 0
     y_max_r: 0  
 
@@ -72,8 +163,8 @@ Mgstat DB Reads and iostat DB Reads:
         column1: {"Text": "DB Reads mgstat", "Name": "PhyRds_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
         column2: {"Text": "DB Reads iostat", "Name": "r/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
     zoom: False
-    y_label_l: "mgstat DB Reads/sec"
-    y_label_r: "iostat DB Reads/sec" 
+    y_label_l: "Reads/sec"
+    y_label_r: "" 
     y_max_l: 0
     y_max_r: 0  
         
@@ -87,5 +178,129 @@ WIJ Write size:
     y_label_l: "WIJ writes/sec"
     y_label_r: "WIJ write kB/sec" 
     y_max_l: 0
-    y_max_r: 0        
+    y_max_r: 0       
+    
+Average request size Mgstat DB Writes and iostat DB Writes:  
+    Title: "average write request size mgstat DB Writes and iostat DB Writes"
+    columns_to_show:
+        column1: {"Text": "DB Writes mgstat", "Name": "PhyWrs_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
+        column2: {"Text": "DB Writes iostat", "Name": "w/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+        column3: {"Text": "Average write request size", "Name": "wareq-sz_db", "axis": "right", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+    zoom: False
+    y_label_l: "writes/sec"
+    y_label_r: "Average write request size" 
+    y_max_l: 0
+    y_max_r: 0   
+    
+Average read request size Mgstat DB Reads and iostat DB Reads:  
+    Title: "average Read request size mgstat DB Reads and iostat DB Reads"
+    columns_to_show:
+        column1: {"Text": "DB Reads mgstat", "Name": "PhyRds_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
+        column2: {"Text": "DB Reads iostat", "Name": "r/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+        column3: {"Text": "Average write request size", "Name": "rareq-sz_db", "axis": "right", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+    zoom: False
+    y_label_l: "reads/sec"
+    y_label_r: "Average read request size" 
+    y_max_l: 0
+    y_max_r: 0   
+    
+Mgstat Journal Writes and iostat journal Writes:  
+    Title: "mgstat journal Writes and iostat journal Writes"
+    columns_to_show:
+        column1: {"Text": "Journal Writes mgstat", "Name": "Jrnwrts_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
+        column2: {"Text": "Journal Writes iostat", "Name": "w/s_pri", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+    zoom: False
+    y_label_l: "journal writes/sec"
+    y_label_r: "" 
+    y_max_l: 0
+    y_max_r: 0  
+    
+Journal Write size:  
+    Title: "Journal Write Size"
+    columns_to_show:
+        column1: {"Text": "Journal Writes", "Name": "w/s_pri", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
+        column2: {"Text": "Journal Write kB/s", "Name": "wkB/s_pri", "axis": "right", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+    zoom: True
+    y_label_l: "Journal writes/sec"
+    y_label_r: "Journal write kB/sec" 
+    y_max_l: 0
+    y_max_r: 0   
+    
+Average request size Mgstat journal Writes and iostat journal Writes:  
+    Title: "average write request size mgstat journal Writes and iostat journal Writes"
+    columns_to_show:
+        column1: {"Text": "Journal Writes mgstat", "Name": "Jrnwrts_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
+        column2: {"Text": "Journal Writes iostat", "Name": "w/s_pri", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+        column3: {"Text": "Average write request size", "Name": "wareq-sz_pri", "axis": "right", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+    zoom: False
+    y_label_l: "Journal writes/sec"
+    y_label_r: "Average write request size" 
+    y_max_l: 0
+    y_max_r: 0  
+    
+DB Writes and WDQsz:  
+    Title: "iostat DB Writes and WDQsz"
+    columns_to_show:
+        column1: {"Text": "DB Writes iostat", "Name": "w/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+        column2: {"Text": "WDQsz", "Name": "WDQsz_mg", "axis": "right", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
+    zoom: False
+    y_label_l: "writes/sec"
+    y_label_r: "WDQsz (blocks)" 
+    y_max_l: 0
+    y_max_r: 0  
+    
+WIJ Writes and WDQsz:  
+    Title: "iostat WIJ Writes and WDQsz"
+    columns_to_show:
+        column1: {"Text": "WIJ Writes iostat", "Name": "w/s_wij", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+        column2: {"Text": "WDQsz", "Name": "WDQsz_mg", "axis": "right", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
+    zoom: False
+    y_label_l: "writes/sec"
+    y_label_r: "WDQsz (blocks)" 
+    y_max_l: 0
+    y_max_r: 0  
+    
+WIJ write size and WDQsz:  
+    Title: "WIJ write size and WDQsz"
+    columns_to_show:
+        column1: {"Text": "WIJ Write kB/s", "Name": "wkB/s_wij", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+        column2: {"Text": "WDQsz", "Name": "WDQsz_mg", "axis": "right", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
+    zoom: False
+    y_label_l: "WIJ write kB/sec" 
+    y_label_r: "WDQsz (blocks)" 
+    y_max_l: 0
+    y_max_r: 0  
+    
+DB Write size and WDQsz:  
+    Title: "DB write size and WDQsz"
+    columns_to_show:
+        column1: {"Text": "DB Write kB/s", "Name": "wkB/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+        column2: {"Text": "WDQsz", "Name": "WDQsz_mg", "axis": "right", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
+    zoom: False
+    y_label_l: "DB write kB/sec iostat" 
+    y_label_r: "WDQsz (blocks)" 
+    y_max_l: 0
+    y_max_r: 0  
         
+WIJ Write and DB Write and Read iostat:  
+    Title: "WIJ Write and DB Write and Read iostat"
+    columns_to_show:
+        column1: {"Text": "WIJ Writes iostat", "Name": "w/s_wij", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+        column2: {"Text": "DB Writes iostat", "Name": "w/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+        column3: {"Text": "DB Reads iostat", "Name": "r/s_db", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1}
+    zoom: False
+    y_label_l: "IOPS iostat" 
+    y_label_r:
+    y_max_l: 0
+    y_max_r: 0  
+    
+WIJ Write and DB Write DB Reads mgstat:  
+    Title: "WIJ Write and DB Write mgstat"
+    columns_to_show:
+        column1: {"Text": "WIJ Writes mgstat", "Name": "WIJwri_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }
+        column2: {"Text": "DB Writes mgstat", "Name": "PhyWrs_mg", "axis": "left", "Style": "-", "Linewidth": 2, "Markerstyle": "o", "Markersize": 1 }      
+    zoom: False
+    y_label_l: "IOPS mgstat" 
+    y_label_r:
+    y_max_l: 0
+    y_max_r: 0  
