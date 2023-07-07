@@ -51,6 +51,11 @@ def system_check(input_file):
     filesystem_section = True
     filesystem_counter = 0
 
+    shared_memory_available = False
+    shared_memory_section = True
+    shared_memory_counter = 0
+    shared_memory_total = 0
+
     with open(input_file, "r", encoding="ISO-8859-1") as file:
 
         model_name = True
@@ -210,6 +215,30 @@ def system_check(input_file):
                 if filesystem_section:
                     sp_dict[f"filesystem df {filesystem_counter}"] = line.strip()
                     filesystem_counter += 1
+
+            if "Shared Memory Segments" in line:
+                shared_memory_available = True
+
+            if shared_memory_available:
+                if "key" in line:
+                    shared_memory_section = True
+
+                if shared_memory_section and line.strip() == "":
+                    shared_memory_section = False
+                    shared_memory_available = False
+                    sp_dict[
+                        f"Shared memory ipcs {shared_memory_counter}"
+                    ] = f"Total shared memory used: {int(shared_memory_total/1024/1024):,} MB"
+                    sp_dict["Shared memory segment total"] = shared_memory_total
+
+                if shared_memory_section:
+                    if "key" not in line and "----" not in line:
+                        shared_memory_columns = line.split()
+                        shared_memory_bytes = int(shared_memory_columns[4])
+                        shared_memory_total += shared_memory_bytes
+
+                    sp_dict[f"Shared memory ipcs {shared_memory_counter}"] = line.strip()
+                    shared_memory_counter += 1
 
             # Linux kernel
 
@@ -696,8 +725,8 @@ def build_log(sp_dict):
             log += f"{sp_dict[key]}\n"
 
     if "Estimated total IRIS shared memory" in sp_dict:
-        log += f"-----------------------------------------------------------------------------------------------------"
-        log += f"\n\nTotal shared memory estimate for IRIS 2022.1 and later: "
+        log += f"\n--------------------------------------------------------------------------------------------------\n"
+        log += f"Estimated total shared memory for IRIS 2022.1 and later: "
         log += f"{int(sp_dict['Estimated total IRIS shared memory']):,} (MB)\n\n"
         log += f'{sp_dict["Estimated total IRIS shared memory text"]}\n'
 
@@ -720,6 +749,15 @@ def build_log(sp_dict):
                 f"gap is {sp_dict['hugepages MB'] - sp_dict['Estimated total IRIS shared memory']:,} MB. "
                 f"Shared memory is "
                 f"{round((sp_dict['Estimated total IRIS shared memory']) / int(sp_dict['hugepages MB']) * 100):,}"
+                f"% of huge pages.\n"
+            )
+            log += (
+                f"Current shared memory (from ipcs -m) is "
+                f"{int(sp_dict['Shared memory segment total']/1024/1024):,} MB"
+                f", hugepages is {sp_dict['hugepages MB']:,} MB, "
+                f"gap is {sp_dict['hugepages MB'] - int(sp_dict['Shared memory segment total']/1024/1024):,} MB. "
+                f"Shared memory is "
+                f"{round((int(sp_dict['Shared memory segment total']/1024/1024))/int(sp_dict['hugepages MB']) * 100):,}"
                 f"% of huge pages.\n\n"
             )
 
@@ -732,6 +770,14 @@ def build_log(sp_dict):
             log += f"Start IRIS with all your CPF parameters set to desired values without HugePages allocated, record "
             log += f"the total shared memory segment size from the messages.log,\nand then use that as the figure for "
             log += f"calculating/allocating HugePages and then restart IRIS.\n"
+
+    first_shared_memory = True
+    for key in sp_dict:
+        if "Shared memory ipcs" in key:
+            if first_shared_memory:
+                log += "\nShared memory from ipcs -m:\n"
+                first_shared_memory = False
+            log += f"{sp_dict[key]}\n"
 
     log += "\nEnd of report."
 
