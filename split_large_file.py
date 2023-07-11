@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 
 def split_large_file(input_file, **kwargs):
@@ -22,12 +23,15 @@ def split_large_file(input_file, **kwargs):
 
     if split_found:
 
-        sub_directory = "split_html"
+        path = Path(input_file)
+
+        input_file_name = path.name
+        sub_directory = f"{path.parent}/split_html"
 
         if not os.path.isdir(sub_directory):
             os.mkdir(sub_directory)
 
-        split_file = f"{sub_directory}/part1_{input_file}"
+        split_file = f"{sub_directory}/part1_{input_file_name}"
 
         # Open the input file in read mode
         with open(input_file, "r", encoding="ISO-8859-1") as file:

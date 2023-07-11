@@ -7,15 +7,21 @@ import chart_output, chart_templates, yaspe_utilities
 
 def what_date_format(df, date_format_string, column_name, name):
 
-    # Force date format based on strftime()
-    if date_format_string == "mm/dd/yyyy":
-        df[column_name] = pd.to_datetime(df["datetime"], format="%m/%d/%Y %I:%M:%S %p", infer_datetime_format=True)
-    elif date_format_string == "dd/mm/yyyy":
-        df[column_name] = pd.to_datetime(df["datetime"], format="%d/%m/%Y %I:%M:%S %p", infer_datetime_format=True)
-    else:
-        print(date_format_string)
-        print(f"{name} date format error cannot be determined")
-        # exit()
+    # # Force date format based on strftime()
+    # if date_format_string == "mm/dd/yyyy":
+    #     df[column_name] = pd.to_datetime(df["datetime"], format="%m/%d/%Y %I:%M:%S %p")
+    # elif date_format_string == "dd/mm/yyyy":
+    #     df[column_name] = pd.to_datetime(df["datetime"], format="%d/%m/%Y %I:%M:%S %p")
+    # elif date_format_string == "mm/dd/yy":
+    #     df[column_name] = pd.to_datetime(df["datetime"], format="%m/%d/%y %I:%M:%S %p")
+    # elif date_format_string == "dd/mm/yy":
+    #     df[column_name] = pd.to_datetime(df["datetime"], format="%d/%m/%y %I:%M:%S %p")
+    # else:
+    #     print(date_format_string)
+    #     print(f"{name} date format error cannot be determined")
+    #     # exit()
+
+    df[column_name] = pd.to_datetime(df["datetime"])
 
     df.set_index("datetime", inplace=True)
 

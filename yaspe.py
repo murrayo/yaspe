@@ -13,7 +13,7 @@ import os
 import yaml
 
 from datetime import datetime
-import dateutil.parser
+from dateutil.parser import parse
 
 # from altair_saver import save
 import sqlite3
@@ -37,6 +37,15 @@ import system_review
 from yaspe_utilities import make_mdy_date
 
 alt.data_transformers.disable_max_rows()
+
+
+# Define a function to infer the date format
+def guess_datetime_format(datetime_string):
+    try:
+        dt = parse(datetime_string)
+        return dt.strftime("%m/%d/%Y %H:%M:%S")
+    except ValueError:
+        return "Unable to determine datetime format."
 
 
 def create_connection(path):
@@ -259,13 +268,19 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
-    # Convert datetime string to datetime type (data is a _view_ of full dataframe, create a copy to update here)
+    # # Convert datetime string to datetime type (data is a _view_ of full dataframe, create a copy to update here)
+    # # Apply the function to the DataFrame column
+    # data["datetime"] = data["datetime"].apply(guess_datetime_format)
+    # print(data["datetime"].head(3))
+
     png_data = data.copy()
-    png_data.loc[:, "datetime"] = pd.to_datetime(data["datetime"], infer_datetime_format=True)
+    png_data.loc[:, "datetime"] = pd.to_datetime(
+        data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
+    )
 
     colormap_name = "Set1"
+    plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.style.use("seaborn-whitegrid")
     plt.figure(num=None, figsize=(16, 6))
     plt.tight_layout()
 
@@ -323,8 +338,7 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     png_data = data.copy()
 
     colormap_name = "Set1"
-
-    plt.style.use("seaborn-whitegrid")
+    plt.style.use("seaborn-v0_8-whitegrid")
     plt.figure(num=None, figsize=(16, 6))
     palette = plt.get_cmap(colormap_name)
 
@@ -368,7 +382,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     # First we’ll create an interval selection using the selection_interval() function (in this case for x axis only)
 
-    brush = alt.selection(type="interval", encodings=["x"])
+    brush = alt.selection_interval(encodings=["x"])
 
     # Create the chart
     base = (
@@ -388,7 +402,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     upper = base.encode(alt.X("datetime:T", title="Time Zoom", scale=alt.Scale(domain=brush)))
 
     # Lower chart bind the brush in our chart by setting the selection property
-    lower = base.properties(height=150, title="").add_selection(brush)
+    lower = base.properties(height=150, title="").add_params(brush)
 
     alt.hconcat(upper & lower).configure_title(fontSize=14, color="black").configure_legend(
         strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
@@ -422,7 +436,7 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
-    brush = alt.selection(type="interval", encodings=["x"])
+    brush = alt.selection_interval(encodings=["x"])
 
     # Create the chart
     base = (
@@ -441,7 +455,7 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     upper = base.encode(alt.X("id_key:Q", title="Count Zoom", scale=alt.Scale(domain=brush)))
 
     # Lower chart bind the brush in our chart by setting the selection property
-    lower = base.properties(height=150, title="").add_selection(brush)
+    lower = base.properties(height=150, title="").add_params(brush)
 
     alt.hconcat(upper & lower).configure_title(fontSize=14, color="black").configure_legend(
         strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
