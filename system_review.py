@@ -122,6 +122,10 @@ def system_charts(base_file_path):
     else:
         single_day = True
 
+    df["Total CPU"].describe(percentiles=[0.95, 0.98]).to_csv(
+        f"{output_file_path_txt}/describe CPU utilisation peak full day.csv"
+    )
+
     # Find peak CPU window
     if not site_survey_input["Peak minutes"] == 0 and single_day:
         peak_zoom = True
@@ -144,6 +148,10 @@ def system_charts(base_file_path):
             title_comment=f"Business Hours",
             extra_subtitle=f"{vmstat_title}",
             number_cpus=number_cpus,
+        )
+
+        df_zoom["Total CPU"].describe(percentiles=[0.95, 0.98]).to_csv(
+            f"{output_file_path_txt}/describe CPU utilisation peak business hours.csv"
         )
 
     if peak_zoom:
@@ -174,6 +182,10 @@ def system_charts(base_file_path):
             title_comment=f"Peak CPU Total {peak_minutes}-min window",
             extra_subtitle=f"{vmstat_title}",
             number_cpus=number_cpus,
+        )
+
+        df_zoom["Total CPU"].describe(percentiles=[0.95, 0.98]).to_csv(
+            f"{output_file_path_txt}/describe CPU utilisation peak 20 minutes.csv"
         )
 
     # ------------------------------------------------------------------------------------
