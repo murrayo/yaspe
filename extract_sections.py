@@ -438,7 +438,7 @@ def extract_sections(
             # Disks:                      xfers                                read                                write                                  queue                    time
             #                   %tm    bps   tps  bread  bwrtn   rps    avg    min    max time fail   wps    avg    min    max time fail    avg    min    max   avg   avg  serv
             #                   act                                    serv   serv   serv outs              serv   serv   serv outs        time   time   time  wqsz  sqsz qfull
-            # hdisk0            2.0  65.5K  13.0  57.3K   8.2K  11.0   0.6    0.5    0.9     0    0   2.0   0.4    0.3    0.4     0    0   0.0    0.0    0.0    0.0   0.0   3.0  12:41:43
+            # hdisk0            2.0  65.5K  13.0  57.3K   8.2K  11.0   0.6    1.5S   0.9     0    0   2.0   0.4    0.3    0.4     0    0   0.0    0.0    0.0    0.0   0.0   3.0  12:41:43
             # hdisk1            7.0   4.2M 135.0  57.3K   4.2M   7.0   6.9    0.5   20.2     0    0 128.0   0.4    0.3    0.6     0    0   0.0    0.0    0.1    0.0   0.0   4.0  12:41:43
 
             # Fake header columns

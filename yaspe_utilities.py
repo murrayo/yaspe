@@ -39,6 +39,9 @@ def get_aix_wacky_numbers(s):
             elif "M" in s:
                 value = s.split("M")[0]
                 return int(float(value) * 1000000)
+            elif "S" in s:
+                value = s.split("S")[0]
+                return int(float(value) * 1000)
             return locale.atof(s)
         except (ValueError, TypeError):
             return s

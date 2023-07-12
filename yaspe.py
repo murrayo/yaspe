@@ -137,6 +137,14 @@ def insert_dict_into_table(connection, table_name, _dict):
         connection.execute(f"INSERT INTO {table_name} ({keys}) VALUES ({question_marks})", values)
 
 
+def is_column_numeric(df, column_name):
+    try:
+        pd.to_numeric(df[column_name])
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
 def create_sections(
     connection, input_file, include_iostat, include_nfsiostat, html_filename, csv_out, output_filepath_prefix, disk_list
 ):
@@ -264,6 +272,15 @@ def create_overview(connection, sp_dict):
 
 
 def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
+
+    # Check column only has numeric data (strings can sneak in with AIX)
+    if not is_column_numeric(data, "metric"):
+        print(f"{column_name} {title}:\n{data.head(2)}")
+        return
+    # else:
+    #     print(column_name)
+    #     print(f'_{data["metric"].max()}_ : {type(data["metric"].max())}')
+
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
