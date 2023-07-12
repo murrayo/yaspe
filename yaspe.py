@@ -275,7 +275,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     # Check column only has numeric data (strings can sneak in with AIX)
     if not is_column_numeric(data, "metric"):
-        print(f"{column_name} {title}:\n{data.head(2)}")
+        print(f"Non numeric data in in column: {column_name} for chart {title}:\n{data.head(2)}")
         return
     # else:
     #     print(column_name)

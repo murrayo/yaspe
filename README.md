@@ -33,6 +33,7 @@ For Intel: `docker pull murray1oldfield/yaspe:latest`
 To create a docker image on your own system:
 
 - Download the source files
+- logon to docker with: `docker login`
 - `cd` to folder with source files
 - Build `yaspe` container image: `docker build --no-cache -t yaspe .`
 
