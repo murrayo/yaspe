@@ -161,7 +161,7 @@ def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name
     x = df_master[column_d["Name"]]
     xz = df_master_zoom[column_d["Name"]]
 
-    plt.style.use("seaborn-whitegrid")
+    plt.style.use("seaborn-v0_8-whitegrid")
     palette = plt.get_cmap(plot_d["Colormap Name"])
     color = palette(1)
 
@@ -296,7 +296,7 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
 
     # Start the plot
 
-    plt.style.use("seaborn-whitegrid")
+    plt.style.use("seaborn-v0_8-whitegrid")
     palette = plt.get_cmap(plot_d["Colormap Name"])
 
     fig, ax1 = plt.subplots()

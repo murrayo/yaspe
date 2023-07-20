@@ -483,6 +483,62 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html", scale_factor=2.0)
 
 
+def simple_chart_stacked(data, column_names, title, max_y, filepath, output_prefix, **kwargs):
+
+    file_prefix = kwargs.get("file_prefix", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
+
+    png_data = data.copy()
+    png_data.loc[:, "datetime"] = pd.to_datetime(
+        data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
+    )
+
+    # Get the column data, TBD make more useful with any column_names is a dictionary of variable names
+    wa = png_data["wa"]
+    sy = png_data["sy"]
+    us = png_data["us"]
+
+    colormap_name = "Set1"
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+    plt.figure(num=None, figsize=(16, 6))
+    plt.tight_layout()
+
+    palette = plt.get_cmap(colormap_name)
+
+    color = palette(1)
+
+    fig, ax = plt.subplots()
+    plt.gcf().set_size_inches(16, 6)
+    # plt.gcf().set_dpi(300)
+
+    ax.stackplot(png_data["datetime"], sy, wa, us, labels=["sy", "wa", "us"], alpha=0.7, baseline="zero")
+
+    ax.grid(which="major", axis="both", linestyle="--")
+    ax.set_title(title, fontsize=14)
+    ax.set_ylabel("CPU Utilisation %", fontsize=10)
+    ax.legend(loc="upper left", reverse=True)
+    ax.tick_params(labelsize=10)
+    ax.set_ylim(bottom=0)  # Always zero start
+    if max_y != 0:
+        ax.set_ylim(top=max_y)
+
+    ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+
+    locator = plt_dates.AutoDateLocator()
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(plt_dates.AutoDateFormatter(locator=locator, defaultfmt="%H:%M"))
+
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    # plt.tight_layout()
+
+    output_name = "Stacked CPU"
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=100)
+    plt.close("all")
+
+
 def chart_vmstat(connection, filepath, output_prefix, png_out):
     # print(f"vmstat...")
     # Get useful
@@ -500,6 +556,13 @@ def chart_vmstat(connection, filepath, output_prefix, png_out):
     # Add a new total CPU column, add a datetime column
     df["Total CPU"] = 100 - df["id"]
     df["datetime"] = df["RunDate"] + " " + df["RunTime"]
+
+    # Create stacked CPU chart if columns exist
+    if png_out:
+        if "sy" in df.columns and "wa" in df.columns and "us" in df.columns:
+            title = f"CPU utilisation % - {customer}"
+            title += f"\n{number_cpus} cores ({processor})"
+            simple_chart_stacked(df, "sy, wa, us", title, 100, filepath, output_prefix)
 
     # Format the data for Altair
     # Cut down the df to just the list of categorical data we care about (columns)
