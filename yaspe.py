@@ -539,6 +539,64 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     plt.close("all")
 
 
+def simple_chart_stacked_iostat(data, column_names, device, title, max_y, filepath, output_prefix, **kwargs):
+
+    file_prefix = kwargs.get("file_prefix", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
+
+    png_data = data.copy()
+    png_data.loc[:, "datetime"] = pd.to_datetime(
+        data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
+    )
+
+    # Get the column data, TBD make more useful with any column_names is a dictionary of variable names
+
+    # get the / out of file names
+    # png_data.rename(columns={'r/s': 'Reads', 'w/s': 'Writes'}, inplace=True)
+    reads = png_data["r/s"]
+    writes = png_data["w/s"]
+
+    colormap_name = "Set1"
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+    plt.figure(num=None, figsize=(16, 6))
+    plt.tight_layout()
+
+    palette = plt.get_cmap(colormap_name)
+
+    color = palette(1)
+
+    fig, ax = plt.subplots()
+    plt.gcf().set_size_inches(16, 6)
+    # plt.gcf().set_dpi(300)
+
+    ax.stackplot(png_data["datetime"], reads, writes, labels=["r/s", "w/s"], alpha=0.7, baseline="zero")
+
+    ax.grid(which="major", axis="both", linestyle="--")
+    ax.set_title(title, fontsize=14)
+    ax.set_ylabel("Total IOPS", fontsize=10)
+    ax.legend(loc="upper left", reverse=True)
+    ax.tick_params(labelsize=10)
+    ax.set_ylim(bottom=0)  # Always zero start
+    if max_y != 0:
+        ax.set_ylim(top=max_y)
+
+    ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+
+    locator = plt_dates.AutoDateLocator()
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(plt_dates.AutoDateFormatter(locator=locator, defaultfmt="%H:%M"))
+
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    # plt.tight_layout()
+
+    output_name = "Stacked IOPS"
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=100)
+    plt.close("all")
+
+
 def chart_vmstat(connection, filepath, output_prefix, png_out):
     # print(f"vmstat...")
     # Get useful
@@ -713,6 +771,9 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
     df = pd.read_sql_query("SELECT * FROM iostat", connection)
     df.dropna(inplace=True)
 
+    if "r/s" in df.columns and "w/s" in df.columns:
+        df["Total IOPS"] = df["r/s"] + df["w/s"]
+
     # If there is no date and time in iostat then just use index as x axis
     if "RunDate" in df.columns:
         df["datetime"] = df["RunDate"] + " " + df["RunTime"]
@@ -738,6 +799,12 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
         for device in devices:
 
             device_df = iostat_df.loc[iostat_df["Device"] == device]
+
+            # Create stacked read write chart if columns exist
+            if png_out:
+                if "r/s" in device_df.columns and "w/s" in device_df.columns:
+                    title = f"{device} : Total IOPS - {customer}"
+                    simple_chart_stacked_iostat(device_df, "r/s, w/s", device, title, 0, filepath, output_prefix)
 
             # unpivot the dataframe; first column is date time column, column name is next, then the value in that
             # column
