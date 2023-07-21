@@ -635,7 +635,7 @@ def simple_chart_histogram_iostat(png_data, device, title, filepath, output_pref
     ax.hist(reads, bins=10, edgecolor="black")
 
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(title, fontsize=14)
+    ax.set_title(f"Read {title}", fontsize=14)
     ax.set_xlabel("Latency ms (r_await)", fontsize=10)
     ax.set_ylabel("Frequency", fontsize=10)
 
@@ -657,7 +657,7 @@ def simple_chart_histogram_iostat(png_data, device, title, filepath, output_pref
     ax.hist(writes, bins=10, edgecolor="black")
 
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(title, fontsize=14)
+    ax.set_title(f"Write {title}", fontsize=14)
     ax.set_xlabel("Latency ms (w_await) non-zero w/s values only", fontsize=10)
     ax.set_ylabel("Frequency", fontsize=10)
 
