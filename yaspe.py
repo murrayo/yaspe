@@ -597,6 +597,80 @@ def simple_chart_stacked_iostat(data, column_names, device, title, max_y, filepa
     plt.close("all")
 
 
+def simple_chart_histogram_iostat(png_data, device, title, filepath, output_prefix, **kwargs):
+
+    file_prefix = kwargs.get("file_prefix", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
+
+    # Get the column data, TBD make more useful with any column_names is a dictionary of variable names
+
+    # get the / out of file names
+    # png_data.rename(columns={'r/s': 'Reads', 'w/s': 'Writes'}, inplace=True)
+    reads = png_data["r_await"]
+
+    # For writes only look at non-zero values
+    # Create a boolean mask based on the condition "column2" is not equal to 0
+    mask = png_data["w/s"] != 0
+
+    # Use the boolean mask to filter values in "column1"
+    writes = png_data.loc[mask, "w_await"]
+
+    colormap_name = "Set1"
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+    plt.figure(num=None, figsize=(16, 6))
+    plt.tight_layout()
+
+    palette = plt.get_cmap(colormap_name)
+
+    color = palette(1)
+
+    # Reads
+
+    fig, ax = plt.subplots()
+    plt.gcf().set_size_inches(16, 6)
+    # plt.gcf().set_dpi(300)
+
+    ax.hist(reads, bins=10, edgecolor="black")
+
+    ax.grid(which="major", axis="both", linestyle="--")
+    ax.set_title(title, fontsize=14)
+    ax.set_ylabel("Latency (r_await)", fontsize=10)
+    ax.set_ylabel("Frequency", fontsize=10)
+
+    ax.tick_params(labelsize=10)
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    # plt.tight_layout()
+
+    output_name = f"Read Latency Histogram"
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=100)
+    plt.close("all")
+
+    # Writes
+
+    fig, ax = plt.subplots()
+    plt.gcf().set_size_inches(16, 6)
+    # plt.gcf().set_dpi(300)
+
+    ax.hist(writes, bins=10, edgecolor="black")
+
+    ax.grid(which="major", axis="both", linestyle="--")
+    ax.set_title(title, fontsize=14)
+    ax.set_ylabel("Latency (w_await)", fontsize=10)
+    ax.set_ylabel("Frequency", fontsize=10)
+
+    ax.tick_params(labelsize=10)
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    # plt.tight_layout()
+
+    output_name = f"Write Latency Histogram"
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=100)
+    plt.close("all")
+
+
 def chart_vmstat(connection, filepath, output_prefix, png_out):
     # print(f"vmstat...")
     # Get useful
@@ -805,6 +879,10 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
                 if "r/s" in device_df.columns and "w/s" in device_df.columns:
                     title = f"{device} : Total IOPS - {customer}"
                     simple_chart_stacked_iostat(device_df, "r/s, w/s", device, title, 0, filepath, output_prefix)
+
+                if "r_await" in device_df.columns and "w_await" in device_df.columns:
+                    title = f"{device} : Latency - {customer}"
+                    simple_chart_histogram_iostat(device_df, device, title, filepath, output_prefix)
 
             # unpivot the dataframe; first column is date time column, column name is next, then the value in that
             # column
