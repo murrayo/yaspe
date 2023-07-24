@@ -102,7 +102,7 @@ def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
     # make a plot
     plt.title(chart_title)
 
-    max_max_y = 0
+    max_max_y = left_y_axis_max
     for field_name in field_names:
 
         max_y = df[field_name].max()

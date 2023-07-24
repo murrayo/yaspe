@@ -126,7 +126,7 @@ def chart_vmstat(df, site_survey_input, **kwargs):
 
     for counter in vmstat_columns:
         left_y_axis_max = 0
-        if counter == "Total CPU":
+        if "Total CPU" in counter:
             left_y_axis_max = 100
 
         extra_horizontal = (0, "")
