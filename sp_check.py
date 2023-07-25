@@ -198,7 +198,7 @@ def system_check(input_file):
                         sp_dict[f"dev mapper {dev_mapper_counter}"] = line.strip()
                         dev_mapper_counter += 1
 
-                    if dev_mapper_counter > 0 and "->" not in line:
+                    if dev_mapper_counter > 0 and "rw" not in line:
                         dev_mapper_section = False
 
             if "<div id=df-m>" in line:
