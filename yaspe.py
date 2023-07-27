@@ -28,6 +28,7 @@ import seaborn as sns
 
 import altair as alt
 import pandas as pd
+from pandas.io.sql import DatabaseError
 
 from extract_sections import extract_sections
 import system_review
@@ -682,8 +683,17 @@ def chart_vmstat(connection, filepath, output_prefix, png_out):
         aix_cpus = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'AIX SMT';")[2]
         processor += f" SMT {aix_cpus}"
 
-    # Read in to dataframe
-    df = pd.read_sql_query("SELECT * FROM vmstat", connection)
+    # Read in to dataframe, drop any bad rows
+    try:
+        df = pd.read_sql_query("SELECT * FROM vmstat", connection)
+    except DatabaseError as e:
+        # Check if the error message indicates a missing table
+        if "no such table" in str(e):
+            return None
+        else:
+            # For other types of Error, handle them accordingly
+            raise e
+    df.dropna(inplace=True)
 
     # Add a new total CPU column, add a datetime column
     df["Total CPU"] = 100 - df["id"]
@@ -746,8 +756,17 @@ def chart_mgstat(connection, filepath, output_prefix, png_out):
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
-    # Read in to dataframe
-    df = pd.read_sql_query("SELECT * FROM mgstat", connection)
+    # Read in to dataframe, drop any bad rows
+    try:
+        df = pd.read_sql_query("SELECT * FROM mgstat", connection)
+    except DatabaseError as e:
+        # Check if the error message indicates a missing table
+        if "no such table" in str(e):
+            return None
+        else:
+            # For other types of Error, handle them accordingly
+            raise e
+    df.dropna(inplace=True)
 
     # hack until good way to detect date format is mmm/dd/yyyy or not
     if False:
@@ -794,7 +813,15 @@ def chart_perfmon(connection, filepath, output_prefix, png_out):
     number_cpus = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'number cpus';")[2]
 
     # Read in to dataframe, drop any bad rows
-    df = pd.read_sql_query("SELECT * FROM perfmon", connection)
+    try:
+        df = pd.read_sql_query("SELECT * FROM perfmon", connection)
+    except DatabaseError as e:
+        # Check if the error message indicates a missing table
+        if "no such table" in str(e):
+            return None
+        else:
+            # For other types of Error, handle them accordingly
+            raise e
     df.dropna(inplace=True)
 
     # Format the data for Altair
@@ -842,7 +869,15 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
     # Read in to dataframe, drop any bad rows
-    df = pd.read_sql_query("SELECT * FROM iostat", connection)
+    try:
+        df = pd.read_sql_query("SELECT * FROM iostat", connection)
+    except DatabaseError as e:
+        # Check if the error message indicates a missing table
+        if "no such table" in str(e):
+            return None
+        else:
+            # For other types of Error, handle them accordingly
+            raise e
     df.dropna(inplace=True)
 
     if "r/s" in df.columns and "w/s" in df.columns:
@@ -961,7 +996,15 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
     # Read in to dataframe, drop any bad rows
-    df = pd.read_sql_query("SELECT * FROM nfsiostat", connection)
+    try:
+        df = pd.read_sql_query("SELECT * FROM nfsiostat", connection)
+    except DatabaseError as e:
+        # Check if the error message indicates a missing table
+        if "no such table" in str(e):
+            return None
+        else:
+            # For other types of Error, handle them accordingly
+            raise e
     df.dropna(inplace=True)
 
     # No date or time, chart all columns, index is x axis
@@ -1009,7 +1052,15 @@ def chart_aix_sar_d(connection, filepath, output_prefix, operating_system, png_o
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
     # Read in to dataframe, drop any bad rows
-    df = pd.read_sql_query("SELECT * FROM aix_sar_d", connection)
+    try:
+        df = pd.read_sql_query("SELECT * FROM aix_sar_d", connection)
+    except DatabaseError as e:
+        # Check if the error message indicates a missing table
+        if "no such table" in str(e):
+            return None
+        else:
+            # For other types of Error, handle them accordingly
+            raise e
     df.dropna(inplace=True)
 
     # df["datetime"] = df["RunDate"] + " " + df["RunTime"]
