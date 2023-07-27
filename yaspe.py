@@ -495,10 +495,7 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
         data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
     )
 
-    # Get the column data, TBD make more useful with any column_names is a dictionary of variable names
-    wa = png_data["wa"]
-    sy = png_data["sy"]
-    us = png_data["us"]
+    png_data.set_index("datetime", inplace=True)
 
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
@@ -514,7 +511,7 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     plt.gcf().set_size_inches(16, 6)
     # plt.gcf().set_dpi(300)
 
-    ax.stackplot(png_data["datetime"], sy, wa, us, labels=["sy", "wa", "us"], alpha=0.7, baseline="zero")
+    ax.stackplot(png_data.index, png_data["sy"], png_data["wa"], png_data["us"], labels=["sy", "wa", "us"], alpha=0.7)
 
     ax.grid(which="major", axis="both", linestyle="--")
     ax.set_title(title, fontsize=14)
@@ -540,7 +537,7 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     plt.close("all")
 
 
-def simple_chart_stacked_iostat(data, column_names, device, title, max_y, filepath, output_prefix, **kwargs):
+def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, filepath, output_prefix, **kwargs):
 
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
@@ -551,12 +548,13 @@ def simple_chart_stacked_iostat(data, column_names, device, title, max_y, filepa
         data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
     )
 
-    # Get the column data, TBD make more useful with any column_names is a dictionary of variable names
+    png_data.set_index("datetime", inplace=True)
 
-    # get the / out of file names
-    # png_data.rename(columns={'r/s': 'Reads', 'w/s': 'Writes'}, inplace=True)
-    reads = png_data["r/s"]
-    writes = png_data["w/s"]
+    # {'r/s': 'Reads per sec', 'w/s': 'Writes per sec'}
+    column_0 = list(columns_to_stack.keys())[0]
+    column_0_legend = columns_to_stack[column_0]
+    column_1 = list(columns_to_stack.keys())[1]
+    column_1_legend = columns_to_stack[column_1]
 
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
@@ -570,9 +568,14 @@ def simple_chart_stacked_iostat(data, column_names, device, title, max_y, filepa
 
     fig, ax = plt.subplots()
     plt.gcf().set_size_inches(16, 6)
-    # plt.gcf().set_dpi(300)
 
-    ax.stackplot(png_data["datetime"], reads, writes, labels=["r/s", "w/s"], alpha=0.7, baseline="zero")
+    ax.stackplot(
+        png_data.index,
+        png_data[column_0],
+        png_data[column_1],
+        labels=[column_0_legend, column_1_legend],
+        alpha=0.7,
+    )
 
     ax.grid(which="major", axis="both", linestyle="--")
     ax.set_title(title, fontsize=14)
@@ -598,24 +601,26 @@ def simple_chart_stacked_iostat(data, column_names, device, title, max_y, filepa
     plt.close("all")
 
 
-def simple_chart_histogram_iostat(png_data, device, title, filepath, output_prefix, **kwargs):
+def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title, filepath, output_prefix, **kwargs):
 
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
-    # Get the column data, TBD make more useful with any column_names is a dictionary of variable names
-
-    # get the / out of file names
-    # png_data.rename(columns={'r/s': 'Reads', 'w/s': 'Writes'}, inplace=True)
-    reads = png_data["r_await"]
+    # Column name : check for non-zero column {'r_await': 'r/s', 'w_await' : 'w/s'}
+    column_0 = list(columns_to_histogram.keys())[0]
+    column_0_non_zero = columns_to_histogram[column_0]
+    column_1 = list(columns_to_histogram.keys())[1]
+    column_1_non_zero = columns_to_histogram[column_1]
 
     # For writes only look at non-zero values
     # Create a boolean mask based on the condition "column2" is not equal to 0
-    mask = png_data["w/s"] != 0
+    mask0 = png_data[column_0_non_zero] != 0
+    mask1 = png_data[column_1_non_zero] != 0
 
     # Use the boolean mask to filter values in "column1"
-    writes = png_data.loc[mask, "w_await"]
+    reads = png_data.loc[mask0, column_0]
+    writes = png_data.loc[mask1, column_1]
 
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
@@ -637,7 +642,7 @@ def simple_chart_histogram_iostat(png_data, device, title, filepath, output_pref
 
     ax.grid(which="major", axis="both", linestyle="--")
     ax.set_title(f"Read {title}", fontsize=14)
-    ax.set_xlabel("Latency ms (r_await)", fontsize=10)
+    ax.set_xlabel(f"Latency ms ({column_0}) non-zero {column_0_non_zero} values only", fontsize=10)
     ax.set_ylabel("Frequency", fontsize=10)
 
     ax.tick_params(labelsize=10)
@@ -659,7 +664,7 @@ def simple_chart_histogram_iostat(png_data, device, title, filepath, output_pref
 
     ax.grid(which="major", axis="both", linestyle="--")
     ax.set_title(f"Write {title}", fontsize=14)
-    ax.set_xlabel("Latency ms (w_await) non-zero w/s values only", fontsize=10)
+    ax.set_xlabel(f"Latency ms ({column_1}) non-zero {column_1_non_zero} values only", fontsize=10)
     ax.set_ylabel("Frequency", fontsize=10)
 
     ax.tick_params(labelsize=10)
@@ -906,18 +911,46 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
 
         # Chart each disk
         for device in devices:
-
             device_df = iostat_df.loc[iostat_df["Device"] == device]
 
             # Create stacked read write chart if columns exist
             if png_out:
-                if "r/s" in device_df.columns and "w/s" in device_df.columns:
-                    title = f"{device} : Total IOPS - {customer}"
-                    simple_chart_stacked_iostat(device_df, "r/s, w/s", device, title, 0, filepath, output_prefix)
 
-                if "r_await" in device_df.columns and "w_await" in device_df.columns:
-                    title = f"{device} : Latency - {customer}"
-                    simple_chart_histogram_iostat(device_df, device, title, filepath, output_prefix)
+                if operating_system == "AIX":
+                    pass
+
+                    # Something wrong with the way stacked charts come out base is not zero and a fake base rises l-r
+
+                    # if "read rps" in device_df.columns and "write wps" in device_df.columns:
+                    #     title = f"{device} : Total IOPS - {customer}"
+                    #     columns_to_stack = {"read rps": "Reads per sec", "write wps": "Writes per sec"}
+                    #     simple_chart_stacked_iostat(
+                    #         device_df, columns_to_stack, device, title, 0, filepath, output_prefix
+                    #     )
+                    #
+                    #     if "read avg serv" in device_df.columns and "write avg serv" in device_df.columns:
+                    #         title = f"{device} : Latency - {customer}"
+                    #         columns_to_histogram = {"read avg serv": "read rps", "write avg serv": "write wps"}
+                    #         simple_chart_histogram_iostat(
+                    #             device_df, columns_to_histogram, device, title, filepath, output_prefix
+                    #         )
+
+                else:
+
+                    if "r/s" in device_df.columns and "w/s" in device_df.columns:
+                        title = f"{device} : Total IOPS - {customer}"
+                        columns_to_stack = {"r/s": "Reads per sec", "w/s": "Writes per sec"}
+                        simple_chart_stacked_iostat(
+                            device_df, columns_to_stack, device, title, 0, filepath, output_prefix
+                        )
+
+                        if "r_await" in device_df.columns and "w_await" in device_df.columns:
+                            title = f"{device} : Latency - {customer}"
+                            # Column name : check for non-zero column
+                            columns_to_histogram = {"r_await": "r/s", "w_await": "w/s"}
+                            simple_chart_histogram_iostat(
+                                device_df, columns_to_histogram, device, title, filepath, output_prefix
+                            )
 
             # unpivot the dataframe; first column is date time column, column name is next, then the value in that
             # column
