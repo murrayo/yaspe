@@ -147,7 +147,15 @@ def is_column_numeric(df, column_name):
 
 
 def create_sections(
-    connection, input_file, include_iostat, include_nfsiostat, html_filename, csv_out, output_filepath_prefix, disk_list
+    connection,
+    input_file,
+    include_iostat,
+    include_nfsiostat,
+    html_filename,
+    csv_out,
+    output_filepath_prefix,
+    disk_list,
+    csv_date_format,
 ):
 
     operating_system = execute_single_read_query(
@@ -175,6 +183,10 @@ def create_sections(
         if csv_out:
             mgstat_output_csv = f"{output_filepath_prefix}mgstat.csv"
 
+            if csv_date_format:
+                mgstat_df["RunDate"] = pd.to_datetime(mgstat_df["RunDate"])
+                mgstat_df["RunDate"] = mgstat_df["RunDate"].dt.strftime("%d/%m/%Y")
+
             # if file does not exist write header
             if not os.path.isfile(mgstat_output_csv):
                 mgstat_df.to_csv(mgstat_output_csv, header="column_names", index=False, encoding="utf-8")
@@ -189,6 +201,10 @@ def create_sections(
         if csv_out:
             vmstat_output_csv = f"{output_filepath_prefix}vmstat.csv"
 
+            if csv_date_format:
+                vmstat_df["RunDate"] = pd.to_datetime(vmstat_df["RunDate"])
+                vmstat_df["RunDate"] = vmstat_df["RunDate"].dt.strftime("%d/%m/%Y")
+
             # if file does not exist write header
             if not os.path.isfile(vmstat_output_csv):
                 vmstat_df.to_csv(vmstat_output_csv, header="column_names", index=False, encoding="utf-8")
@@ -201,6 +217,10 @@ def create_sections(
 
         if csv_out:
             perfmon_output_csv = f"{output_filepath_prefix}perfmon.csv"
+
+            # if csv_date_format:
+            #     perfmon_df["RunDate"] = pd.to_datetime(perfmon_df["RunDate"])
+            #     perfmon_df["RunDate"] = perfmon_df["RunDate"].dt.strftime("%d/%m/%Y")
 
             # if file does not exist write header
             if not os.path.isfile(perfmon_output_csv):
@@ -216,6 +236,10 @@ def create_sections(
         if csv_out:
             iostat_output_csv = f"{output_filepath_prefix}iostat.csv"
 
+            if csv_date_format:
+                iostat_df["RunDate"] = pd.to_datetime(iostat_df["RunDate"])
+                iostat_df["RunDate"] = iostat_df["RunDate"].dt.strftime("%d/%m/%Y")
+
             # if file does not exist write header
             if not os.path.isfile(iostat_output_csv):
                 iostat_df.to_csv(iostat_output_csv, header="column_names", index=False, encoding="utf-8")
@@ -230,6 +254,10 @@ def create_sections(
         if csv_out:
             nfsiostat_output_csv = f"{output_filepath_prefix}nfsiostat.csv"
 
+            if csv_date_format:
+                nfsiostat_df["RunDate"] = pd.to_datetime(nfsiostat_df["RunDate"])
+                nfsiostat_df["RunDate"] = nfsiostat_df["RunDate"].dt.strftime("%d/%m/%Y")
+
             # if file does not exist write header
             if not os.path.isfile(nfsiostat_output_csv):
                 nfsiostat_df.to_csv(nfsiostat_output_csv, header="column_names", index=False, encoding="utf-8")
@@ -243,6 +271,10 @@ def create_sections(
 
         if csv_out:
             aix_sar_d_output_csv = f"{output_filepath_prefix}aix_sar_d.csv"
+
+            if csv_date_format:
+                aix_sar_d_df["RunDate"] = pd.to_datetime(aix_sar_d_df["RunDate"])
+                aix_sar_d_df["RunDate"] = aix_sar_d_df["RunDate"].dt.strftime("%d/%m/%Y")
 
             # if file does not exist write header
             if not os.path.isfile(aix_sar_d_output_csv):
@@ -773,9 +805,9 @@ def chart_mgstat(connection, filepath, output_prefix, png_out):
             raise e
     df.dropna(inplace=True)
 
-    # hack until good way to detect date format is mmm/dd/yyyy or not
-    if False:
-        df["RunDate"] = df.apply(lambda row: make_mdy_date(row["RunDate"]), axis=1)
+    # hack until good way to detect date format is mm/dd/yyyy or not
+    # if False:
+    #     df["RunDate"] = df.apply(lambda row: make_mdy_date(row["RunDate"]), axis=1)
 
     # Add a datetime column
     df["datetime"] = df["RunDate"] + " " + df["RunTime"]
@@ -917,23 +949,23 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
             if png_out:
 
                 if operating_system == "AIX":
-                    pass
+                    # pass
 
                     # Something wrong with the way stacked charts come out base is not zero and a fake base rises l-r
 
-                    # if "read rps" in device_df.columns and "write wps" in device_df.columns:
-                    #     title = f"{device} : Total IOPS - {customer}"
-                    #     columns_to_stack = {"read rps": "Reads per sec", "write wps": "Writes per sec"}
-                    #     simple_chart_stacked_iostat(
-                    #         device_df, columns_to_stack, device, title, 0, filepath, output_prefix
-                    #     )
-                    #
-                    #     if "read avg serv" in device_df.columns and "write avg serv" in device_df.columns:
-                    #         title = f"{device} : Latency - {customer}"
-                    #         columns_to_histogram = {"read avg serv": "read rps", "write avg serv": "write wps"}
-                    #         simple_chart_histogram_iostat(
-                    #             device_df, columns_to_histogram, device, title, filepath, output_prefix
-                    #         )
+                    if "read rps" in device_df.columns and "write wps" in device_df.columns:
+                        title = f"{device} : Total IOPS - {customer}"
+                        columns_to_stack = {"read rps": "Reads per sec", "write wps": "Writes per sec"}
+                        simple_chart_stacked_iostat(
+                            device_df, columns_to_stack, device, title, 0, filepath, output_prefix
+                        )
+
+                        if "read avg serv" in device_df.columns and "write avg serv" in device_df.columns:
+                            title = f"{device} : Latency - {customer}"
+                            columns_to_histogram = {"read avg serv": "read rps", "write avg serv": "write wps"}
+                            simple_chart_histogram_iostat(
+                                device_df, columns_to_histogram, device, title, filepath, output_prefix
+                            )
 
                 else:
 
@@ -1157,6 +1189,7 @@ def mainline(
     system_out,
     disk_list,
     split_on,
+    csv_date_format,
 ):
     input_error = False
 
@@ -1235,6 +1268,7 @@ def mainline(
                 csv_out,
                 output_filepath_prefix,
                 disk_list,
+                csv_date_format,
             )
 
     else:
@@ -1272,6 +1306,7 @@ def mainline(
                 csv_out,
                 output_filepath_prefix,
                 disk_list,
+                csv_date_format,
             )
 
     connection.close()
@@ -1298,7 +1333,12 @@ def mainline(
 
         if not os.path.isdir(output_file_path):
             os.mkdir(output_file_path)
-        chart_mgstat(connection, output_file_path, output_prefix, png_out)
+        chart_mgstat(
+            connection,
+            output_file_path,
+            output_prefix,
+            png_out,
+        )
 
         # vmstat and iostat
         if operating_system == "Linux" or operating_system == "Ubuntu" or operating_system == "AIX":
@@ -1322,13 +1362,21 @@ def mainline(
                     output_file_path = f"{output_file_path_base}/sar_d/"
                     if not os.path.isdir(output_file_path):
                         os.mkdir(output_file_path)
-                    chart_aix_sar_d(connection, output_file_path, output_prefix, operating_system, png_out, disk_list)
+                    chart_aix_sar_d(
+                        connection,
+                        output_file_path,
+                        output_prefix,
+                        operating_system,
+                        png_out,
+                        disk_list,
+                        csv_date_format,
+                    )
 
             if include_nfsiostat:
                 output_file_path = f"{output_file_path_base}/nfsiostat/"
                 if not os.path.isdir(output_file_path):
                     os.mkdir(output_file_path)
-                chart_nfsiostat(connection, output_file_path, output_prefix, operating_system, png_out)
+                chart_nfsiostat(connection, output_file_path, output_prefix, operating_system, png_out, csv_date_format)
 
         if operating_system == "Windows":
             output_file_path = f"{output_file_path_base}/perfmon/"
@@ -1424,7 +1472,15 @@ if __name__ == "__main__":
         "-s",
         "--system",
         dest="system_out",
-        help="Output system overview. ",
+        help="Output system overview.",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "-D",
+        "--DDMMYYYY",
+        dest="csv_date_format",
+        help="Date format for csv files is DDMMYYYY",
         action="store_true",
     )
 
@@ -1492,6 +1548,7 @@ if __name__ == "__main__":
             args.system_out,
             args.disk_list,
             args.split_on,
+            args.csv_date_format,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
