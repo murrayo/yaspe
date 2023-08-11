@@ -8,7 +8,6 @@ from yaspe_utilities import get_number_type, make_mdy_date, check_date, get_aix_
 def extract_sections(
     operating_system, profile_run, input_file, include_iostat, include_nfsiostat, html_filename, disk_list
 ):
-
     once = True
 
     vmstat_processing = False
@@ -57,7 +56,6 @@ def extract_sections(
     run_start_date = dateutil.parser.parse(run_start)
 
     with open(input_file, "r", encoding="ISO-8859-1") as file:
-
         for line in file:
             if "<!-- beg_mgstat -->" in line:
                 mgstat_processing = True
@@ -111,7 +109,6 @@ def extract_sections(
                         values_converted = [get_number_type(v) for v in values]
                         vmstat_row_dict = dict(zip(vmstat_columns, values_converted))
                         vmstat_row_dict["html name"] = html_filename
-
                         # Check date format
                         if not vmstat_date_convert and vmstat_row_dict["Date"] != vmstat_date:
                             vmstat_date = vmstat_row_dict["Date"]
@@ -279,7 +276,6 @@ def extract_sections(
 
             # iostat has a lot of variations, start as needed
             if (operating_system == "Linux" or operating_system == "Ubuntu") and include_iostat:
-
                 if iostat_processing and "<div" in line:  # iostat does not flag end
                     iostat_processing = False
                 else:
@@ -365,7 +361,6 @@ def extract_sections(
 
             # nfsiostat
             if (operating_system == "Linux" or operating_system == "Ubuntu") and include_nfsiostat:
-
                 if nfsiostat_processing and "pre>" in line:  # nfsiostat does not flag end
                     nfsiostat_processing = False
                 else:
@@ -472,7 +467,6 @@ def extract_sections(
             aix_column_count = len(aix_iostat_columns)
 
             if operating_system == "AIX" and include_iostat:
-
                 if iostat_processing and "<div" in line:  # iostat does not flag end
                     iostat_processing = False
                 else:
@@ -519,7 +513,13 @@ def extract_sections(
         mgstat_df = pd.DataFrame({"empty": []})
 
     if vmstat_header != "":
-        vmstat_df = pd.DataFrame(vmstat_rows_list)
+        # If there are empty columns e.g. a partial last row. NaN will be used for missing columns
+        #   means the whole column cannot be guaranteed to be an integer and is cast as a float.
+        #   Remove inner dictionaries with fewer elements than the maximum
+        max_length = max(len(d) for d in vmstat_rows_list)
+        filtered_list = [d for d in vmstat_rows_list if len(d) == max_length]
+
+        vmstat_df = pd.DataFrame(filtered_list)
         # "date" and "time" are reserved words in SQL. Rename the columns to avoid clashes later.
         vmstat_df.rename(columns={"Date": "RunDate", "Time": "RunTime"}, inplace=True)
         vmstat_df.dropna(inplace=True)
@@ -527,7 +527,6 @@ def extract_sections(
         vmstat_df = pd.DataFrame({"empty": []})
 
     if perfmon_header != "":
-
         perfmon_df = pd.DataFrame(perfmon_rows_list)
         perfmon_df.dropna(inplace=True)
 
