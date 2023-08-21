@@ -352,14 +352,17 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         alpha=0.7,
     )
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(title, fontsize=14)
-    ax.set_ylabel(column_name, fontsize=10)
-    ax.tick_params(labelsize=10)
+    ax.set_title(title, fontsize=16)
+    ax.set_ylabel(column_name, fontsize=14)
+    ax.tick_params(labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
     ax.set_ylim(bottom=0)  # Always zero start
     if max_y != 0:
         ax.set_ylim(top=max_y)
 
-    if png_data["metric"].max() > 10 or "%" in column_name:
+    cpu_names = ["wa", "sy","us"]
+
+    if png_data["metric"].max() > 5 or "%" in column_name or column_name in cpu_names or png_data["metric"].max() == 0:
         ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
     elif png_data["metric"].max() < 0.002:
         ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.4f}"))
@@ -402,14 +405,16 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
         png_data["id_key"], png_data["metric"], label=column_name, color=color, marker=".", linestyle="-", alpha=0.7
     )
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(title, fontsize=14)
-    ax.set_ylabel(column_name, fontsize=10)
-    ax.tick_params(labelsize=10)
+    ax.set_title(title, fontsize=16)
+    ax.set_ylabel(column_name, fontsize=14)
+    ax.tick_params(labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
     ax.set_ylim(bottom=0)  # Always zero start
     if max_y != 0:
         ax.set_ylim(top=max_y)
 
-    if png_data["metric"].max() > 10 or "%" in column_name:
+    cpu_names = ["wa", "sy","us"]
+    if png_data["metric"].max() > 5 or "%" in column_name or column_name in cpu_names or png_data["metric"].max() == 0:
         ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
     elif png_data["metric"].max() < 0.002:
         ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.4f}"))
@@ -454,7 +459,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     # Lower chart bind the brush in our chart by setting the selection property
     lower = base.properties(height=150, title="").add_params(brush)
 
-    alt.hconcat(upper & lower).configure_title(fontSize=14, color="black").configure_legend(
+    alt.hconcat(upper & lower).configure_title(fontSize=16, color="black").configure_legend(
         strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
     )
 
@@ -507,7 +512,7 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     # Lower chart bind the brush in our chart by setting the selection property
     lower = base.properties(height=150, title="").add_params(brush)
 
-    alt.hconcat(upper & lower).configure_title(fontSize=14, color="black").configure_legend(
+    alt.hconcat(upper & lower).configure_title(fontSize=16, color="black").configure_legend(
         strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
     )
 
@@ -546,10 +551,11 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     ax.stackplot(png_data.index, png_data["sy"], png_data["wa"], png_data["us"], labels=["sy", "wa", "us"], alpha=0.7)
 
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(title, fontsize=14)
-    ax.set_ylabel("CPU Utilisation %", fontsize=10)
-    ax.legend(loc="upper left", reverse=True)
-    ax.tick_params(labelsize=10)
+    ax.set_title(title, fontsize=16)
+    ax.set_ylabel("CPU Utilisation %", fontsize=14)
+    ax.legend(loc="upper left", reverse=True, fontsize=14)
+    ax.tick_params(labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
     ax.set_ylim(bottom=0)  # Always zero start
     if max_y != 0:
         ax.set_ylim(top=max_y)
@@ -610,10 +616,11 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
     )
 
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(title, fontsize=14)
-    ax.set_ylabel("Total IOPS", fontsize=10)
+    ax.set_title(title, fontsize=16)
+    ax.set_ylabel("Total IOPS", fontsize=14)
     ax.legend(loc="upper left", reverse=True)
-    ax.tick_params(labelsize=10)
+    ax.tick_params(labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
     ax.set_ylim(bottom=0)  # Always zero start
     if max_y != 0:
         ax.set_ylim(top=max_y)
@@ -673,11 +680,12 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     ax.hist(reads, bins=10, edgecolor="black")
 
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(f"Read {title}", fontsize=14)
+    ax.set_title(f"Read {title}", fontsize=16)
     ax.set_xlabel(f"Latency ms ({column_0}) non-zero {column_0_non_zero} values only", fontsize=10)
-    ax.set_ylabel("Frequency", fontsize=10)
+    ax.set_ylabel("Frequency", fontsize=14)
 
-    ax.tick_params(labelsize=10)
+    ax.tick_params(labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     # plt.tight_layout()
@@ -695,11 +703,12 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     ax.hist(writes, bins=10, edgecolor="black")
 
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(f"Write {title}", fontsize=14)
+    ax.set_title(f"Write {title}", fontsize=16)
     ax.set_xlabel(f"Latency ms ({column_1}) non-zero {column_1_non_zero} values only", fontsize=10)
-    ax.set_ylabel("Frequency", fontsize=10)
+    ax.set_ylabel("Frequency", fontsize=14)
 
-    ax.tick_params(labelsize=10)
+    ax.tick_params(labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     # plt.tight_layout()
