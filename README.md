@@ -87,8 +87,16 @@ Be safe, "quote the path"
 
 For example, change to the folder with a SystemPerformance html file and run the command:
 
+### Local
+
 ```commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
+```
+
+### For intel container
+
+```commandline
+docker run -v "$(pwd)":/data --rm --name yaspe murray1oldfield/yaspe:latest ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
 ```
 
 If you want simple png files rather than html: smaller and quicker to look through: Use the `-p` option.
