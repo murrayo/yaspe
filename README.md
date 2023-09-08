@@ -4,7 +4,7 @@ Parse and chart InterSystems Caché pButtons and InterSystems IRIS SystemPerform
 
 For combining metrics from mgstat, iostat and vmstat see [Pretty Performance](#Pretty-Performance) below.
 
-What do all these metrics mean? See my posts on [Intersystems Community](https://community.intersystems.com/post/intersystems-data-platforms-capacity-planning-and-performance-series-index)
+What do all these metrics mean? See my posts on the [Intersystems Community](https://community.intersystems.com/post/intersystems-data-platforms-capacity-planning-and-performance-series-index)
 
 # Yet Another System Performance Extractor
 
