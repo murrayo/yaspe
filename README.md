@@ -321,7 +321,7 @@ Maybe you care about IO throughput for a cloud disk...
 pretty_performance uses the sqlite database created  by `yaspe` to make charts that can combine metrics for vmstat, iostat and mgstat. 
 For example, this is handy if you need to output charts for performance reports.
 
-There is also an option to output merged vmstat, iostat and mgstat as a csv file for you to work with in excel or other ways.
+There is also an option to output merged vmstat, iostat and mgstat as a csv file for you to work with in Excel or other ways.
 
 Formatting and chart creation is driven from two yml files, I have included samples;
 
