@@ -25,7 +25,6 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as plt_dates
 import seaborn as sns
 
-
 import altair as alt
 import pandas as pd
 from pandas.io.sql import DatabaseError
@@ -157,7 +156,6 @@ def create_sections(
     disk_list,
     csv_date_format,
 ):
-
     operating_system = execute_single_read_query(
         connection, "SELECT * FROM overview WHERE field = 'operating system';"
     )[2]
@@ -172,7 +170,6 @@ def create_sections(
     # Add each section to the database
 
     if not mgstat_df.empty:
-
         # Example Dave L can do IRIS function here
         if True:
             mgstat_df.to_sql("mgstat", connection, if_exists="append", index=True, index_label="id_key")
@@ -194,7 +191,6 @@ def create_sections(
                 mgstat_df.to_csv(mgstat_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
     if not vmstat_df.empty:
-
         vmstat_df.to_sql("vmstat", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
 
@@ -265,7 +261,6 @@ def create_sections(
                 nfsiostat_df.to_csv(nfsiostat_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
     if not aix_sar_d_df.empty:
-
         aix_sar_d_df.to_sql("aix_sar_d", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
 
@@ -305,7 +300,6 @@ def create_overview(connection, sp_dict):
 
 
 def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
-
     # Check column only has numeric data (strings can sneak in with AIX)
     if not is_column_numeric(data, "metric"):
         print(f"Non numeric data in in column: {column_name} for chart {title}:\n{data.head(2)}")
@@ -360,7 +354,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     if max_y != 0:
         ax.set_ylim(top=max_y)
 
-    cpu_names = ["wa", "sy","us"]
+    cpu_names = ["wa", "sy", "us"]
 
     if png_data["metric"].max() > 5 or "%" in column_name or column_name in cpu_names or png_data["metric"].max() == 0:
         ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
@@ -413,7 +407,7 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     if max_y != 0:
         ax.set_ylim(top=max_y)
 
-    cpu_names = ["wa", "sy","us"]
+    cpu_names = ["wa", "sy", "us"]
     if png_data["metric"].max() > 5 or "%" in column_name or column_name in cpu_names or png_data["metric"].max() == 0:
         ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
     elif png_data["metric"].max() < 0.002:
@@ -461,6 +455,8 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     alt.hconcat(upper & lower).configure_title(fontSize=16, color="black").configure_legend(
         strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
+    ).configure_axis(
+        labelFontSize=20  # Customize label fontsize
     )
 
     output_name = column_name.replace("/", "_")
@@ -522,7 +518,6 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
 
 def simple_chart_stacked(data, column_names, title, max_y, filepath, output_prefix, **kwargs):
-
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
@@ -576,7 +571,6 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
 
 
 def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, filepath, output_prefix, **kwargs):
-
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
@@ -641,7 +635,6 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
 
 
 def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title, filepath, output_prefix, **kwargs):
-
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
@@ -956,7 +949,6 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
 
             # Create stacked read write chart if columns exist
             if png_out:
-
                 if operating_system == "AIX":
                     # pass
 
@@ -977,7 +969,6 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
                             )
 
                 else:
-
                     if "r/s" in device_df.columns and "w/s" in device_df.columns:
                         title = f"{device} : Total IOPS - {customer}"
                         columns_to_stack = {"r/s": "Reads per sec", "w/s": "Writes per sec"}
@@ -1122,7 +1113,6 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
 
 
 def chart_aix_sar_d(connection, filepath, output_prefix, operating_system, png_out, disk_list):
-
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
     # Read in to dataframe, drop any bad rows
@@ -1285,7 +1275,6 @@ def mainline(
             input_error = True
             print(f"No data to chart")
         else:
-
             # Create a system summary
             sp_dict = sp_check.system_check(input_file)
 
@@ -1323,7 +1312,6 @@ def mainline(
     # Charting is separate
 
     if "Chart" in database_action and not input_error:
-
         # print("Charting...")
 
         output_file_path_base = f"{output_filepath_prefix}metrics"
@@ -1351,7 +1339,6 @@ def mainline(
 
         # vmstat and iostat
         if operating_system == "Linux" or operating_system == "Ubuntu" or operating_system == "AIX":
-
             # Detailed system charts for performance reports
             if extended_charts:
                 system_review.system_charts(filepath)
@@ -1401,7 +1388,6 @@ def mainline(
 # Start here, entry point for command line
 
 if __name__ == "__main__":
-
     input_file = ""
     existing_database = ""
 
@@ -1525,7 +1511,6 @@ if __name__ == "__main__":
             sys.exit()
 
     else:
-
         # if no input file validate existing database to chart
         if args.existing_database is None:
             print('Error: -i "Input html filename with full path required"')
