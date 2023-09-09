@@ -77,11 +77,12 @@ optional arguments:
   -c, --csv             Create csv files of each html files metrics, append if csv file exists.
   -p, --png             Create png files of metrics. Instead of html
   -s, --system          Output system overview.
+  -D, --DDMMYYYY        Date format for csv files is DDMMYYYY
   -d DISK_LIST [DISK_LIST ...], --disk_list DISK_LIST [DISK_LIST ...]
                         List of disks, if not entered all are processed. No commas or quotes, e.g. -d dm-0 dm-1
   -l "string to split on", --large_file_split_on_string "string to split on"
                         Split large input file on first occurrence of this string. Blank -l "" defaults to "div id=iostat"
-
+                        
 Be safe, "quote the path"
 ```
 
