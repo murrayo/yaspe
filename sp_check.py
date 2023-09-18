@@ -17,7 +17,6 @@ def shared_memory_estimate(
     MaxServerConn,
     MaxServers,
 ):
-
     # Shared memory size in MB =
     # [global buffers in MB] * 1.08 + [routine buffers in MB] * 1.02
     # + [gmheap in KB]/1024 + 2 * [number of logical CPUs] + [jrnbufs in MB] +
@@ -57,7 +56,6 @@ def system_check(input_file):
     shared_memory_total = 0
 
     with open(input_file, "r", encoding="ISO-8859-1") as file:
-
         model_name = True
         windows_info_available = False
 
@@ -67,7 +65,6 @@ def system_check(input_file):
         up_counter = 0
 
         for line in file:
-
             if "[ConfigFile]" in line:
                 cpf_section = True
             elif "!-- beg_mgstat --" in line:
@@ -188,12 +185,10 @@ def system_check(input_file):
                 linux_info_available = True
 
             if linux_info_available:
-
                 if "/dev/mapper:" in line:
                     dev_mapper_section = True
 
                 if dev_mapper_section:
-
                     if "->" in line:
                         sp_dict[f"dev mapper {dev_mapper_counter}"] = line.strip()
                         dev_mapper_counter += 1
@@ -205,7 +200,6 @@ def system_check(input_file):
                 filesystem_info_available = True
 
             if filesystem_info_available:
-
                 if "Filesystem " in line:
                     filesystem_section = True
 
@@ -308,8 +302,12 @@ def system_check(input_file):
             if operating_system == "AIX":
                 if "Processor Type:" in line:
                     sp_dict["processor model"] = (line.split(":")[1]).strip()
+                if "smt_enabled true" in line:
+                    sp_dict["AIX SMT enabled"] = True
                 if "smt_threads" in line:
                     sp_dict["AIX SMT"] = f'{(line.split(" ")[1]).strip()}'
+                if "Number Of Processors:" in line:
+                    sp_dict["Number Of Processors"] = f'{(line.split(":")[1]).strip()}'
                 if "Memory Size:" in line:
                     sp_dict["memory MB"] = (line.split(":")[1]).split()[0].strip()
                 # Number Of Processors: 10
@@ -440,7 +438,6 @@ def build_log(sp_dict):
             sp_dict[f"warning {warn_count}"] = f"memlock={sp_dict['memlock']} does not enforce Huge/Large pages"
 
     if "memory MB" in sp_dict:
-
         huge_page_size_kb = 2048
 
         sp_dict["memory GB"] = f"{round(int(sp_dict['memory MB']) / 1024)}"
@@ -499,7 +496,6 @@ def build_log(sp_dict):
         sp_dict["75pct memory number huge pages"] = round((sp_dict["75pct memory MB"] * 1024) / huge_page_size_kb)
 
         if "vm.nr_hugepages" in sp_dict:
-
             if int(sp_dict["vm.nr_hugepages"]) == 0:
                 warn_count += 1
                 sp_dict[f"warning {warn_count}"] = (
@@ -585,7 +581,6 @@ def build_log(sp_dict):
                     sp_dict[f"pass {pass_count}"] = msg
 
             if "kernel.shmmax" in sp_dict:
-
                 if int(sp_dict["kernel.shmmax"]) == 18446744073692774399:
                     pass_count += 1
                     sp_dict[f"pass {pass_count}"] = f"Kernel shared memory limit is at default"
@@ -647,9 +642,20 @@ def build_log(sp_dict):
 
     log += f"Operating system : {sp_dict['operating system']}\n"
     log += f"Platform         : {sp_dict['platform']}\n"
-    log += f"CPUs             : {sp_dict['number cpus']}\n"
-    if sp_dict["operating system"] == "AIX" and "AIX SMT" in sp_dict:
-        log += f"SMT              : {sp_dict['AIX SMT']}\n"
+    if sp_dict["operating system"] == "AIX":
+        if "Number Of Processors" in sp_dict:
+            log += f"No. Processors   : {sp_dict['Number Of Processors']}\n"
+        if sp_dict["AIX SMT enabled"]:
+            log += f"SMT enabled      : True\n"
+
+            warn_count += 1
+            sp_dict[f"recommend {recommend_count}"] = f"SMT in use check entitlement capacity (ec in vmstat)"
+
+        if "AIX SMT" in sp_dict:
+            log += f"SMT              : {sp_dict['AIX SMT']}\n"
+        log += f"Logical CPUs     : {sp_dict['number cpus']}\n"
+    else:
+        log += f"CPUs             : {sp_dict['number cpus']}\n"
     log += f"Processor model  : {sp_dict['processor model']}\n"
     log += f"Memory           : {sp_dict['memory GB']} GB\n"
     log += f"Shared memory    : {sp_dict['shared memory calc']} = {int(sp_dict['shared memory MB']):,} MB\n"
