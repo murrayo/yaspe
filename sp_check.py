@@ -310,6 +310,10 @@ def system_check(input_file):
                     sp_dict["Number Of Processors"] = f'{(line.split(":")[1]).strip()}'
                 if "Memory Size:" in line:
                     sp_dict["memory MB"] = (line.split(":")[1]).split()[0].strip()
+                # System configuration: lcpu=8 ent=0.2 mode=Uncapped
+                if "System configuration: lcpu" in line and "ent=" in line:
+                    sp_dict["entitlement"] = (line.split(":")[1]).strip()
+
                 # Number Of Processors: 10
                 # Memory Size: 24576 MB
                 # smt_threads 8
@@ -650,6 +654,8 @@ def build_log(sp_dict):
 
             warn_count += 1
             sp_dict[f"recommend {recommend_count}"] = f"SMT in use check entitlement capacity (ec in vmstat)"
+            if sp_dict["entitlement"]:
+                sp_dict[f"recommend {recommend_count}"] += f': {sp_dict["entitlement"]}\n'
 
         if "AIX SMT" in sp_dict:
             log += f"SMT              : {sp_dict['AIX SMT']}\n"
