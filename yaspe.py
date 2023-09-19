@@ -2,9 +2,6 @@
 """
 Extract sections of SystemPerformance file to SQL table.
 Chart the results
-
-
-
 """
 
 import sp_check
@@ -29,6 +26,7 @@ import seaborn as sns
 import altair as alt
 import pandas as pd
 from pandas.io.sql import DatabaseError
+import warnings
 
 from extract_sections import extract_sections
 import system_review
@@ -38,6 +36,9 @@ import system_review
 from yaspe_utilities import make_mdy_date
 
 alt.data_transformers.disable_max_rows()
+
+# Suppress FutureWarning messages
+warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
 # Define a function to infer the date format

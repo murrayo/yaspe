@@ -57,7 +57,7 @@ For local version:
 
 `docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h`
 
-```commandline
+``` commandline
 usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-s] [-d DISK_LIST [DISK_LIST ...]] [-l "string to split on"]
 
 Performance file review.
@@ -90,33 +90,41 @@ For example, change to the folder with a SystemPerformance html file and run the
 
 ### Local
 
-```commandline
+``` commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
 ```
 
 ### For intel container
 
-```commandline
+``` commandline
 docker run -v "$(pwd)":/data --rm --name yaspe murray1oldfield/yaspe:latest ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
 ```
 
 If you want simple png files rather than html: smaller and quicker to look through: Use the `-p` option.
 
-```commandline
+``` commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p
 ```
 
 If you care only about a selected list of disks you can optionally add a disk list. A list of devices without the `/dev/` for example:
 
-```commandline
+``` commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p -x -d dm-0 dm-1
+```
+
+### For Apple Silicon container
+
+The difference is `_M1`
+
+``` commandline
+docker run -v "$(pwd)":/data --rm --name yaspe murray1oldfield/yaspe:latest_M1 ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
 ```
 
 <hr>
 
 Or put the path to the folder with the html file in the docker volume parameter and put the html file name after `-i /data/` 
 
-```commandline
+``` commandline
 docker run -v "/path/to/folder/with html file":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
 ```
 
@@ -139,7 +147,7 @@ To keep all the metric data in a single database use the `-o` argument to overri
 Example of running over multiple days;
 - change to the folder with the html files and run the commands, run:
 
-```commandline
+``` commandline
 for i in `ls *.html`;do docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/"${i}" -a -o "three_days"; done
 ```
 
@@ -147,7 +155,7 @@ The resulting database file will use the prefix, in this example; `three_days_Sy
 
 To create charts for the accumulated days use the `-e` argument.
 
-```commandline
+``` commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/three_days_SystemPerformance.sqlite
 ```
 
@@ -185,7 +193,7 @@ This check is designed to save you hunting through your SystemPerformance file l
 
 An example of `overview.txt` follows:
 
-```plaintext
+``` plaintext
 System Summary for your site name
 
 Hostname         : YOURHOST
@@ -221,19 +229,19 @@ All instances on this host:
 
 - First I create the system check and create the SQLite file (for later processing):
 
-```commandline
+``` commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/SystemPerfomanceFileName.html -a -s -x -o yaspe
 ```
 
 - Next I create the png files output for a quick look through key metrics:
 
-```commandline
+``` commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/yaspe_SystemPerformance.sqlite -p
 ```
 
 - If I want to zoom in or create output for reports to customers I create the html output:
 
-```commandline
+``` commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/yaspe_SystemPerformance.sqlite -o html
 ```
 
@@ -253,7 +261,7 @@ There are many references for creating Python environments on the web. You can s
 
 `yaspe` is tested in Python 3.9. Specifically my test system is: 
 
-```commandline
+``` commandline
 python --version
 Python 3.9.13
 ```
@@ -265,7 +273,7 @@ Python 3.9.13
 
 See `requirements.txt` for the Python packages used. You will need to:
 
-```commandline
+``` commandline
 pip3 install -r requirements.txt
 ```
 
@@ -274,19 +282,19 @@ Once installed you can `cd` to the folder with your pButtons or SystemPerformanc
 
 - Create the system check and create the SQLite file (for later processing):
 
-```commandline
+``` commandline
 for i in `ls *.html`; do /path/to/yaspe/souce/you/downloaded/yaspe.py -i $i -a  -s -x -o yaspe;done
 ```
 
 - Create the png files output for a quick look through key metrics:
 
-```commandline
+``` commandline
 /path/to/yaspe/souce/you/downloaded/yaspe.py -e yaspe_SystemPerformance.sqlite -p
 ```
 
 - If you want to zoom in or create output for reports for others, create the html output:
 
-```commandline
+``` commandline
 /path/to/yaspe/souce/you/downloaded/yaspe.py -e yaspe_SystemPerformance.sqlite -o html
 ```
 <hr>
@@ -416,7 +424,7 @@ _Note: This example assumes:_
 
 The following example shows an example of the input.yml file:
 
-```yaml
+``` yaml
 Site Name: "- Sample Site Name"
 Disk List:
     Database: "dm-7"
@@ -443,7 +451,7 @@ Moving Average: 60
 
 The following example shows an example of _part_ of the charts.yml file:
 
-```yaml
+``` yaml
 Glorefs and vmstat:  
     Title: "Glorefs and vmstat"
     columns_to_show:
