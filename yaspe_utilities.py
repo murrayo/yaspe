@@ -1,6 +1,7 @@
 import locale
 from datetime import datetime
 import dateutil
+import dateutil.parser
 
 
 def check_keyword_exists(data, keyword):
@@ -28,7 +29,6 @@ def get_number_type(s):
 
 
 def get_aix_wacky_numbers(s):
-
     try:
         return int(s)
     except (ValueError, TypeError):
@@ -48,10 +48,17 @@ def get_aix_wacky_numbers(s):
 
 
 def check_date(section, run_start_date, date_to_check):
+    # print(f"{section} Known start date {run_start_date} Date to check {date_to_check}")
+    # print(f"Known start month = {run_start_date.month}")
+    # print(f"Date to check month = {dateutil.parser.parse(date_to_check).month}")
 
     if int(date_to_check[:2]) > 2000:
         print(f"{section} Check date format (yyyy/xx/xx?): {date_to_check}")
         return False
+
+    if run_start_date.month != dateutil.parser.parse(date_to_check).month:
+        print(f"{section} month convert dd/mm/yy date to mm/dd/yy {date_to_check} > {make_mdy_date(date_to_check)}")
+        return True
 
     if int(date_to_check[:2]) > 12:
         print(f"{section} convert dd/mm/yy date to mm/dd/yy {date_to_check} > {make_mdy_date(date_to_check)}")
@@ -67,7 +74,6 @@ def check_date(section, run_start_date, date_to_check):
 
 
 def make_mdy_date(date_in):
-
     # Flip ambiguous dd/mm/yyyy dates eg. 09/11/2021 where 11 is in fact Nov not Sept.
     # Default dates in charting usually fall in to expecting mm/dd/yyyy format
 

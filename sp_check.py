@@ -130,6 +130,9 @@ def system_check(input_file):
                     if "numberofcpus" in item:
                         sp_dict["number cpus"] = item.split("=")[1].split(":")[0]
 
+            if "NUMCPU" in line:
+                sp_dict["number cpus"] = line.split("NUMCPU")[1].split(":")[1].strip()
+
             # Linux cpu info
 
             if "model name	:" in line:
@@ -354,10 +357,11 @@ def build_log(sp_dict):
 
     # split up mgstat header
 
-    mgstat_header = sp_dict["mgstat header"].split(",")
-    for item in mgstat_header:
-        if "numberofcpus" in item:
-            sp_dict["number cpus"] = item.split("=")[1].split(":")[0]
+    if "mgstat header" in sp_dict:
+        mgstat_header = sp_dict["mgstat header"].split(",")
+        for item in mgstat_header:
+            if "numberofcpus" in item:
+                sp_dict["number cpus"] = item.split("=")[1].split(":")[0]
 
     # CPF
 
@@ -649,19 +653,21 @@ def build_log(sp_dict):
     if sp_dict["operating system"] == "AIX":
         if "Number Of Processors" in sp_dict:
             log += f"No. Processors   : {sp_dict['Number Of Processors']}\n"
-        if sp_dict["AIX SMT enabled"]:
+        if "AIX SMT enabled" in sp_dict:
             log += f"SMT enabled      : True\n"
 
             warn_count += 1
             sp_dict[f"recommend {recommend_count}"] = f"SMT in use check entitlement capacity (ec in vmstat)"
-            if sp_dict["entitlement"]:
+            if "entitlement" in sp_dict:
                 sp_dict[f"recommend {recommend_count}"] += f': {sp_dict["entitlement"]}\n'
 
         if "AIX SMT" in sp_dict:
             log += f"SMT              : {sp_dict['AIX SMT']}\n"
-        log += f"Logical CPUs     : {sp_dict['number cpus']}\n"
+        if "number cpus" in sp_dict:
+            log += f"Logical CPUs     : {sp_dict['number cpus']}\n"
     else:
-        log += f"CPUs             : {sp_dict['number cpus']}\n"
+        if "number cpus" in sp_dict:
+            log += f"CPUs             : {sp_dict['number cpus']}\n"
     log += f"Processor model  : {sp_dict['processor model']}\n"
     log += f"Memory           : {sp_dict['memory GB']} GB\n"
     log += f"Shared memory    : {sp_dict['shared memory calc']} = {int(sp_dict['shared memory MB']):,} MB\n"
@@ -800,7 +806,8 @@ def build_log(sp_dict):
 
     yaspe_yaml += f"  Operating system: {sp_dict['operating system']}\n"
     yaspe_yaml += f"  Platform: {sp_dict['platform']}\n"
-    yaspe_yaml += f"  CPUs: {sp_dict['number cpus']}\n"
+    if "number cpus" in sp_dict:
+        yaspe_yaml += f"  CPUs: {sp_dict['number cpus']}\n"
 
     yaspe_yaml += f"  Processor model: {sp_dict['processor model'].replace(':','-')}\n"
     yaspe_yaml += f"  Memory: {sp_dict['memory GB']} GB\n"
