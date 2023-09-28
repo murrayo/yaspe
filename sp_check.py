@@ -430,8 +430,8 @@ def build_log(sp_dict):
 
     if "swappiness" in sp_dict:
 
+        # Is memory more or less than 64GB
         if "memory MB" in sp_dict:
-            # Is memory more or less than 64GB
             if round(int(sp_dict['memory MB']) / 1024) < swappiness_high_memory_gb:
                 swappiness_high_memory_server = False
 
