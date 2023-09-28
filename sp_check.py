@@ -351,9 +351,12 @@ def system_check(input_file):
 def build_log(sp_dict):
     # Build log for cut and paste
 
-    ct_dict = {}
     pass_count = warn_count = recommend_count = 0
-    ct_dict["swappiness"] = 5
+    swappiness_max = 10
+    swappiness_low_memory = 5
+    swappiness_high_memory_gb = 64
+    swappiness_high_memory_server = True
+    swappiness_high_memory = 1
 
     # split up mgstat header
 
@@ -426,17 +429,42 @@ def build_log(sp_dict):
     # Linux kernel
 
     if "swappiness" in sp_dict:
-        if int(sp_dict["swappiness"]) > ct_dict["swappiness"]:
-            warn_count += 1
-            sp_dict[f"warning {warn_count}"] = (
-                f"swappiness is {sp_dict['swappiness']}. "
-                f"For databases {ct_dict['swappiness']} "
-                f"is recommended to adjust how aggressive the Linux kernel swaps memory "
-                f"pages to disk. "
-            )
+
+        if "memory MB" in sp_dict:
+            # Is memory more or less than 64GB
+            if round(int(sp_dict['memory MB']) / 1024) < swappiness_high_memory_gb:
+                swappiness_high_memory_server = False
+
+        # What is the recommendation for servers over 64GB
+        if swappiness_high_memory_server:
+            # If swappiness greater than 5, recommend 1.
+            if int(sp_dict["swappiness"]) > swappiness_low_memory:
+                warn_count += 1
+                sp_dict[f"warning {warn_count}"] = (
+                    f"swappiness is {sp_dict['swappiness']}. "
+                    f"For database systems with greater than {str(swappiness_high_memory_gb)} GB memory "
+                    f"{str(swappiness_high_memory)} "
+                    f"is recommended to adjust how aggressive the Linux kernel swaps memory "
+                    f"pages to disk. "
+                )
+            else:
+                pass_count += 1
+                sp_dict[f"pass {pass_count}"] = f"swappiness is {sp_dict['swappiness']}"
+
         else:
-            pass_count += 1
-            sp_dict[f"pass {pass_count}"] = f"swappiness is {sp_dict['swappiness']}"
+            # If swappiness greater than 10, recommend 5.
+            if int(sp_dict["swappiness"]) > swappiness_max:
+                warn_count += 1
+                sp_dict[f"warning {warn_count}"] = (
+                    f"swappiness is {sp_dict['swappiness']}. "
+                    f"For database systems with less than {str(swappiness_high_memory_gb)} GB memory "
+                    f"{str(swappiness_low_memory)} "
+                    f"is recommended to adjust how aggressive the Linux kernel swaps memory "
+                    f"pages to disk. "
+                )
+            else:
+                pass_count += 1
+                sp_dict[f"pass {pass_count}"] = f"swappiness is {sp_dict['swappiness']}"
 
     # memory comes from Linux free or from Windows info
 
