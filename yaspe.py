@@ -1366,8 +1366,7 @@ def mainline(
                         output_prefix,
                         operating_system,
                         png_out,
-                        disk_list,
-                        csv_date_format,
+                        disk_list
                     )
 
             if include_nfsiostat:
