@@ -314,8 +314,9 @@ def system_check(input_file):
                 if "Memory Size:" in line:
                     sp_dict["memory MB"] = (line.split(":")[1]).split()[0].strip()
                 # System configuration: lcpu=8 ent=0.2 mode=Uncapped
-                if "System configuration: lcpu" in line and "ent=" in line:
+                if "System configuration: lcpu" in line and "mode=" in line:
                     sp_dict["entitlement"] = (line.split(":")[1]).strip()
+                    print(f'XXXXXXXX {sp_dict["entitlement"]}')
 
                 # Number Of Processors: 10
                 # Memory Size: 24576 MB
