@@ -316,7 +316,6 @@ def system_check(input_file):
                 # System configuration: lcpu=8 ent=0.2 mode=Uncapped
                 if "System configuration: lcpu" in line and "mode=" in line:
                     sp_dict["entitlement"] = (line.split(":")[1]).strip()
-                    print(f'XXXXXXXX {sp_dict["entitlement"]}')
 
                 # Number Of Processors: 10
                 # Memory Size: 24576 MB
