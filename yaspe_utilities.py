@@ -56,9 +56,14 @@ def check_date(section, run_start_date, date_to_check):
         print(f"{section} Check date format (yyyy/xx/xx?): {date_to_check}")
         return False
 
+    # print(f"{date_to_check} = {dateutil.parser.parse(date_to_check).month}")
+    # print(f"{run_start_date} = {run_start_date.month}")
+
     if run_start_date.month != dateutil.parser.parse(date_to_check).month:
-        print(f"{section} month convert dd/mm/yy date to mm/dd/yy {date_to_check} > {make_mdy_date(date_to_check)}")
-        return True
+        # can also roll into the next month
+        if run_start_date.month + 1 != dateutil.parser.parse(date_to_check).month:
+            print(f"{section} month convert dd/mm/yy date to mm/dd/yy {date_to_check} > {make_mdy_date(date_to_check)}")
+            return True
 
     if int(date_to_check[:2]) > 12:
         print(f"{section} convert dd/mm/yy date to mm/dd/yy {date_to_check} > {make_mdy_date(date_to_check)}")
