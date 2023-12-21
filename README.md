@@ -191,7 +191,7 @@ This check is designed to save you hunting through your SystemPerformance file l
 - a full list of items found is in `[prefix]_overview_all.csv`
 - The check also includes a basic configuration review in `[prefix]_overview.txt`
 
-An example of `overview.txt` follows:
+An example of `overview.txt` follows, the contents will be different on your system:
 
 ``` plaintext
 System Summary for your site name
@@ -208,6 +208,7 @@ Version          : Cache for UNIX (Red Hat Enterprise Linux for x86-64) 2018.1.4
 Date collected   : Profile run "24hours" started at 16:15:00 on Nov 22 2021.
 
 Warnings:
+- ** Insecure Private Webserver Enabled! **
 - Journal freeze on error is not enabled. If journal IO errors occur database activity that occurs during this period cannot be restored.
 - swappiness is 10. For databases 5 is recommended to adjust how aggressive the Linux kernel swaps memory pages to disk.
 - Hugepages not set. For performance, memory efficiency and to protect the shared memory from paging out, use huge page memory space. It is not advisable to specify HugePages much higher than the shared memory amount because the unused memory are not be available to other components.
