@@ -33,7 +33,6 @@ import system_review
 
 # Altair
 # Max is 5,000 rows by default
-from yaspe_utilities import make_mdy_date
 
 alt.data_transformers.disable_max_rows()
 
@@ -163,10 +162,10 @@ def create_sections(
     )[2]
 
     # Get the start date for date format validation
-    profile_run = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'profile run';")[2]
+    # profile_run = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'profile run';")[2]
 
     mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df, aix_sar_d_df = extract_sections(
-        operating_system, profile_run, input_file, include_iostat, include_nfsiostat, html_filename, disk_list
+        operating_system, input_file, include_iostat, include_nfsiostat, html_filename, disk_list
     )
 
     # Add each section to the database
@@ -1360,14 +1359,7 @@ def mainline(
                     output_file_path = f"{output_file_path_base}/sar_d/"
                     if not os.path.isdir(output_file_path):
                         os.mkdir(output_file_path)
-                    chart_aix_sar_d(
-                        connection,
-                        output_file_path,
-                        output_prefix,
-                        operating_system,
-                        png_out,
-                        disk_list
-                    )
+                    chart_aix_sar_d(connection, output_file_path, output_prefix, operating_system, png_out, disk_list)
 
             if include_nfsiostat:
                 output_file_path = f"{output_file_path_base}/nfsiostat/"

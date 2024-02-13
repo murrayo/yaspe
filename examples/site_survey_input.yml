@@ -20,7 +20,7 @@ Business Hours:
 Peak minutes: 20
 Chart:
   chart sub folder: report charts 300dpi 
-  chart style: seaborn-whitegrid
+  chart style: seaborn-v0_8-whitegrid
   dpi: 300
   format: png
   height: 6

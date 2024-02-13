@@ -1,5 +1,6 @@
 import locale
-from datetime import datetime
+from datetime import datetime, timedelta
+import itertools
 import dateutil
 import dateutil.parser
 
@@ -47,53 +48,57 @@ def get_aix_wacky_numbers(s):
             return s
 
 
-def check_date(section, run_start_date, date_to_check):
-    # print(f"{section} Known start date {run_start_date} Date to check {date_to_check}")
-    # print(f"Known start month = {run_start_date.month}")
-    # print(f"Date to check month = {dateutil.parser.parse(date_to_check).month}")
+def format_date(known_datetime, date_str):
+    """
+    :param known_datetime: The known datetime object to use as a reference for formatting.
+    :param date_str: The date string to format.
+    :return: The formatted date string.
 
-    if int(date_to_check[:2]) > 2000:
-        print(f"{section} Check date format (yyyy/xx/xx?): {date_to_check}")
-        return False
+    The `format_date` method takes a known datetime object and a date string as parameters.
+    It returns a formatted date string.
 
-    # print(f"{date_to_check} = {dateutil.parser.parse(date_to_check).month}")
-    # print(f"{run_start_date} = {run_start_date.month}")
+    The method converts the known datetime to a date object and splits the date string into
+    day, month, and year components. It generates all permutations of the components and iterates over each permutation.
 
-    if run_start_date.month != dateutil.parser.parse(date_to_check).month:
-        # can also roll into the next month
-        if run_start_date.month + 1 != dateutil.parser.parse(date_to_check).month:
-            print(f"{section} month convert dd/mm/yy date to mm/dd/yy {date_to_check} > {make_mdy_date(date_to_check)}")
-            return True
+    For each permutation, it checks if the year is two digits and adds 2000 to get the four digit year.
+    It then validates the day, month, and year.
 
-    if int(date_to_check[:2]) > 12:
-        print(f"{section} convert dd/mm/yy date to mm/dd/yy {date_to_check} > {make_mdy_date(date_to_check)}")
-        return True
-    else:
-        delta = run_start_date - dateutil.parser.parse(date_to_check)
+    If the day, month, and year are valid, it creates a date object using the permutation.
+    If the generated date is within 24 hours of the known date, it returns the formatted date string
+    in the format "%Y/%m/%d".
 
-        if delta.days > 1:
-            print(f"{section} convert dd/mm/yy date to mm/dd/yy {date_to_check}  > {make_mdy_date(date_to_check)}")
-            return True
+    If no valid date is found, it defaults to returning the string "2000/12/01".
+    """
+    # Convert known_datetime to date
+    known_date = known_datetime.date()
 
-    return False
+    # Split the date string into components and convert to int
+    dmy = list(map(int, date_str.split("/")))
 
+    # Generate all permutations of the day/month/year
+    permutations = list(itertools.permutations(dmy))
 
-def make_mdy_date(date_in):
-    # Flip ambiguous dd/mm/yyyy dates eg. 09/11/2021 where 11 is in fact Nov not Sept.
-    # Default dates in charting usually fall in to expecting mm/dd/yyyy format
+    for perm in permutations:
+        day, month, year = perm
 
-    # Input is a date string. Can be any legal format, returns a datetime.datetime object
-    date_parsed = dateutil.parser.parse(date_in)
+        # If year is two digits, add 2000 to get the four digit year
+        if year < 100:
+            year += 2000
 
-    # Output date_in.date() will be %Y-%m-%d, eg 2021-09-11 - plan is to flip the month and day eg output 11/09/2021
-    # date_out = datetime.strptime(str(date_in.date()), "%Y-%m-%d").strftime("%d/%m/%Y")
-    day = datetime.strptime(str(date_parsed.date()), "%Y-%m-%d").strftime("%d")
-    month = datetime.strptime(str(date_parsed.date()), "%Y-%m-%d").strftime("%m")
-    year = datetime.strptime(str(date_parsed.date()), "%Y-%m-%d").strftime("%Y")
+        # Validate day, month, year
+        if day > 31 or month > 12 or year < known_date.year:
+            continue
 
-    if int(date_in[:2]) > 12:
-        date_out = f"{month}/{day}/{year}"
-    else:
-        date_out = f"{day}/{month}/{year}"
+        try:
+            # Create date object for current permutation
+            perm_date = datetime(year=year, month=month, day=day).date()
+        except ValueError:
+            # Skip this permutation and move on to the next if this is not a valid date
+            continue
 
-    return date_out
+        # If perm_date is within 24 hours of known_date, return it
+        if abs(perm_date - known_date).days <= 1:
+            return perm_date.strftime("%Y/%m/%d")
+
+    # Default to 1 Dec 2000 if no valid date found - at least you will get a chart
+    return "2000/12/01"

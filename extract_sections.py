@@ -1,13 +1,12 @@
 import dateutil.parser
 from dateutil.relativedelta import *
+from datetime import datetime
 
 import pandas as pd
-from yaspe_utilities import get_number_type, make_mdy_date, check_date, get_aix_wacky_numbers
+from yaspe_utilities import get_number_type, get_aix_wacky_numbers, format_date
 
 
-def extract_sections(
-    operating_system, profile_run, input_file, include_iostat, include_nfsiostat, html_filename, disk_list
-):
+def extract_sections(operating_system, input_file, include_iostat, include_nfsiostat, html_filename, disk_list):
     once = True
 
     vmstat_processing = False
@@ -51,12 +50,18 @@ def extract_sections(
     aix_sar_d_line_date = ""
     aix_sar_d_previous_time = "00:00:00"
 
-    run_start = profile_run.split("on ")[1]
-    run_start = run_start[:-1]
-    run_start_date = dateutil.parser.parse(run_start)
-
     with open(input_file, "r", encoding="ISO-8859-1") as file:
         for line in file:
+            # Date data collected is always above other sections
+            if "Profile run" in line:
+                line = line.strip()
+                run_start = line.split("on ")[1]
+                run_start = run_start[:-1]  # Get rid of '.' at end of line
+
+                # Parse the initial date string Jan 02 2024 to a datetime object
+                run_start_date = datetime.strptime(run_start, "%b %d %Y")
+                print(run_start_date.strftime("%b %d %Y %A"))
+
             if "<!-- beg_mgstat -->" in line:
                 mgstat_processing = True
             if "<!-- end_mgstat -->" in line:
@@ -73,15 +78,14 @@ def extract_sections(
                     # Add the file name
                     mgstat_row_dict["html name"] = html_filename
 
-                    # Check date format
-                    if not mgstat_date_convert and mgstat_row_dict["Date"] != mgstat_date:
-                        mgstat_date = mgstat_row_dict["Date"]
-                        mgstat_date_convert = check_date("mgstat", run_start_date, mgstat_row_dict["Date"])
+                    # Standardise date format first time or if date changes
+                    if mgstat_row_dict["Date"] != mgstat_date:
+                        # Get date in yyyy/mm/dd format
+                        new_date = format_date(run_start_date, mgstat_row_dict["Date"])
+                        # print(new_date)
 
-                    if mgstat_date_convert:
-                        new_date = make_mdy_date(mgstat_row_dict["Date"])
-                        new_date_dict = {"Date": new_date}
-                        mgstat_row_dict.update(new_date_dict)
+                    mgstat_date = mgstat_row_dict["Date"]
+                    mgstat_row_dict.update({"Date": new_date})
 
                     if operating_system == "AIX":
                         if aix_vmstat_line_date == "":
@@ -109,15 +113,15 @@ def extract_sections(
                         values_converted = [get_number_type(v) for v in values]
                         vmstat_row_dict = dict(zip(vmstat_columns, values_converted))
                         vmstat_row_dict["html name"] = html_filename
-                        # Check date format
-                        if not vmstat_date_convert and vmstat_row_dict["Date"] != vmstat_date:
-                            vmstat_date = vmstat_row_dict["Date"]
-                            vmstat_date_convert = check_date("vmstat", run_start_date, vmstat_row_dict["Date"])
 
-                        if vmstat_date_convert:
-                            new_date = make_mdy_date(vmstat_row_dict["Date"])
-                            new_date_dict = {"Date": new_date}
-                            vmstat_row_dict.update(new_date_dict)
+                        # Standardise date format first time or if date changes
+                        if vmstat_row_dict["Date"] != vmstat_date:
+                            # Get date in yyyy/mm/dd format
+                            new_date = format_date(run_start_date, vmstat_row_dict["Date"])
+                            # print(new_date)
+
+                        vmstat_date = vmstat_row_dict["Date"]
+                        vmstat_row_dict.update({"Date": new_date})
 
                         # Added for pretty processing
                         vmstat_row_dict["datetime"] = f'{vmstat_row_dict["Date"]} {vmstat_row_dict["Time"]}'
@@ -160,15 +164,14 @@ def extract_sections(
                         vmstat_row_dict = dict(zip(vmstat_columns, values_converted))
                         vmstat_row_dict["html name"] = html_filename
 
-                        # Check date format
-                        if not vmstat_date_convert and vmstat_row_dict["Date"] != vmstat_date:
-                            vmstat_date = vmstat_row_dict["Date"]
-                            vmstat_date_convert = check_date("aix_vmstat", run_start_date, vmstat_row_dict["Date"])
+                        # Standardise date format first time or if date changes
+                        if vmstat_row_dict["Date"] != vmstat_date:
+                            # Get date in yyyy/mm/dd format
+                            new_date = format_date(run_start_date, vmstat_row_dict["Date"])
+                            # print(new_date)
 
-                        if vmstat_date_convert:
-                            new_date = make_mdy_date(vmstat_row_dict["Date"])
-                            new_date_dict = {"Date": new_date}
-                            vmstat_row_dict.update(new_date_dict)
+                        vmstat_date = vmstat_row_dict["Date"]
+                        vmstat_row_dict.update({"Date": new_date})
 
                         # Added for pretty processing
                         vmstat_row_dict["datetime"] = f'{vmstat_row_dict["Date"]} {vmstat_row_dict["Time"]}'
@@ -221,15 +224,14 @@ def extract_sections(
                         aix_sar_d_row_dict = dict(zip(aix_sar_d_columns, values_converted))
                         aix_sar_d_row_dict["html name"] = html_filename
 
-                        # Check date format
-                        if not aix_sar_d_date_convert and aix_sar_d_row_dict["Date"] != aix_sar_d_date:
-                            aix_sar_d_date = aix_sar_d_row_dict["Date"]
-                            aix_sar_d_date_convert = check_date("aix_sar_d", run_start_date, aix_sar_d_row_dict["Date"])
+                        # Standardise date format first time or if date changes
+                        if aix_sar_d_row_dict["Date"] != aix_sar_d_date:
+                            # Get date in yyyy/mm/dd format
+                            new_date = format_date(run_start_date, aix_sar_d_row_dict["Date"])
+                            # print(new_date)
 
-                        if aix_sar_d_date_convert:
-                            new_date = make_mdy_date(aix_sar_d_row_dict["Date"])
-                            new_date_dict = {"Date": new_date}
-                            aix_sar_d_row_dict.update(new_date_dict)
+                        aix_sar_d_date = aix_sar_d_row_dict["Date"]
+                        aix_sar_d_row_dict.update({"Date": new_date})
 
                         # Added for pretty processing
                         aix_sar_d_row_dict["datetime"] = f'{aix_sar_d_row_dict["Date"]} {aix_sar_d_row_dict["Time"]}'
@@ -333,15 +335,14 @@ def extract_sections(
                                 iostat_row_dict = dict(zip(iostat_columns, values_converted))
                                 iostat_row_dict["html name"] = html_filename
 
-                                # Check date format
-                                if not iostat_date_convert and iostat_row_dict["Date"] != iostat_date:
-                                    iostat_date = iostat_row_dict["Date"]
-                                    iostat_date_convert = check_date("iostat", run_start_date, iostat_row_dict["Date"])
+                                # Standardise date format first time or if date changes
+                                if iostat_row_dict["Date"] != iostat_date:
+                                    # Get date in yyyy/mm/dd format
+                                    new_date = format_date(run_start_date, iostat_row_dict["Date"])
+                                    # print(new_date)
 
-                                if iostat_date_convert:
-                                    new_date = make_mdy_date(iostat_row_dict["Date"])
-                                    new_date_dict = {"Date": new_date}
-                                    iostat_row_dict.update(new_date_dict)
+                                iostat_date = iostat_row_dict["Date"]
+                                iostat_row_dict.update({"Date": new_date})
 
                                 # Added for pretty processing
                                 iostat_row_dict["datetime"] = f'{iostat_row_dict["Date"]} {iostat_row_dict["Time"]}'
