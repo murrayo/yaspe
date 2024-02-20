@@ -429,10 +429,9 @@ def build_log(sp_dict):
     # Linux kernel
 
     if "swappiness" in sp_dict:
-
         # Is memory more or less than 64GB
         if "memory MB" in sp_dict:
-            if round(int(sp_dict['memory MB']) / 1024) < swappiness_high_memory_gb:
+            if round(int(sp_dict["memory MB"]) / 1024) < swappiness_high_memory_gb:
                 swappiness_high_memory_server = False
 
         # What is the recommendation for servers over 64GB
@@ -797,15 +796,18 @@ def build_log(sp_dict):
                 f"{round((sp_dict['Estimated total IRIS shared memory']) / int(sp_dict['hugepages MB']) * 100):,}"
                 f"% of huge pages.\n"
             )
-            log += (
-                f"Current shared memory (from ipcs -m) is "
-                f"{int(sp_dict['Shared memory segment total']/1024/1024):,} MB"
-                f", hugepages is {sp_dict['hugepages MB']:,} MB, "
-                f"gap is {sp_dict['hugepages MB'] - int(sp_dict['Shared memory segment total']/1024/1024):,} MB. "
-                f"Shared memory is "
-                f"{round((int(sp_dict['Shared memory segment total']/1024/1024))/int(sp_dict['hugepages MB']) * 100):,}"
-                f"% of huge pages.\n\n"
-            )
+            if "Shared memory segment total" in sp_dict:
+                log += (
+                    f"Current shared memory (from ipcs -m) is "
+                    f"{int(sp_dict['Shared memory segment total']/1024/1024):,} MB"
+                    f", hugepages is {sp_dict['hugepages MB']:,} MB, "
+                    f"gap is {sp_dict['hugepages MB'] - int(sp_dict['Shared memory segment total']/1024/1024):,} MB. "
+                    f"Shared memory is "
+                    f"{round((int(sp_dict['Shared memory segment total']/1024/1024))/int(sp_dict['hugepages MB']) * 100):,}"
+                    f"% of huge pages.\n\n"
+                )
+            else:
+                log += f"Current shared memory (from ipcs -m) is not available\n"
 
             log += f"Note:\n"
             log += f"Estimated shared memory only accounts for IRIS. "
