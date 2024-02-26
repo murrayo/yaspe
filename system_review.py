@@ -6,24 +6,30 @@ import chart_output, chart_templates, yaspe_utilities
 
 
 def what_date_format(df, date_format_string, column_name, name):
+    # Check if date stamp ends with 'AM' or 'PM'
+    ends_with_am_pm = df["datetime"].iloc[0].endswith(("AM", "PM"))
 
-    # # Force date format based on strftime()
-    # if date_format_string == "mm/dd/yyyy":
-    #     df[column_name] = pd.to_datetime(df["datetime"], format="%m/%d/%Y %I:%M:%S %p")
-    # elif date_format_string == "dd/mm/yyyy":
-    #     df[column_name] = pd.to_datetime(df["datetime"], format="%d/%m/%Y %I:%M:%S %p")
-    # elif date_format_string == "mm/dd/yy":
-    #     df[column_name] = pd.to_datetime(df["datetime"], format="%m/%d/%y %I:%M:%S %p")
-    # elif date_format_string == "dd/mm/yy":
-    #     df[column_name] = pd.to_datetime(df["datetime"], format="%d/%m/%y %I:%M:%S %p")
-    # else:
-    #     print(date_format_string)
-    #     print(f"{name} date format error cannot be determined")
-    #     # exit()
+    if date_format_string == "dd/mm/yyyy":
+        if not ends_with_am_pm:
+            date_format_string = "%d/%m/%Y %H:%M:%S"
+        else:
+            date_format_string = "%d/%m/%Y %I:%M:%S %p"
+    elif date_format_string == "mm/dd/YYYY":
+        if not ends_with_am_pm:
+            date_format_string = "%m/%d/%Y %H:%M:%S"
+        else:
+            date_format_string = "%m/%d/%Y %I:%M:%S %p"
+    else:
+        if not ends_with_am_pm:
+            date_format_string = "%Y/%m/%d %H:%M:%S"  # Default
+        else:
+            date_format_string = "%Y/%m/%d %I:%M:%S %p"
 
-    df[column_name] = pd.to_datetime(df["datetime"])
+    df["datetime"] = pd.to_datetime(df["datetime"], format=date_format_string)
 
     df.set_index("datetime", inplace=True)
+    # Ensure the index is sorted, as required for using get_loc with 'nearest'
+    df.sort_index(inplace=True)
 
     start_date = df.index[0].strftime("%a, %b %d, %Y %H:%M:%S")
     end_date = df.index[-1].strftime("%a, %b %d, %Y %H:%M:%S")
@@ -34,7 +40,6 @@ def what_date_format(df, date_format_string, column_name, name):
 
 
 def system_charts(base_file_path):
-
     csv_needed = False
 
     print("System Review Started...")
@@ -86,6 +91,7 @@ def system_charts(base_file_path):
 
     # ------------------------------------------------------------------------------------
     # Get vmstat data
+    print(f"vmstat")
 
     vmstat_title = ""
     number_cpus = 0
@@ -170,8 +176,8 @@ def system_charts(base_file_path):
 
         cpu_start_time = start_time
 
-        # Create a new DataFrame with the highest mean 10-minute period
-        df_zoom = df.loc[start_time:end_time]
+        # Create a new DataFrame with the highest mean x-minute period
+        df_zoom = df[(df.index >= start_time) & (df.index <= end_time)]
 
         # Chart functions
         chart_output.chart_vmstat(
@@ -190,6 +196,7 @@ def system_charts(base_file_path):
 
     # ------------------------------------------------------------------------------------
     # mgstat
+    print(f"mgstat")
 
     # Get mgstat data
     df = pd.read_csv(mgstat_file_name, sep=",", encoding="ISO-8859-1")
@@ -233,7 +240,7 @@ def system_charts(base_file_path):
         gloref_start_time = start_time
 
         # Create a new DataFrame with the highest mean x-minute period
-        df_zoom = df.loc[start_time:end_time]
+        df_zoom = df[(df.index >= start_time) & (df.index <= end_time)]
 
         # Chart functions
         chart_output.chart_mgstat(
@@ -250,7 +257,7 @@ def system_charts(base_file_path):
         end_time = start_time + pd.Timedelta(minutes=peak_minutes)
 
         # Create a new DataFrame with the highest mean 10-minute period
-        df_zoom = df.loc[start_time:end_time]
+        df_zoom = df[(df.index >= start_time) & (df.index <= end_time)]
 
         # Chart functions
         chart_output.chart_mgstat(
@@ -263,6 +270,7 @@ def system_charts(base_file_path):
 
     # ------------------------------------------------------------------------------------
     # Get iostat data
+    print("iostat")
     # importlib.reload(chart_templates)
     df = pd.read_csv(iostat_file_name, sep=",", encoding="ISO-8859-1")
 
@@ -274,7 +282,7 @@ def system_charts(base_file_path):
 
     df, date_string = what_date_format(df, iostat_date_format, "datetime", "iostat")
 
-    # Remove duplicate rows (e.g. from append)
+    # Remove duplicate rows (e.g. from append) Do not do this at higher level else devices will disappear
     df = df.drop_duplicates(subset=["RunDate", "RunTime", "Device"])
 
     disk_list = site_survey_input["Disk List"]
@@ -353,7 +361,7 @@ def system_charts(base_file_path):
         end_time = start_time + pd.Timedelta(minutes=peak_minutes)
 
         # Create a new DataFrame with the highest mean 10-minute period
-        df_pivot_zoom = df_pivot.loc[start_time:end_time]
+        df_pivot_zoom = df_pivot[(df_pivot.index >= start_time) & (df_pivot.index <= end_time)]
 
         # Chart functions
         chart_output.chart_iostat(
@@ -366,7 +374,6 @@ def system_charts(base_file_path):
 
     # What about when reads at peak
     if peak_zoom:
-
         if "r/s Database" in df_pivot.columns:
             # Resample the data at x-minute frequency
             resampled_data = df_pivot["r/s Database"].resample(peak_minutes_sample)
@@ -384,7 +391,7 @@ def system_charts(base_file_path):
             read_start_time = start_time
 
             # Create a new DataFrame with the highest mean x-minute period
-            df_pivot_zoom = df_pivot.loc[start_time:end_time]
+            df_pivot_zoom = df_pivot[(df_pivot.index >= start_time) & (df_pivot.index <= end_time)]
 
             # Chart functions
             chart_output.chart_iostat(
@@ -397,7 +404,6 @@ def system_charts(base_file_path):
 
     # What about when writes at peak, need to pick only no-zero values
     if peak_zoom:
-
         if "w/s Database" in df_pivot.columns:
             # Resample the data at x-minute frequency
             filtered_df = df_pivot[df_pivot["w/s Database"] != 0]
@@ -416,7 +422,7 @@ def system_charts(base_file_path):
             write_start_time = start_time
 
             # Create a new DataFrame with the highest mean x-minute period
-            df_pivot_zoom = df_pivot.loc[start_time:end_time]
+            df_pivot_zoom = df_pivot[(df_pivot.index >= start_time) & (df_pivot.index <= end_time)]
 
             # Chart functions
             chart_output.chart_iostat(
