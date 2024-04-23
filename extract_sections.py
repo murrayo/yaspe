@@ -7,6 +7,62 @@ from yaspe_utilities import get_number_type, get_aix_wacky_numbers, format_date
 
 
 def extract_sections(operating_system, input_file, include_iostat, include_nfsiostat, html_filename, disk_list):
+    """
+    :param operating_system: The operating system on which the data was collected. Possible values are "Linux", "Ubuntu", or "AIX".
+    :param input_file: The input file containing the data.
+    :param include_iostat: Boolean flag indicating whether to include iostat data in the extraction.
+    :param include_nfsiostat: Boolean flag indicating whether to include nfsiostat data in the extraction.
+    :param html_filename: The name of the HTML file being processed.
+    :param disk_list: List of disk names to filter iostat data by.
+    :return: None
+
+    This method extracts various sections of data from an input file based on the provided parameters. It processes the file line by line, identifying different sections and collecting the relevant data into separate lists. The extracted data is stored in multiple variables:
+
+    - `vmstat_processing`: Boolean flag indicating if vmstat data is being processed.
+    - `vmstat_header`: The header line of the vmstat section.
+    - `vmstat_rows_list`: List of dictionaries representing individual rows of vmstat data.
+    - `vmstat_date`: The current date being processed in the vmstat section.
+    - `vmstat_date_convert`: Boolean flag indicating whether the date needs to be converted to a different format.
+    - `aix_vmstat_line_date`: The date extracted from the first column of an AIX vmstat row for processing.
+
+    - `iostat_processing`: Boolean flag indicating if iostat data is being processed.
+    - `iostat_header`: The header line of the iostat section.
+    - `iostat_rows_list`: List of dictionaries representing individual rows of iostat data.
+    - `iostat_device_block_processing`: Boolean flag indicating whether the current line is part of a device/block in iostat section.
+    - `iostat_am_pm`: Boolean flag indicating whether AM/PM time format is used in iostat section.
+    - `iostat_date_included`: Boolean flag indicating whether the date is included in iostat section.
+    - `iostat_date`: The current date being processed in the iostat section.
+    - `iostat_date_convert`: Boolean flag indicating whether the date needs to be converted to a different format.
+
+    - `mgstat_processing`: Boolean flag indicating if mgstat data is being processed.
+    - `mgstat_header`: The header line of the mgstat section.
+    - `mgstat_rows_list`: List of dictionaries representing individual rows of mgstat data.
+    - `mgstat_date`: The current date being processed in the mgstat section.
+    - `mgstat_date_convert`: Boolean flag indicating whether the date needs to be converted to a different format.
+
+    - `perfmon_processing`: Boolean flag indicating if perfmon data is being processed.
+    - `perfmon_header`: The header line of the perfmon section.
+    - `perfmon_rows_list`: List of dictionaries representing individual rows of perfmon data.
+
+    - `nfsiostat_processing`: Boolean flag indicating if nfsiostat data is being processed.
+    - `nfsiostat_header`: The header line of the nfsiostat section.
+    - `nfsiostat_rows_list`: List of dictionaries representing individual rows of nfsiostat data.
+    - `nfsiostat_read`: Boolean flag indicating whether the current line is part of the read data in nfsiostat section.
+    - `nfsiostat_write`: Boolean flag indicating whether the current line is part of the write data in nfsiostat section.
+
+    - `aix_sar_d_processing`: Boolean flag indicating if AIX sar -d data is being processed.
+    - `aix_sar_d_header`: The header line of the AIX sar -d section.
+    - `aix_sar_d_rows_list`: List of dictionaries representing individual rows of AIX sar -d data.
+    - `aix_sar_d_date`: The current date being processed in the AIX sar -d section.
+    - `aix_sar_d_date_convert`: Boolean flag indicating whether the date needs to be converted to a different format.
+    - `aix_sar_d_line_date`: The date extracted from the first column of an AIX sar -d row for processing.
+    - `aix_sar_d_previous_time`: The previous time value in the AIX sar -d section.
+
+    The method opens the input_file using the specified encoding and reads it line by line. It processes different sections based on the HTML tags present in the lines. For each section, it checks if the header line is present and collects the data into the respective rows_list. It also performs formatting and conversion operations on the extracted data.
+
+    Note: The method uses some additional helper functions and variables that are not provided in the given code snippet. These functions are assumed to be defined elsewhere in the codebase.
+    """
+
     once = True
 
     vmstat_processing = False
@@ -427,46 +483,6 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                             nfsiostat_row_dict["html name"] = html_filename
                             nfsiostat_rows_list.append(nfsiostat_row_dict)
 
-            # AIX iostat has variations, start as needed
-            #
-            #  ....<div id=iostat></div>iostat</font></b><br><pre>
-            # System configuration: lcpu=80 drives=2 paths=4 vdisks=2
-            # Disks:                      xfers                                read                                write                                  queue                    time
-            #                   %tm    bps   tps  bread  bwrtn   rps    avg    min    max time fail   wps    avg    min    max time fail    avg    min    max   avg   avg  serv
-            #                   act                                    serv   serv   serv outs              serv   serv   serv outs        time   time   time  wqsz  sqsz qfull
-            # hdisk0            2.0  65.5K  13.0  57.3K   8.2K  11.0   0.6    1.5S   0.9     0    0   2.0   0.4    0.3    0.4     0    0   0.0    0.0    0.0    0.0   0.0   3.0  12:41:43
-            # hdisk1            7.0   4.2M 135.0  57.3K   4.2M   7.0   6.9    0.5   20.2     0    0 128.0   0.4    0.3    0.6     0    0   0.0    0.0    0.1    0.0   0.0   4.0  12:41:43
-
-            # Fake header columns
-            aix_iostat_columns = [
-                "Device",
-                "xfer tm act",
-                "xfer bps",
-                "xfer tps",
-                "xfer bread",
-                "xfer bwrtn",
-                "read rps",
-                "read avg serv",
-                "read min serv",
-                "read max serv",
-                "read time outs",
-                "read fail",
-                "write wps",
-                "write avg serv",
-                "write min serv",
-                "write max serv",
-                "write time outs",
-                "write fail",
-                "queue avg time",
-                "queue min time",
-                "queue max time",
-                "queue avg wqsz",
-                "queue avg sqsz",
-                "queue serv qfull",
-                "Time",
-            ]
-            aix_column_count = len(aix_iostat_columns)
-
             if operating_system == "AIX" and include_iostat:
                 if iostat_processing and "<div" in line:  # iostat does not flag end
                     iostat_processing = False
@@ -474,6 +490,47 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                     # Found iostat
                     if "id=iostat" in line:
                         iostat_processing = True
+
+                        # AIX iostat has variations, start as needed
+                        #
+                        #  ....<div id=iostat></div>iostat</font></b><br><pre>
+                        # System configuration: lcpu=80 drives=2 paths=4 vdisks=2
+                        # Disks:                      xfers                                read                                write                                  queue                    time
+                        #                   %tm    bps   tps  bread  bwrtn   rps    avg    min    max time fail   wps    avg    min    max time fail    avg    min    max   avg   avg  serv
+                        #                   act                                    serv   serv   serv outs              serv   serv   serv outs        time   time   time  wqsz  sqsz qfull
+                        # hdisk0            2.0  65.5K  13.0  57.3K   8.2K  11.0   0.6    1.5S   0.9     0    0   2.0   0.4    0.3    0.4     0    0   0.0    0.0    0.0    0.0   0.0   3.0  12:41:43
+                        # hdisk1            7.0   4.2M 135.0  57.3K   4.2M   7.0   6.9    0.5   20.2     0    0 128.0   0.4    0.3    0.6     0    0   0.0    0.0    0.1    0.0   0.0   4.0  12:41:43
+
+                        # Fake header columns
+                        aix_iostat_columns = [
+                            "Device",
+                            "xfer tm act",
+                            "xfer bps",
+                            "xfer tps",
+                            "xfer bread",
+                            "xfer bwrtn",
+                            "read rps",
+                            "read avg serv",
+                            "read min serv",
+                            "read max serv",
+                            "read time outs",
+                            "read fail",
+                            "write wps",
+                            "write avg serv",
+                            "write min serv",
+                            "write max serv",
+                            "write time outs",
+                            "write fail",
+                            "queue avg time",
+                            "queue min time",
+                            "queue max time",
+                            "queue avg wqsz",
+                            "queue avg sqsz",
+                            "queue serv qfull",
+                            "Time",
+                        ]
+                        aix_column_count = len(aix_iostat_columns)
+
                     # Is this a data line
                     if iostat_processing and len(line.split()) == aix_column_count:
                         iostat_row_dict = {}
