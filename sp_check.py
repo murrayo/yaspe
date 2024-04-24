@@ -270,6 +270,7 @@ def system_check(input_file):
                 if "Memtotal" in line:
                     pass
                 else:
+                    # Note memory is reported in MB e.g.16004 is 16 GB (uses "free -m ....")
                     sp_dict["memory MB"] = (line.split(",")[2]).strip()
                     memory_next = False
             if "<div id=free>" in line:
