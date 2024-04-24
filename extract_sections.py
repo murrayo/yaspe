@@ -542,15 +542,17 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         values = line.split(",")
                         values = [i.strip() for i in values]  # strip off carriage return etc
 
-                        values_converted = [get_aix_wacky_numbers(v) for v in values]
+                        # only process selected disks
+                        if not disk_list or values[0] in disk_list:
+                            values_converted = [get_aix_wacky_numbers(v) for v in values]
 
-                        iostat_row_dict = dict(zip(aix_iostat_columns, values_converted))
-                        iostat_row_dict["html name"] = html_filename
-                        iostat_row_dict["Date"] = run_start_date.strftime("%m/%d/%y")
+                            iostat_row_dict = dict(zip(aix_iostat_columns, values_converted))
+                            iostat_row_dict["html name"] = html_filename
+                            iostat_row_dict["Date"] = run_start_date.strftime("%m/%d/%y")
 
-                        # Added for pretty processing
-                        iostat_row_dict["datetime"] = f'{iostat_row_dict["Date"]} {iostat_row_dict["Time"]}'
-                        iostat_rows_list.append(iostat_row_dict)
+                            # Added for pretty processing
+                            iostat_row_dict["datetime"] = f'{iostat_row_dict["Date"]} {iostat_row_dict["Time"]}'
+                            iostat_rows_list.append(iostat_row_dict)
 
                     # First time in create column names
                     if iostat_processing and iostat_header == "":
