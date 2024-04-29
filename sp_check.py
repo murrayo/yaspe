@@ -772,7 +772,7 @@ def build_log(sp_dict):
 
     if "Estimated total IRIS shared memory" in sp_dict:
         log += f"\n--------------------------------------------------------------------------------------------------\n"
-        log += f"Estimated total shared memory for IRIS 2022.1 and later: "
+        log += f"**Estimated** total shared memory for IRIS 2022.1 and later: "
         log += f"{int(sp_dict['Estimated total IRIS shared memory']):,} (MB)\n\n"
         log += f'{sp_dict["Estimated total IRIS shared memory text"]}\n'
 
@@ -811,20 +811,21 @@ def build_log(sp_dict):
                 log += f"Current shared memory (from ipcs -m) is not available\n"
 
             log += f"Note:\n"
-            log += f"Estimated shared memory only accounts for IRIS. "
-            log += f"Other components such as JVM for reports are not included.\n"
-
+            log += f"Estimated shared memory only accounts for IRIS.\n"
+            log += f"JVM does NOT use hugepages by default. e.g. for JRports. JVM use of hugepages is not recommended with IRIS.\n\n"
+            log += f"\n--------------------------------------------------------------------------------------------------\n"
             log += f"Confirm Huge Pages setting on the first IRIS startup. Especially for instances with low RAM."
             log += f" Adjust global buffers down if needed.\n"
             log += f"Start IRIS with all your CPF parameters set to desired values without HugePages allocated, record "
             log += f"the total shared memory segment size from the messages.log,\nand then use that as the figure for "
             log += f"calculating/allocating HugePages and then restart IRIS.\n"
+            log += f"\n--------------------------------------------------------------------------------------------------\n"
 
     first_shared_memory = True
     for key in sp_dict:
         if "Shared memory ipcs" in key:
             if first_shared_memory:
-                log += "\nShared memory from ipcs -m:\n"
+                log += "\nShared memory from ipcs -m (FYI does not directly relate to hugepages):\n"
                 first_shared_memory = False
             log += f"{sp_dict[key]}\n"
 
