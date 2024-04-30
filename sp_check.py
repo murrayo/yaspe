@@ -249,6 +249,8 @@ def system_check(input_file):
                     shared_memory_counter += 1
 
             # Linux kernel
+            if "vm.overcommit_memory" in line:
+                sp_dict["overcommit_memory"] = (line.split("=")[1]).strip()
 
             if "swappiness" in line:
                 sp_dict["swappiness"] = (line.split("=")[1]).strip()
@@ -443,6 +445,16 @@ def build_log(sp_dict):
             sp_dict[f"warning {warn_count}"] = f"WIJ in Installation Directory"
 
     # Linux kernel
+    if "overcommit_memory" in sp_dict:
+        if not sp_dict["overcommit_memory"] == "0":
+            warn_count += 1
+            sp_dict[f"warning {warn_count}"] = (
+                f"overcommit memory is {sp_dict['overcommit_memory']}. "
+                f"For database servers, the recommended setting is heuristic overcommit handling (0). "
+            )
+        else:
+            pass_count += 1
+            sp_dict[f"pass {pass_count}"] = f"overcommit memory is {sp_dict['overcommit_memory']} (heuristic)"
 
     if "swappiness" in sp_dict:
         # Is memory more or less than 64GB
