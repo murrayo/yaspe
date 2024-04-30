@@ -6,6 +6,17 @@ Validate common OS and IRIS/Caché configuration settings and show pass, fail
 and suggested fixes.
 
 """
+import re
+
+
+def separate_int_and_text(input_string):
+    match = re.match(r"(\d+)(\D+)", input_string)
+    if match:
+        num_part = int(match.group(1))  # Converts the numerical part to an integer
+        text_part = match.group(2)
+        return num_part, text_part
+    else:
+        return None, None
 
 
 def shared_memory_estimate(
@@ -246,6 +257,10 @@ def system_check(input_file):
             if "vm.nr_hugepages" in line:
                 sp_dict["vm.nr_hugepages"] = (line.split("=")[1]).strip()
 
+            # hugetlbfs on /dev/hugepages type hugetlbfs (rw,relatime,pagesize=2M)
+            if "hugetlbfs" in line:
+                sp_dict["hugetlbfs pagesize"] = (line.split("pagesize=")[1]).strip()
+
             # Shared memory must be greater than hugepages in bytes (IRIS shared memory)
             if "kernel.shmmax" in line:
                 sp_dict["kernel.shmmax"] = (line.split("=")[1]).strip()
@@ -474,6 +489,10 @@ def build_log(sp_dict):
             sp_dict[f"warning {warn_count}"] = f"memlock={sp_dict['memlock']} does not enforce Huge/Large pages"
 
     if "memory MB" in sp_dict:
+        # # Sets the default size of huge pages to x megabytes.
+        # if "hugetlbfs pagesize" in sp_dict:
+        #     pagesize, pagesize_text = separate_int_and_text(sp_dict["hugetlbfs pagesize"])
+
         huge_page_size_kb = 2048
 
         sp_dict["memory GB"] = f"{round(int(sp_dict['memory MB']) / 1024)}"
@@ -596,7 +615,14 @@ def build_log(sp_dict):
                     ] = f"shared memory is {sp_dict['shared memory MB']:,} MB hugepages is {sp_dict['hugepages MB']:,} MB"
                 else:
                     pass_count += 1
-                    sp_dict[f"pass {pass_count}"] = f"HugePages is set:"
+                    hugepage_message = f"HugePages is set"
+                    # Sets the default size of huge pages to x megabytes.
+                    if "hugetlbfs pagesize" in sp_dict:
+                        # pagesize, pagesize_text = separate_int_and_text(sp_dict["hugetlbfs pagesize"])
+                        hugepage_message += f" ({sp_dict['hugetlbfs pagesize']} {huge_page_size_kb} KB"
+                    hugepage_message += f":"
+                    sp_dict[f"pass {pass_count}"] = hugepage_message
+
                     pass_count += 1
                     msg = f"Total memory is {int(sp_dict['memory MB']):,} MB. "
                     sp_dict[f"pass {pass_count}"] = msg
@@ -813,13 +839,17 @@ def build_log(sp_dict):
             log += f"Note:\n"
             log += f"Estimated shared memory only accounts for IRIS.\n"
             log += f"JVM does NOT use hugepages by default. e.g. for JRports. JVM use of hugepages is not recommended with IRIS.\n\n"
-            log += f"\n--------------------------------------------------------------------------------------------------\n"
+            log += (
+                f"--------------------------------------------------------------------------------------------------\n"
+            )
             log += f"Confirm Huge Pages setting on the first IRIS startup. Especially for instances with low RAM."
             log += f" Adjust global buffers down if needed.\n"
             log += f"Start IRIS with all your CPF parameters set to desired values without HugePages allocated, record "
             log += f"the total shared memory segment size from the messages.log,\nand then use that as the figure for "
             log += f"calculating/allocating HugePages and then restart IRIS.\n"
-            log += f"\n--------------------------------------------------------------------------------------------------\n"
+            log += (
+                f"--------------------------------------------------------------------------------------------------\n"
+            )
 
     first_shared_memory = True
     for key in sp_dict:
