@@ -260,7 +260,7 @@ def system_check(input_file):
                 sp_dict["vm.nr_hugepages"] = (line.split("=")[1]).strip()
 
             # hugetlbfs on /dev/hugepages type hugetlbfs (rw,relatime,pagesize=2M)
-            if "hugetlbfs" in line:
+            if "hugetlbfs pagesize" in line:
                 sp_dict["hugetlbfs pagesize"] = (line.split("pagesize=")[1]).strip()
 
             # Shared memory must be greater than hugepages in bytes (IRIS shared memory)
