@@ -49,7 +49,7 @@ See the help text (note the differences in image name depending on your situatio
 
 For docker hub version:
 
-For Apple M1:
+For Apple ARM:
 
 `docker run -v "$(pwd)":/data --rm --name yaspe murray1oldfield/yaspe:latest_M1 ./yaspe.py -h`
 
@@ -62,11 +62,12 @@ For local version:
 `docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h`
 
 ``` commandline
-usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-s] [-d DISK_LIST [DISK_LIST ...]] [-l "string to split on"]
+usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p]
+             [-s] [-D] [-d DISK_LIST [DISK_LIST ...]] [-l "string to split on"]
 
 Performance file review.
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   -v, --version         show program's version number and exit
   -i "/path/file.html", --input_file "/path/file.html"
@@ -86,7 +87,7 @@ optional arguments:
                         List of disks, if not entered all are processed. No commas or quotes, e.g. -d dm-0 dm-1
   -l "string to split on", --large_file_split_on_string "string to split on"
                         Split large input file on first occurrence of this string. Blank -l "" defaults to "div id=iostat"
-                        
+
 Be safe, "quote the path"
 ```
 
@@ -116,7 +117,7 @@ If you care only about a selected list of disks you can optionally add a disk li
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p -x -d dm-0 dm-1
 ```
 
-### For Apple Silicon container
+### For Apple ARM container
 
 The difference is `_M1`
 
