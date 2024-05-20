@@ -19,9 +19,13 @@ However, if you find bugs, or are looking for enhancements let me know!
 >- Windows (Perfmon)
 >- AIX (vmstat, iostat, sar -d)
 
-## Recent version at docker hub
+## Recent version at Docker Hub
 
-For Apple M1: `docker pull murray1oldfield/yaspe:latest_M1`
+### Apple ARM
+
+For Apple ARM (M1, M2 etc): `docker pull murray1oldfield/yaspe:latest_M1`
+
+### Intel x86
 
 Note: I don't have desktop access to an Intel server, so this image can fall behind. I suggest **Create docker container image** below.
 
@@ -30,7 +34,7 @@ For Intel: `docker pull murray1oldfield/yaspe:latest`
 
 ## Create docker container image for latest version
 
-To create a docker image on your own system:
+To create a docker image **_on your own system_** (i.e. Not use the image on Docker Hub):
 
 - Download the source files
 - logon to docker with: `docker login`
