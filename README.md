@@ -525,7 +525,8 @@ It is a common issue when trying to run graphical applications inside Docker con
 
 2. To run the interface you need to do this in your terminal. 
 
->**Start the container from the directory with the SystemPerformance HTML files.**
+>**Start the container from the directory with the SystemPerformance HTML files, or a directory higher in the tree.**
+> The HTML files will be in the /data directory or below (you will map `"$(pwd)":/data`) in the `docker run` command.
 
 ```bash
 # Allow connections to the X server 
@@ -539,11 +540,10 @@ docker run -v "$(pwd)":/data -v /tmp/.X11-unix:/tmp/.X11-unix -e DISPLAY=host.do
 
 ```
 
-Note: the HTML files will be in the /data directory (you mapped `"$(pwd)":/data`) in the `docker run` command.
-
-The screen will look like this:
+The X11 screen will look like this:
 
 ![interface](images/Interface_example_X11.png)
+
 <hr>
 
 
