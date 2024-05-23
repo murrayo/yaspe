@@ -508,10 +508,41 @@ Partial list, you should get the idea. Check out the `.csv` output for a full li
 
 If you are using a local copy of yaspe you can run `yaspe_runner.py`.
 
-If you are using a container there are some hoops to jump through, Contact me.
-
 ![interface](images/Interface_example.png)
 
+## Interactive Interface in a container - OSX
+
+It is a common issue when trying to run graphical applications inside Docker containers on macOS.
+- To use interactive applications requires XQuartz for X11 forwarding. 
+
+==Note this step requires a restart==
+
+1. **Ensure XQuartz is installed and running**:
+    
+    - Download and install XQuartz from [XQuartz.org](https://www.xquartz.org/).
+    - Open XQuartz and go to `Preferences > Security` and make sure the option =="Allow connections from network clients"== is checked.
+    - Restart XQuartz. It is now an app on the laptop.
+
+2. To run the interface you need to do this in your terminal. 
+
+==Start the container from the directory with the SystemPerformance HTML files.==
+
+```bash
+xhost +localhost
+
+# 3. Set the DISPLAY environment variable 
+
+export DISPLAY=:0
+
+# 4. Run the Docker container 
+docker run -v "$(pwd)":/data -v /tmp/.X11-unix:/tmp/.X11-unix -e DISPLAY=host.docker.internal:0 --rm --name yaspe yaspe ./yaspe_runner.py
+```
+
+Note: the HTML files will be in the /data directory (you mapped `"$(pwd)":/data`) in the `docker run` command.
+
+Should look like this:
+
+![interface](images/Interface_example_X11.png)
 <hr>
 
 

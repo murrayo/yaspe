@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, Toplevel, Label
@@ -146,11 +147,27 @@ class YaspeApp:
 
         threading.Thread(target=self.run_yaspe, args=(input_files, existing_database, wait_window)).start()
 
+    def is_running_in_container(self):
+        # Check for common environment variables (including YASPE)
+        container_env_vars = ["container", "YASPE_IN_CONTAINER", "KUBERNETES_SERVICE_HOST"]
+        if any(var in os.environ for var in container_env_vars):
+            return True
+
+        # Fallback to checking /proc/1/cgroup
+        try:
+            with open("/proc/1/cgroup", "rt") as f:
+                contents = f.read().strip()
+                return contents == "0::/"
+        except Exception:
+            return False
+
     def run_yaspe(self, input_files, existing_database, wait_window):
         targets = [existing_database] if existing_database else input_files
 
         for target in targets:
-            args = ["yaspe.py", "-i", target] if input_files and not existing_database else ["yaspe.py", "-e", target]
+            command = "/app/./yaspe.py" if self.is_running_in_container() else "yaspe.py"
+            args = [command, "-i", target] if input_files and not existing_database else [command, "-e", target]
+
             if self.var_iostat.get():
                 args.append("-x")
             if self.var_nfsiostat.get():
