@@ -510,7 +510,7 @@ If you are using a local copy of yaspe you can run `yaspe_runner.py`.
 
 If you are using a container there are some hoops to jump through, Contact me.
 
-![interface](images/Interface example.png)
+![interface](images/Interface_example.png)
 
 <hr>
 
