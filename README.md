@@ -520,7 +520,7 @@ It is a common issue when trying to run graphical applications inside Docker con
 1. **Ensure XQuartz is installed and running**:
     
     - Download and install XQuartz from [XQuartz.org](https://www.xquartz.org/).
-    - Open XQuartz and go to `Preferences > Security` 
+    - Open XQuartz and go to `Settings > Security` 
       - And make sure the option **"Allow connections from network clients"** is checked.
     - Restart XQuartz. It is now an app on the laptop.
 
