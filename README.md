@@ -508,7 +508,7 @@ Partial list, you should get the idea. Check out the `.csv` output for a full li
 
 If you are using a local copy of yaspe you can run `yaspe_runner.py`.
 
->Step 0. Add the folder with `yaspe.py` and `yaspe_runner.py` to your path.
+>Step 0. Add the folder with `yaspe.py` and `yaspe_runner.py` to your PATH.
 
 ![interface](images/Interface_example.png)
 
