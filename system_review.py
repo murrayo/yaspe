@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import re
 
 import yaml
 import chart_output, chart_templates, yaspe_utilities
@@ -100,7 +101,11 @@ def system_charts(base_file_path):
         number_cpus = site_survey_input["yaspe"]["CPUs"]
 
         vmstat_title += f"{str(number_cpus)} vCPU"
-        vmstat_title += f'{site_survey_input["yaspe"]["Processor model"].split("(R)")[2]} - '
+        matches = re.findall(r"\(R\)", site_survey_input["yaspe"]["Processor model"])
+        if len(matches) >= 2:
+            vmstat_title += f'{site_survey_input["yaspe"]["Processor model"].split("(R)")[2]} - '
+        else:
+            vmstat_title += f'{site_survey_input["yaspe"]["Processor model"]} - '
 
     df = pd.read_csv(vmstat_file_name, sep=",", encoding="ISO-8859-1")
 
@@ -341,56 +346,27 @@ def system_charts(base_file_path):
     # Chart functions
     chart_output.chart_iostat(df_pivot, site_survey_input, base_file_path=base_file_path, charts_path=charts_path)
 
-    if peak_zoom:
-        df_pivot_zoom = df_pivot.between_time(business_hours_start, business_hours_end)
+    if site_survey_input["Business Hours"]["use business hours"]:
+        if peak_zoom:
+            df_pivot_zoom = df_pivot.between_time(business_hours_start, business_hours_end)
 
-    # Redo stats for business hours
-    if peak_zoom:
-        # Chart functions
-        chart_output.chart_iostat(
-            df_pivot_zoom,
-            site_survey_input,
-            base_file_path=base_file_path,
-            charts_path=charts_path,
-            title_comment="Business Hours",
-        )
+        # Redo stats for business hours
+        if peak_zoom:
+            # Chart functions
+            chart_output.chart_iostat(
+                df_pivot_zoom,
+                site_survey_input,
+                base_file_path=base_file_path,
+                charts_path=charts_path,
+                title_comment="Business Hours",
+            )
 
-    # What about when Glorefs was at peak
-    if peak_zoom:
-        start_time = gloref_start_time
-        end_time = start_time + pd.Timedelta(minutes=peak_minutes)
-
-        # Create a new DataFrame with the highest mean 10-minute period
-        df_pivot_zoom = df_pivot[(df_pivot.index >= start_time) & (df_pivot.index <= end_time)]
-
-        # Chart functions
-        chart_output.chart_iostat(
-            df_pivot_zoom,
-            site_survey_input,
-            base_file_path=base_file_path,
-            charts_path=charts_path,
-            title_comment=f"While peak Glorefs {peak_minutes}-min window",
-        )
-
-    # What about when reads at peak
-    if peak_zoom:
-        if "r/s Database" in df_pivot.columns:
-            # Resample the data at x-minute frequency
-            resampled_data = df_pivot["r/s Database"].resample(peak_minutes_sample)
-
-            # Calculate the mean for each x-minute period
-            mean_values = resampled_data.mean()
-
-            # Find the time period with the highest mean
-            highest_mean_period = mean_values.idxmax()
-
-            # Define start and end times for the period with the highest mean
-            start_time = highest_mean_period
+        # What about when Glorefs was at peak
+        if peak_zoom:
+            start_time = gloref_start_time
             end_time = start_time + pd.Timedelta(minutes=peak_minutes)
 
-            read_start_time = start_time
-
-            # Create a new DataFrame with the highest mean x-minute period
+            # Create a new DataFrame with the highest mean 10-minute period
             df_pivot_zoom = df_pivot[(df_pivot.index >= start_time) & (df_pivot.index <= end_time)]
 
             # Chart functions
@@ -399,36 +375,66 @@ def system_charts(base_file_path):
                 site_survey_input,
                 base_file_path=base_file_path,
                 charts_path=charts_path,
-                title_comment=f"Peak Database Reads {peak_minutes}-min window",
+                title_comment=f"While peak Glorefs {peak_minutes}-min window",
             )
 
-    # What about when writes at peak, need to pick only no-zero values
-    if peak_zoom:
-        if "w/s Database" in df_pivot.columns:
-            # Resample the data at x-minute frequency
-            filtered_df = df_pivot[df_pivot["w/s Database"] != 0]
-            resampled_data = filtered_df["w/s Database"].resample(peak_minutes_sample * 80)
+        # What about when reads at peak
+        if peak_zoom:
+            if "r/s Database" in df_pivot.columns:
+                # Resample the data at x-minute frequency
+                resampled_data = df_pivot["r/s Database"].resample(peak_minutes_sample)
 
-            # Calculate the mean for each x-minute period
-            mean_values = resampled_data.mean()
+                # Calculate the mean for each x-minute period
+                mean_values = resampled_data.mean()
 
-            # Find the time period with the highest mean
-            highest_mean_period = mean_values.idxmax()
+                # Find the time period with the highest mean
+                highest_mean_period = mean_values.idxmax()
 
-            # Define start and end times for the period with the highest mean
-            start_time = highest_mean_period
-            end_time = start_time + pd.Timedelta(minutes=peak_minutes)
+                # Define start and end times for the period with the highest mean
+                start_time = highest_mean_period
+                end_time = start_time + pd.Timedelta(minutes=peak_minutes)
 
-            write_start_time = start_time
+                read_start_time = start_time
 
-            # Create a new DataFrame with the highest mean x-minute period
-            df_pivot_zoom = df_pivot[(df_pivot.index >= start_time) & (df_pivot.index <= end_time)]
+                # Create a new DataFrame with the highest mean x-minute period
+                df_pivot_zoom = df_pivot[(df_pivot.index >= start_time) & (df_pivot.index <= end_time)]
 
-            # Chart functions
-            chart_output.chart_iostat(
-                df_pivot_zoom,
-                site_survey_input,
-                base_file_path=base_file_path,
-                charts_path=charts_path,
-                title_comment=f"Peak Database Writes {peak_minutes}-min window",
-            )
+                # Chart functions
+                chart_output.chart_iostat(
+                    df_pivot_zoom,
+                    site_survey_input,
+                    base_file_path=base_file_path,
+                    charts_path=charts_path,
+                    title_comment=f"Peak Database Reads {peak_minutes}-min window",
+                )
+
+        # What about when writes at peak, need to pick only no-zero values
+        if peak_zoom:
+            if "w/s Database" in df_pivot.columns:
+                # Resample the data at x-minute frequency
+                filtered_df = df_pivot[df_pivot["w/s Database"] != 0]
+                resampled_data = filtered_df["w/s Database"].resample(peak_minutes_sample * 80)
+
+                # Calculate the mean for each x-minute period
+                mean_values = resampled_data.mean()
+
+                # Find the time period with the highest mean
+                highest_mean_period = mean_values.idxmax()
+
+                # Define start and end times for the period with the highest mean
+                start_time = highest_mean_period
+                end_time = start_time + pd.Timedelta(minutes=peak_minutes)
+
+                write_start_time = start_time
+
+                # Create a new DataFrame with the highest mean x-minute period
+                df_pivot_zoom = df_pivot[(df_pivot.index >= start_time) & (df_pivot.index <= end_time)]
+
+                # Chart functions
+                chart_output.chart_iostat(
+                    df_pivot_zoom,
+                    site_survey_input,
+                    base_file_path=base_file_path,
+                    charts_path=charts_path,
+                    title_comment=f"Peak Database Writes {peak_minutes}-min window",
+                )

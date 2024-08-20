@@ -1,11 +1,9 @@
-Site Name: XYZ Hospital Group
-Data collected: Jan 2023
+Site Name: XYZ Hospital
+Data collected: Feb 2024
 Disk List:
   Database: dm-3
-  Primary journal: dm-7
-  WIJ: dm-2
-  Backup: dm-6
-  TrakCare: dm-4
+  Primary journal: sdd
+  WIJ: dm-16
 MonitorApp:
   Date format: yyyy/mm/dd
   File format: 2018
@@ -28,15 +26,15 @@ Chart:
   line style: 'none'
   marker: '.'
 Episodes:
-  average episodes per day: 6579
-  episodes per year: 1657372
+  average episodes per day: 23000
+  episodes per year: 6500000
 System:
-  iostat filename: yaspe_iostat.csv
-  iostat date format: mm/dd/yyyy
-  mgstat filename: yaspe_mgstat.csv
-  mgstat date format: mm/dd/yyyy
-  vmstat filename: yaspe_vmstat.csv
-  vmstat date format: mm/dd/yyyy
+  iostat filename: Monday 5th_iostat.csv
+  iostat date format: yyyy/mm/dd
+  mgstat filename: Monday 5th_mgstat.csv
+  mgstat date format: yyyy/mm/dd
+  vmstat filename: Monday 5th_vmstat.csv
+  vmstat date format: yyyy/mm/dd
 vmstat columns:
   - r
   - wa
@@ -54,14 +52,14 @@ iostat columns:
   - rkB/s
   - wkB/s
 yaspe:
-  Site: The XYZ Hospital Group
-  Hostname         : trakcare02
-  Instance         : TRAKCAREHS
-  Operating system : Linux
-  Platform         : N/A
-  CPUs             : 26
-  Processor model  : Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz
-  Memory           : 204 GB
-  Shared memory    : globals 149000 MB + routines 1000 MB + gmheap 1664 MB = 151,664 MB
-  Version          : Cache for UNIX (Red Hat Enterprise Linux for x86-64) 2017.2.2 (Build 865_3_20144U) Mon Aug 17 2020 13:28:18 EDT [HealthShare Modules:Core:15.032.9688 + Linkage Engine:15.032.9688]
-  Date collected   : Profile run "24hour2sec" started at 00:00:00 on Jan 04 2023.
+  Site: XYZ
+  Hostname: XYZ
+  Instance: XYZ
+  Operating system: Linux
+  Platform: N/A
+  CPUs: 112
+  Processor model: Intel(R) Xeon(R) Gold 6258R CPU @ 2.70GHz
+  Memory: 503 GB
+  Shared memory: globals 311296 MB + routines 1023 MB + gmheap 1024 MB = 313,343 MB
+  Version: IRIS for UNIX (Red Hat Enterprise Linux 7 for x86-64) 2022.1 (Build 209_0_22871U) Fri Oct 27 2023 10-25-51 EDT [Health-3.5.0]
+  Date collected: Profile run "24hours_5" started by user "cacheusr" at 00-00-10 on Feb 05 2024.
