@@ -740,7 +740,7 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out):
     df["datetime"] = df["RunDate"] + " " + df["RunTime"]
 
     # Create stacked CPU chart if columns exist
-    if png_out:
+    if png_out or png_html_out:
         if "sy" in df.columns and "wa" in df.columns and "us" in df.columns:
             title = f"CPU utilisation % - {customer}"
             title += f"\n{number_cpus} cores ({processor})"
