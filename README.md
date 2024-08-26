@@ -62,8 +62,8 @@ For local version:
 `docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h`
 
 ``` commandline
-usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p]
-             [-s] [-D] [-d DISK_LIST [DISK_LIST ...]] [-l "string to split on"]
+usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-P] [-s] [-D] [-d DISK_LIST [DISK_LIST ...]]
+             [-l "string to split on"]
 
 Performance file review.
 
@@ -71,16 +71,17 @@ options:
   -h, --help            show this help message and exit
   -v, --version         show program's version number and exit
   -i "/path/file.html", --input_file "/path/file.html"
-                        Input html filename with full path.
-  -x, --iostat          Also plot iostat data (can take a long time).
-  -n, --nfsiostat       Also plot nfsiostat data.
+                        Input HTML filename with full path.
+  -x, --iostat          Also chart iostat data (this can take a long time).
+  -n, --nfsiostat       Also chart nfsiostat data.
   -a, --append          Do not overwrite database, append to existing database.
   -o "output file prefix", --output_prefix "output file prefix"
-                        Output filename prefix, defaults to html file name, blank (-o '') is legal.
+                        Output filename prefix, defaults to HTML file name, blank (-o '') is legal.
   -e "/path/filename_SystemPerformance.sqlite", --existing_database "/path/filename_SystemPerformance.sqlite"
                         Chart existing database, full path and filename to existing database.
-  -c, --csv             Create csv files of each html files metrics, append if csv file exists.
-  -p, --png             Create png files of metrics. Instead of html
+  -c, --csv             Create CSV files of each HTML files metrics, append if csv file exists.
+  -p, --png             Create PNG charts of metrics. No HTML. HTML is the default if PNG not selected.
+  -P, --PNG             Create PNG and HTML charts of metrics. HTML is the default if PNG not selected.
   -s, --system          Output system overview.
   -D, --DDMMYYYY        Date format for csv files is DDMMYYYY
   -d DISK_LIST [DISK_LIST ...], --disk_list DISK_LIST [DISK_LIST ...]

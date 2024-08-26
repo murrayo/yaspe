@@ -712,7 +712,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     plt.close("all")
 
 
-def chart_vmstat(connection, filepath, output_prefix, png_out):
+def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out):
     # print(f"vmstat...")
     # Get useful
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -787,11 +787,14 @@ def chart_vmstat(connection, filepath, output_prefix, png_out):
 
             if png_out:
                 simple_chart(data, column_name, title, max_y, filepath, output_prefix)
+            elif png_html_out:
+                simple_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
-def chart_mgstat(connection, filepath, output_prefix, png_out):
+def chart_mgstat(connection, filepath, output_prefix, png_out, png_html_out):
     # print(f"mgstat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -842,11 +845,14 @@ def chart_mgstat(connection, filepath, output_prefix, png_out):
 
             if png_out:
                 simple_chart(data, column_name, title, max_y, filepath, output_prefix)
+            elif png_html_out:
+                simple_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
-def chart_perfmon(connection, filepath, output_prefix, png_out):
+def chart_perfmon(connection, filepath, output_prefix, png_out, png_html_out):
     # print(f"perfmon...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -899,11 +905,14 @@ def chart_perfmon(connection, filepath, output_prefix, png_out):
 
             if png_out:
                 simple_chart(data, column_name, title, max_y, filepath, output_prefix)
+            elif png_html_out:
+                simple_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
-def chart_iostat(connection, filepath, output_prefix, operating_system, png_out, disk_list):
+def chart_iostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out, disk_list):
     # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -1008,6 +1017,9 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
 
                     if png_out:
                         simple_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                    elif png_html_out:
+                        simple_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                        linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
                     else:
                         linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
@@ -1050,13 +1062,17 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
 
                     if png_out:
                         pass
+                    elif png_html_out:
+                        linked_chart_no_time(
+                            data, column_name, title, max_y, filepath, output_prefix, file_prefix=device
+                        )
                     else:
                         linked_chart_no_time(
                             data, column_name, title, max_y, filepath, output_prefix, file_prefix=device
                         )
 
 
-def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out):
+def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out):
     # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -1107,13 +1123,20 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
                     simple_chart_no_time(
                         data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
                     )
+                elif png_html_out:
+                    simple_chart_no_time(
+                        data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
+                    )
+                    linked_chart_no_time(
+                        data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
+                    )
                 else:
                     linked_chart_no_time(
                         data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
                     )
 
 
-def chart_aix_sar_d(connection, filepath, output_prefix, operating_system, png_out, disk_list):
+def chart_aix_sar_d(connection, filepath, output_prefix, operating_system, png_out, png_html_out, disk_list):
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
     # Read in to dataframe, drop any bad rows
@@ -1170,6 +1193,9 @@ def chart_aix_sar_d(connection, filepath, output_prefix, operating_system, png_o
 
                 if png_out:
                     simple_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                elif png_html_out:
+                    simple_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
                 else:
                     linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
@@ -1186,6 +1212,7 @@ def mainline(
     output_prefix,
     csv_out,
     png_out,
+    png_html_out,
     system_out,
     disk_list,
     split_on,
@@ -1336,6 +1363,7 @@ def mainline(
             output_file_path,
             output_prefix,
             png_out,
+            png_html_out,
         )
 
         # vmstat and iostat
@@ -1347,31 +1375,43 @@ def mainline(
             output_file_path = f"{output_file_path_base}/vmstat/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
-            chart_vmstat(connection, output_file_path, output_prefix, png_out)
+            chart_vmstat(connection, output_file_path, output_prefix, png_out, png_html_out)
 
             if include_iostat:
                 output_file_path = f"{output_file_path_base}/iostat/"
                 if not os.path.isdir(output_file_path):
                     os.mkdir(output_file_path)
-                chart_iostat(connection, output_file_path, output_prefix, operating_system, png_out, disk_list)
+                chart_iostat(
+                    connection, output_file_path, output_prefix, operating_system, png_out, png_html_out, disk_list
+                )
 
                 if operating_system == "AIX":
                     output_file_path = f"{output_file_path_base}/sar_d/"
                     if not os.path.isdir(output_file_path):
                         os.mkdir(output_file_path)
-                    chart_aix_sar_d(connection, output_file_path, output_prefix, operating_system, png_out, disk_list)
+                    chart_aix_sar_d(
+                        connection, output_file_path, output_prefix, operating_system, png_out, png_html_out, disk_list
+                    )
 
             if include_nfsiostat:
                 output_file_path = f"{output_file_path_base}/nfsiostat/"
                 if not os.path.isdir(output_file_path):
                     os.mkdir(output_file_path)
-                chart_nfsiostat(connection, output_file_path, output_prefix, operating_system, png_out, csv_date_format)
+                chart_nfsiostat(
+                    connection,
+                    output_file_path,
+                    output_prefix,
+                    operating_system,
+                    png_out,
+                    png_html_out,
+                    csv_date_format,
+                )
 
         if operating_system == "Windows":
             output_file_path = f"{output_file_path_base}/perfmon/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
-            chart_perfmon(connection, output_file_path, output_prefix, png_out)
+            chart_perfmon(connection, output_file_path, output_prefix, png_out, png_html_out)
 
         connection.close()
 
@@ -1394,7 +1434,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-i",
         "--input_file",
-        help="Input html filename with full path.",
+        help="Input HTML filename with full path.",
         action="store",
         metavar='"/path/file.html"',
     )
@@ -1403,7 +1443,7 @@ if __name__ == "__main__":
         "-x",
         "--iostat",
         dest="include_iostat",
-        help="Also plot iostat data (can take a long time).",
+        help="Also chart iostat data (this can take a long time).",
         action="store_true",
     )
 
@@ -1411,7 +1451,7 @@ if __name__ == "__main__":
         "-n",
         "--nfsiostat",
         dest="include_nfsiostat",
-        help="Also plot nfsiostat data.",
+        help="Also chart nfsiostat data.",
         action="store_true",
     )
 
@@ -1427,7 +1467,7 @@ if __name__ == "__main__":
         "-o",
         "--output_prefix",
         dest="output_prefix",
-        help="Output filename prefix, defaults to html file name, blank (-o '') is legal.",
+        help="Output filename prefix, defaults to HTML file name, blank (-o '') is legal.",
         action="store",
         metavar='"output file prefix"',
     )
@@ -1444,7 +1484,7 @@ if __name__ == "__main__":
         "-c",
         "--csv",
         dest="csv_out",
-        help="Create csv files of each html files metrics, append if csv file exists.",
+        help="Create CSV files of each HTML files metrics, append if csv file exists.",
         action="store_true",
     )
 
@@ -1452,7 +1492,15 @@ if __name__ == "__main__":
         "-p",
         "--png",
         dest="png_out",
-        help="Create png files of metrics. Instead of html",
+        help="Create PNG charts of metrics. No HTML. HTML is the default if PNG not selected.",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "-P",
+        "--PNG",
+        dest="png_html_out",
+        help="Create PNG and HTML charts of metrics. HTML is the default if PNG not selected.",
         action="store_true",
     )
 
@@ -1497,7 +1545,7 @@ if __name__ == "__main__":
             if os.path.getsize(args.input_file) > 0:
                 input_file = args.input_file
             else:
-                print('Error: -i "Input html filename with full path required"')
+                print('Error: -i "Input HTML filename with full path required"')
                 sys.exit()
         except OSError as e:
             print("Could not process files because: {}".format(str(e)))
@@ -1506,7 +1554,7 @@ if __name__ == "__main__":
     else:
         # if no input file validate existing database to chart
         if args.existing_database is None:
-            print('Error: -i "Input html filename with full path required"')
+            print('Error: -i "Input HTML filename with full path required"')
             sys.exit()
         else:
             try:
@@ -1532,6 +1580,7 @@ if __name__ == "__main__":
             args.output_prefix,
             args.csv_out,
             args.png_out,
+            args.png_html_out,
             args.system_out,
             args.disk_list,
             args.split_on,
