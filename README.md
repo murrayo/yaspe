@@ -43,6 +43,8 @@ To create a docker image **_on your own system_** (i.e. Not use the image on Doc
 
 There are also instructions for [running without docker](#Running-without-a-container)
 
+---
+
 ## Run the command over a pButtons or SystemPerformance file
 
 See the help text (note the differences in image name depending on your situation):
