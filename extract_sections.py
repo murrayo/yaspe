@@ -338,7 +338,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                     iostat_processing = False
                 else:
                     # Found iostat
-                    if "id=iostat" in line:
+                    if "id=iostat" in line or 'id="iostat"' in line:
                         iostat_processing = True
                     # Is there a date and time line (not in some cases)
                     if iostat_processing and len(line.split()) == 2:

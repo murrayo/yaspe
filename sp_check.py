@@ -54,6 +54,7 @@ def system_check(input_file):
     cpf_section = False
 
     linux_info_available = False
+    SS_info_available = False
     dev_mapper_section = True
     dev_mapper_counter = 0
 
@@ -154,27 +155,27 @@ def system_check(input_file):
             # CPF file
 
             if cpf_section:
-                if "AlternateDirectory=" in line:
+                if line.startswith("AlternateDirectory="):
                     sp_dict["alternate journal"] = (line.split("=")[1]).strip()
                 if "CurrentDirectory=" in line and not line[0] == ";":
                     sp_dict["current journal"] = (line.split("=")[1]).strip()
-                if "globals=" in line:
+                if line.startswith("globals="):
                     sp_dict["globals"] = (line.split("=")[1]).strip()
-                if "gmheap=" in line:
+                if line.startswith("gmheap="):
                     sp_dict["gmheap"] = (line.split("=")[1]).strip()
-                if "locksiz=" in line:
+                if line.startswith("locksiz="):
                     sp_dict["locksiz"] = (line.split("=")[1]).strip()
-                if "routines=" in line:
+                if line.startswith("routines="):
                     sp_dict["routines"] = (line.split("=")[1]).strip()
-                if "wijdir=" in line:
+                if line.startswith("wijdir="):
                     sp_dict["wijdir"] = (line.split("=")[1]).strip()
-                if "FreezeOnError" in line:
+                if line.startswith("FreezeOnError="):
                     sp_dict["freeze"] = (line.split("=")[1]).strip()
-                if "Asyncwij=" in line:
+                if line.startswith("Asyncwij="):
                     sp_dict["asyncwij"] = (line.split("=")[1]).strip()
-                if "wduseasyncio=" in line:
+                if line.startswith("wduseasyncio="):
                     sp_dict["wduseasyncio"] = (line.split("=")[1]).strip()
-                if "jrnbufs=" in line:
+                if line.startswith("jrnbufs="):
                     sp_dict["jrnbufs"] = (line.split("=")[1]).strip()
 
             # Chad's metrics
@@ -192,6 +193,13 @@ def system_check(input_file):
                 sp_dict["MaxServerConn"] = (line.split("=")[1]).strip()
             if "DaysBeforePurge=" in line:
                 sp_dict["DaysBeforePurge"] = (line.split("=")[1]).strip()
+
+            # %SS
+            if "<div id=%SS>" in line:
+                SS_info_available = True
+
+            if SS_info_available:
+                pass
 
             # Linux filesystem info
 
@@ -407,10 +415,14 @@ def build_log(sp_dict):
         sp_dict[f"warning {warn_count}"] = f"Primary Journal is the same as Alternate Journal"
 
     if "globals" in sp_dict:
-        globals = sp_dict["globals"].split(",")
-        globals_total = 0
-        for item in globals:
-            globals_total += int(item)
+        # Apparently globals=0,0,,,, is legal
+        parts = sp_dict["globals"].split(",")
+        # Replace empty parts with '0' and convert to integers
+        filled_parts = [int(part) if part else 0 for part in parts]
+
+        # Calculate the sum of all parts
+        globals_total = sum(filled_parts)
+
         sp_dict["globals total MB"] = globals_total
 
     if "routines" in sp_dict:
@@ -640,11 +652,14 @@ def build_log(sp_dict):
                     sp_dict[f"pass {pass_count}"] = msg
 
                     pass_count += 1
-                    msg = (
-                        f"75% of total memory is {int(sp_dict['75pct memory MB']):,} MB. "
-                        f"Shared memory is {sp_dict['shared memory MB']:,}, {round(sp_dict['shared memory MB'] / int(sp_dict['memory MB']) * 100):,}% of total memory."
-                    )
-                    sp_dict[f"pass {pass_count}"] = msg
+                    if int(sp_dict["memory MB"]) > 0:
+                        msg = (
+                            f"75% of total memory is {int(sp_dict['75pct memory MB']):,} MB. "
+                            f"Shared memory is {sp_dict['shared memory MB']:,}, {round(sp_dict['shared memory MB'] / int(sp_dict['memory MB']) * 100):,}% of total memory."
+                        )
+                    else:
+                        msg = "sp_dict['memory MB'] is zero!"
+                        sp_dict[f"pass {pass_count}"] = msg
 
                     pass_count += 1
                     msg = (
@@ -821,12 +836,15 @@ def build_log(sp_dict):
                 log += f"hugepages is {sp_dict['hugepages MB']:,} MB\n\n"
 
             log += f"Total memory is {int(sp_dict['memory MB']):,} MB.\n"
-            log += (
-                f"75% of total memory is {int(sp_dict['75pct memory MB']):,} MB. "
-                f"Estimated shared memory is {sp_dict['Estimated total IRIS shared memory']:,}, "
-                f"{round(sp_dict['Estimated total IRIS shared memory'] / int(sp_dict['memory MB']) * 100):,}% "
-                f"of total memory.\n"
-            )
+            if int(sp_dict["memory MB"]) > 0:
+                log += (
+                    f"75% of total memory is {int(sp_dict['75pct memory MB']):,} MB. "
+                    f"Estimated shared memory is {sp_dict['Estimated total IRIS shared memory']:,}, "
+                    f"{round(sp_dict['Estimated total IRIS shared memory'] / int(sp_dict['memory MB']) * 100):,}% "
+                    f"of total memory.\n"
+                )
+            else:
+                "int(sp_dict['memory MB']) is zero!"
             log += (
                 f"Estimated shared memory (globals+routines+gmheap+other) is {sp_dict['Estimated total IRIS shared memory']:,} MB"
                 f", hugepages is {sp_dict['hugepages MB']:,} MB, "
