@@ -29,6 +29,7 @@ from pandas.io.sql import DatabaseError
 import warnings
 
 from extract_sections import extract_sections
+from extract_mgstat import extract_mgstat
 import system_review
 
 # Altair
@@ -146,6 +147,41 @@ def is_column_numeric(df, column_name):
         return False
 
 
+def create_mgstat(
+    connection,
+    input_file,
+    html_filename,
+    csv_out,
+    output_filepath_prefix,
+):
+    # Get the start date for date format validation
+    # profile_run = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'profile run';")[2]
+    operating_system = "AIX"
+
+    mgstat_df = extract_mgstat(operating_system, html_filename, input_file)
+    # Add each section to the database
+
+    if not mgstat_df.empty:
+        # Example Dave L can do IRIS function here
+        if True:
+            mgstat_df.to_sql("mgstat", connection, if_exists="append", index=True, index_label="id_key")
+            connection.commit()
+        else:
+            pass
+
+        if csv_out:
+            mgstat_output_csv = f"{output_filepath_prefix}mgstat.csv"
+
+            mgstat_df["RunDate"] = pd.to_datetime(mgstat_df["RunDate"])
+            mgstat_df["RunDate"] = mgstat_df["RunDate"].dt.strftime("%m/%d/%Y")
+
+            # if file does not exist write header
+            if not os.path.isfile(mgstat_output_csv):
+                mgstat_df.to_csv(mgstat_output_csv, header="column_names", index=False, encoding="utf-8")
+            else:  # else it exists so append without writing the header
+                mgstat_df.to_csv(mgstat_output_csv, mode="a", header=False, index=False, encoding="utf-8")
+
+
 def create_sections(
     connection,
     input_file,
@@ -169,7 +205,6 @@ def create_sections(
     )
 
     # Add each section to the database
-
     if not mgstat_df.empty:
         # Example Dave L can do IRIS function here
         if True:
@@ -794,10 +829,14 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out):
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
-def chart_mgstat(connection, filepath, output_prefix, png_out, png_html_out):
+def chart_mgstat(connection, filepath, output_prefix, png_out, png_html_out, mgstat_file):
     # print(f"mgstat...")
 
-    customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+    if not mgstat_file:
+        customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+    else:
+        print("mgstat only")
+        customer = "mgstat"
 
     # Read in to dataframe, drop any bad rows
     try:
@@ -1217,6 +1256,7 @@ def mainline(
     disk_list,
     split_on,
     csv_date_format,
+    mgstat_file,
 ):
     input_error = False
 
@@ -1281,64 +1321,70 @@ def mainline(
 
     # Is this the first time in?
     cursor = connection.cursor()
-    cursor.execute(""" SELECT count(name) FROM sqlite_master WHERE type='table' AND name='overview' """)
 
-    # if the count is 1, then table exists
-    if cursor.fetchone()[0] == 1:
+    if mgstat_file:
         if database_action != "Chart only":
-            create_sections(
-                connection,
-                input_file,
-                include_iostat,
-                include_nfsiostat,
-                html_filename,
-                csv_out,
-                output_filepath_prefix,
-                disk_list,
-                csv_date_format,
-            )
-
+            print(f"mgstat selected")
+            create_mgstat(connection, input_file, html_filename, csv_out, output_filepath_prefix)
     else:
-        if database_action == "Chart only":
-            input_error = True
-            print(f"No data to chart")
-        else:
-            # Create a system summary
-            sp_dict = sp_check.system_check(input_file)
+        cursor.execute(""" SELECT count(name) FROM sqlite_master WHERE type='table' AND name='overview' """)
 
-            if system_out:
-                output_log, yaspe_yaml = sp_check.build_log(sp_dict)
-
-                with open(f"{output_filepath_prefix}overview.txt", "w") as text_file:
-                    print(f"{output_log}", file=text_file)
-
-                # Simple dump of all data in overview
-                overview_df = pd.DataFrame(list(sp_dict.items()), columns=["key", "value"])
-                overview_df.to_csv(
-                    f"{output_filepath_prefix}overview_all.csv", header=True, index=False, sep=",", mode="w"
+        # if the count is 1, then table exists
+        if cursor.fetchone()[0] == 1:
+            if database_action != "Chart only":
+                create_sections(
+                    connection,
+                    input_file,
+                    include_iostat,
+                    include_nfsiostat,
+                    html_filename,
+                    csv_out,
+                    output_filepath_prefix,
+                    disk_list,
+                    csv_date_format,
                 )
 
-                # yaml file for pretty input
-                with open(f"{output_filepath_prefix}overview.yaml", "w") as text_file:
-                    print(f"{yaspe_yaml}", file=text_file)
+        else:
+            if database_action == "Chart only":
+                input_error = True
+                print(f"No data to chart")
+            else:
+                # Create a system summary
+                sp_dict = sp_check.system_check(input_file)
 
-            create_overview(connection, sp_dict)
-            create_sections(
-                connection,
-                input_file,
-                include_iostat,
-                include_nfsiostat,
-                html_filename,
-                csv_out,
-                output_filepath_prefix,
-                disk_list,
-                csv_date_format,
-            )
+                if system_out:
+                    output_log, yaspe_yaml = sp_check.build_log(sp_dict)
 
-    connection.close()
+                    with open(f"{output_filepath_prefix}overview.txt", "w") as text_file:
+                        print(f"{output_log}", file=text_file)
+
+                    # Simple dump of all data in overview
+                    overview_df = pd.DataFrame(list(sp_dict.items()), columns=["key", "value"])
+                    overview_df.to_csv(
+                        f"{output_filepath_prefix}overview_all.csv", header=True, index=False, sep=",", mode="w"
+                    )
+
+                    # yaml file for pretty input
+                    with open(f"{output_filepath_prefix}overview.yaml", "w") as text_file:
+                        print(f"{yaspe_yaml}", file=text_file)
+
+                else:
+                    create_overview(connection, sp_dict)
+                    create_sections(
+                        connection,
+                        input_file,
+                        include_iostat,
+                        include_nfsiostat,
+                        html_filename,
+                        csv_out,
+                        output_filepath_prefix,
+                        disk_list,
+                        csv_date_format,
+                    )
+
+        connection.close()
 
     # Charting is separate
-
     if "Chart" in database_action and not input_error:
         # print("Charting...")
 
@@ -1349,22 +1395,22 @@ def mainline(
 
         connection = create_connection(sql_filename)
 
-        operating_system = execute_single_read_query(
-            connection, "SELECT * FROM overview WHERE field = 'operating system';"
-        )[2]
+        if not mgstat_file:
+            operating_system = execute_single_read_query(
+                connection, "SELECT * FROM overview WHERE field = 'operating system';"
+            )[2]
 
         # mgstat
         output_file_path = f"{output_file_path_base}/mgstat/"
 
         if not os.path.isdir(output_file_path):
             os.mkdir(output_file_path)
-        chart_mgstat(
-            connection,
-            output_file_path,
-            output_prefix,
-            png_out,
-            png_html_out,
-        )
+
+        chart_mgstat(connection, output_file_path, output_prefix, png_out, png_html_out, mgstat_file)
+
+        if mgstat_file:
+            connection.close()
+            return
 
         # vmstat and iostat
         if operating_system == "Linux" or operating_system == "Ubuntu" or operating_system == "AIX":
@@ -1513,6 +1559,14 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "-m",
+        "--mgstat_file",
+        dest="mgstat_file",
+        help="This is an mgstat file.",
+        action="store_true",
+    )
+
+    parser.add_argument(
         "-D",
         "--DDMMYYYY",
         dest="csv_date_format",
@@ -1585,6 +1639,7 @@ if __name__ == "__main__":
             args.disk_list,
             args.split_on,
             args.csv_date_format,
+            args.mgstat_file,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
