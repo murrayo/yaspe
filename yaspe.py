@@ -154,20 +154,14 @@ def create_mgstat(
     csv_out,
     output_filepath_prefix,
 ):
-    # Get the start date for date format validation
-    # profile_run = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'profile run';")[2]
-    operating_system = "AIX"
+    # .mgst file processing
 
-    mgstat_df = extract_mgstat(operating_system, html_filename, input_file)
+    mgstat_df, mgstat_text_description = extract_mgstat(html_filename, input_file)
     # Add each section to the database
 
     if not mgstat_df.empty:
-        # Example Dave L can do IRIS function here
-        if True:
-            mgstat_df.to_sql("mgstat", connection, if_exists="append", index=True, index_label="id_key")
-            connection.commit()
-        else:
-            pass
+        mgstat_df.to_sql("mgstat", connection, if_exists="append", index=True, index_label="id_key")
+        connection.commit()
 
         if csv_out:
             mgstat_output_csv = f"{output_filepath_prefix}mgstat.csv"
@@ -180,6 +174,8 @@ def create_mgstat(
                 mgstat_df.to_csv(mgstat_output_csv, header="column_names", index=False, encoding="utf-8")
             else:  # else it exists so append without writing the header
                 mgstat_df.to_csv(mgstat_output_csv, mode="a", header=False, index=False, encoding="utf-8")
+
+    return mgstat_text_description
 
 
 def create_sections(
@@ -1319,14 +1315,21 @@ def mainline(
     # Connect to database (Create database file if it does not exist already)
     connection = create_connection(sql_filename)
 
-    # Is this the first time in?
-    cursor = connection.cursor()
-
+    # mgstat file means processing a .mgst file, not SystemPerformance HTML
     if mgstat_file:
         if database_action != "Chart only":
-            print(f"mgstat selected")
-            create_mgstat(connection, input_file, html_filename, csv_out, output_filepath_prefix)
+            print(f"mgstat .mgst file selected")
+            mgstat_text_description = create_mgstat(
+                connection, input_file, html_filename, csv_out, output_filepath_prefix
+            )
+
+            if mgstat_text_description != "":
+                with open(f"{output_filepath_prefix}overview.txt", "w") as text_file:
+                    print(f"{mgstat_text_description}", file=text_file)
+
     else:
+        # Is this the first time in?
+        cursor = connection.cursor()
         cursor.execute(""" SELECT count(name) FROM sqlite_master WHERE type='table' AND name='overview' """)
 
         # if the count is 1, then table exists
@@ -1351,7 +1354,6 @@ def mainline(
             else:
                 # Create a system summary
                 sp_dict = sp_check.system_check(input_file)
-
                 if system_out:
                     output_log, yaspe_yaml = sp_check.build_log(sp_dict)
 
@@ -1368,19 +1370,18 @@ def mainline(
                     with open(f"{output_filepath_prefix}overview.yaml", "w") as text_file:
                         print(f"{yaspe_yaml}", file=text_file)
 
-                else:
-                    create_overview(connection, sp_dict)
-                    create_sections(
-                        connection,
-                        input_file,
-                        include_iostat,
-                        include_nfsiostat,
-                        html_filename,
-                        csv_out,
-                        output_filepath_prefix,
-                        disk_list,
-                        csv_date_format,
-                    )
+                create_overview(connection, sp_dict)
+                create_sections(
+                    connection,
+                    input_file,
+                    include_iostat,
+                    include_nfsiostat,
+                    html_filename,
+                    csv_out,
+                    output_filepath_prefix,
+                    disk_list,
+                    csv_date_format,
+                )
 
         connection.close()
 
@@ -1408,6 +1409,7 @@ def mainline(
 
         chart_mgstat(connection, output_file_path, output_prefix, png_out, png_html_out, mgstat_file)
 
+        # No need to go further for .mgst file
         if mgstat_file:
             connection.close()
             return
@@ -1480,7 +1482,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-i",
         "--input_file",
-        help="Input HTML filename with full path.",
+        help="Input HTML or .mgst filename with full path.",
         action="store",
         metavar='"/path/file.html"',
     )
@@ -1562,7 +1564,7 @@ if __name__ == "__main__":
         "-m",
         "--mgstat_file",
         dest="mgstat_file",
-        help="This is an mgstat file.",
+        help="This is an mgstat file log file (with extension .mgst).",
         action="store_true",
     )
 

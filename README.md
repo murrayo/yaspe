@@ -64,8 +64,8 @@ For local version:
 `docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h`
 
 ``` commandline
-usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-P] [-s] [-D] [-d DISK_LIST [DISK_LIST ...]]
-             [-l "string to split on"]
+usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c]
+             [-p] [-P] [-s] [-m] [-D] [-d DISK_LIST [DISK_LIST ...]] [-l "string to split on"]
 
 Performance file review.
 
@@ -73,7 +73,7 @@ options:
   -h, --help            show this help message and exit
   -v, --version         show program's version number and exit
   -i "/path/file.html", --input_file "/path/file.html"
-                        Input HTML filename with full path.
+                        Input HTML or .mgst filename with full path.
   -x, --iostat          Also chart iostat data (this can take a long time).
   -n, --nfsiostat       Also chart nfsiostat data.
   -a, --append          Do not overwrite database, append to existing database.
@@ -85,6 +85,7 @@ options:
   -p, --png             Create PNG charts of metrics. No HTML. HTML is the default if PNG not selected.
   -P, --PNG             Create PNG and HTML charts of metrics. HTML is the default if PNG not selected.
   -s, --system          Output system overview.
+  -m, --mgstat_file     This is an mgstat file log file (with extension .mgst).
   -D, --DDMMYYYY        Date format for csv files is DDMMYYYY
   -d DISK_LIST [DISK_LIST ...], --disk_list DISK_LIST [DISK_LIST ...]
                         List of disks, if not entered all are processed. No commas or quotes, e.g. -d dm-0 dm-1
