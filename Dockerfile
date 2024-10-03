@@ -12,10 +12,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
     
-ENV LC_ALL en_US.UTF-8 
-ENV LANG en_US.UTF-8  
-ENV LANGUAGE en_US:en 
-ENV YASPE_IN_CONTAINER True 
+ENV LC_ALL=en_US.UTF-8 
+ENV LANG=en_US.UTF-8  
+ENV LANGUAGE=en_US:en 
+ENV YASPE_IN_CONTAINER=True 
 
 COPY requirements.txt requirements.txt
 RUN pip3 -V
