@@ -1465,7 +1465,7 @@ def mainline(
     return
 
 
-# Start here, entry point for command line
+# Start here, entry point for command line - Also for Flask app
 
 if __name__ == "__main__":
     input_file = ""
