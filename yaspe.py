@@ -1452,7 +1452,6 @@ def mainline(
                     operating_system,
                     png_out,
                     png_html_out,
-                    csv_date_format,
                 )
 
         if operating_system == "Windows":
