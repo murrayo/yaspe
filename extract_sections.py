@@ -358,13 +358,17 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                     # Add devices to database
                     if iostat_processing and iostat_device_block_processing and iostat_header != "":
                         if line.strip() != "":
+                            # Get the device name from the first field in the line
+                            device_name = line.split()[0]
+
+                            # Filter by disk list if specified
                             print_line = False
                             if disk_list:
-                                for item in disk_list:
-                                    if item in line:
-                                        print_line = True
+                                if device_name in disk_list:
+                                    print_line = True
                             else:
                                 print_line = True
+
                             if print_line:
                                 iostat_row_dict = {}
                                 # if European "," for ".", do that first
@@ -475,13 +479,18 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         nfsiostat_write = True
                     if nfsiostat_processing and nfsiostat_header != "":
                         if nfs_output_line.strip() != "":
-                            nfsiostat_row_dict = {}
-                            values = nfs_output_line.split(",")
-                            values = [i.strip() for i in values]  # strip off carriage return etc
-                            values_converted = [get_number_type(v) for v in values]
-                            nfsiostat_row_dict = dict(zip(nfsiostat_columns, values_converted))
-                            nfsiostat_row_dict["html name"] = html_filename
-                            nfsiostat_rows_list.append(nfsiostat_row_dict)
+                            # Extract device name from the line
+                            device_name = nfs_output_line.split(",")[1]  # Device is in the second column
+
+                            # Only process if no disk_list is specified or if the device is in the disk_list
+                            if not disk_list or device_name in disk_list:
+                                nfsiostat_row_dict = {}
+                                values = nfs_output_line.split(",")
+                                values = [i.strip() for i in values]  # strip off carriage return etc
+                                values_converted = [get_number_type(v) for v in values]
+                                nfsiostat_row_dict = dict(zip(nfsiostat_columns, values_converted))
+                                nfsiostat_row_dict["html name"] = html_filename
+                                nfsiostat_rows_list.append(nfsiostat_row_dict)
 
             if operating_system == "AIX" and include_iostat:
                 if iostat_processing and "<div" in line:  # iostat does not flag end
@@ -542,8 +551,11 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         values = line.split(",")
                         values = [i.strip() for i in values]  # strip off carriage return etc
 
+                        # Get the device name from the first field
+                        device_name = values[0]
+
                         # only process selected disks
-                        if not disk_list or values[0] in disk_list:
+                        if not disk_list or device_name in disk_list:
                             values_converted = [get_aix_wacky_numbers(v) for v in values]
 
                             iostat_row_dict = dict(zip(aix_iostat_columns, values_converted))
