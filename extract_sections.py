@@ -118,6 +118,12 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                 run_start_date = datetime.strptime(run_start, "%b %d %Y")
                 print(run_start_date.strftime("%b %d %Y %A"))
 
+            # This avoids unnecessary processing
+            if include_iostat is False and "id=iostat" in line:
+                continue
+            if include_nfsiostat is False and "id=nfsiostat" in line:
+                continue
+
             if "<!-- beg_mgstat -->" in line:
                 mgstat_processing = True
             if "<!-- end_mgstat -->" in line:
