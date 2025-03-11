@@ -363,56 +363,53 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         iostat_device_block_processing = False
                     # Add devices to database
                     if iostat_processing and iostat_device_block_processing and iostat_header != "":
-                        if line.strip() != "":
-                            # Get the device name from the first field in the line
-                            device_name = line.split()[0]
+                        # Only process lines with content
+                        line_stripped = line.strip()
+                        if line_stripped:
+                            # Get the device name from the first field for quick filtering
+                            parts = line_stripped.split(None, 1)
+                            if parts:
+                                device_name = parts[0]
 
-                            # Filter by disk list if specified
-                            print_line = False
-                            if disk_list:
-                                if device_name in disk_list:
-                                    print_line = True
-                            else:
-                                print_line = True
+                                # Only process if no disk_list is specified or if device is in disk_list
+                                if not disk_list or device_name in disk_list:
+                                    iostat_row_dict = {}
+                                    # if European "," for ".", do that first
+                                    line = line.replace(",", ".")
+                                    # get rid of multiple whitespaces, then use comma separator so the AM/PM is preserved if its there
+                                    line = " ".join(line.split())
+                                    line = line.replace(" ", ",")
+                                    if iostat_date_included:
+                                        if iostat_am_pm:
+                                            line = (
+                                                    date_time.split()[0]
+                                                    + ","
+                                                    + date_time.split()[1]
+                                                    + " "
+                                                    + date_time.split()[2]
+                                                    + ","
+                                                    + line
+                                            )
+                                        else:
+                                            line = date_time.split()[0] + "," + str(date_time.split()[1]) + "," + line
+                                    values = line.split(",")
+                                    values = [i.strip() for i in values]  # strip off carriage return etc
+                                    values_converted = [get_number_type(v) for v in values]
+                                    iostat_row_dict = dict(zip(iostat_columns, values_converted))
+                                    iostat_row_dict["html name"] = html_filename
 
-                            if print_line:
-                                iostat_row_dict = {}
-                                # if European "," for ".", do that first
-                                line = line.replace(",", ".")
-                                # get rid of multiple whitespaces, then use comma separator so the AM/PM is preserved if its there
-                                line = " ".join(line.split())
-                                line = line.replace(" ", ",")
-                                if iostat_date_included:
-                                    if iostat_am_pm:
-                                        line = (
-                                            date_time.split()[0]
-                                            + ","
-                                            + date_time.split()[1]
-                                            + " "
-                                            + date_time.split()[2]
-                                            + ","
-                                            + line
-                                        )
-                                    else:
-                                        line = date_time.split()[0] + "," + str(date_time.split()[1]) + "," + line
-                                values = line.split(",")
-                                values = [i.strip() for i in values]  # strip off carriage return etc
-                                values_converted = [get_number_type(v) for v in values]
-                                iostat_row_dict = dict(zip(iostat_columns, values_converted))
-                                iostat_row_dict["html name"] = html_filename
+                                    # Standardise date format first time or if date changes
+                                    if iostat_row_dict["Date"] != iostat_date:
+                                        # Get date in yyyy/mm/dd format
+                                        new_date = format_date(run_start_date, iostat_row_dict["Date"])
+                                        # print(new_date)
 
-                                # Standardise date format first time or if date changes
-                                if iostat_row_dict["Date"] != iostat_date:
-                                    # Get date in yyyy/mm/dd format
-                                    new_date = format_date(run_start_date, iostat_row_dict["Date"])
-                                    # print(new_date)
+                                    iostat_date = iostat_row_dict["Date"]
+                                    iostat_row_dict.update({"Date": new_date})
 
-                                iostat_date = iostat_row_dict["Date"]
-                                iostat_row_dict.update({"Date": new_date})
-
-                                # Added for pretty processing
-                                iostat_row_dict["datetime"] = f'{iostat_row_dict["Date"]} {iostat_row_dict["Time"]}'
-                                iostat_rows_list.append(iostat_row_dict)
+                                    # Added for pretty processing
+                                    iostat_row_dict["datetime"] = f'{iostat_row_dict["Date"]} {iostat_row_dict["Time"]}'
+                                    iostat_rows_list.append(iostat_row_dict)
                     # Header line found, next line is start of device block
                     if "Device" in line:
                         iostat_device_block_processing = True
@@ -485,18 +482,13 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         nfsiostat_write = True
                     if nfsiostat_processing and nfsiostat_header != "":
                         if nfs_output_line.strip() != "":
-                            # Extract device name from the line
-                            device_name = nfs_output_line.split(",")[1]  # Device is in the second column
-
-                            # Only process if no disk_list is specified or if the device is in the disk_list
-                            if not disk_list or device_name in disk_list:
-                                nfsiostat_row_dict = {}
-                                values = nfs_output_line.split(",")
-                                values = [i.strip() for i in values]  # strip off carriage return etc
-                                values_converted = [get_number_type(v) for v in values]
-                                nfsiostat_row_dict = dict(zip(nfsiostat_columns, values_converted))
-                                nfsiostat_row_dict["html name"] = html_filename
-                                nfsiostat_rows_list.append(nfsiostat_row_dict)
+                            nfsiostat_row_dict = {}
+                            values = nfs_output_line.split(",")
+                            values = [i.strip() for i in values]  # strip off carriage return etc
+                            values_converted = [get_number_type(v) for v in values]
+                            nfsiostat_row_dict = dict(zip(nfsiostat_columns, values_converted))
+                            nfsiostat_row_dict["html name"] = html_filename
+                            nfsiostat_rows_list.append(nfsiostat_row_dict)
 
             if operating_system == "AIX" and include_iostat:
                 if iostat_processing and "<div" in line:  # iostat does not flag end
@@ -548,29 +540,31 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
 
                     # Is this a data line
                     if iostat_processing and len(line.split()) == aix_column_count:
-                        iostat_row_dict = {}
-                        # get rid of multiple whitespaces, then use comma separator
-                        line = " ".join(line.split())
-                        line = line.replace(" ", ",")
+                        # Get the device name first for quick filtering
+                        parts = line.strip().split(None, 1)
+                        if parts:
+                            device_name = parts[0]
 
-                        # Get the values add devices to database
-                        values = line.split(",")
-                        values = [i.strip() for i in values]  # strip off carriage return etc
+                            # Only process if no disk_list is specified or if device is in disk_list
+                            if not disk_list or device_name in disk_list:
+                                iostat_row_dict = {}
+                                # get rid of multiple whitespaces, then use comma separator
+                                line = " ".join(line.split())
+                                line = line.replace(" ", ",")
 
-                        # Get the device name from the first field
-                        device_name = values[0]
+                                # Get the values add devices to database
+                                values = line.split(",")
+                                values = [i.strip() for i in values]  # strip off carriage return etc
 
-                        # only process selected disks
-                        if not disk_list or device_name in disk_list:
-                            values_converted = [get_aix_wacky_numbers(v) for v in values]
+                                values_converted = [get_aix_wacky_numbers(v) for v in values]
 
-                            iostat_row_dict = dict(zip(aix_iostat_columns, values_converted))
-                            iostat_row_dict["html name"] = html_filename
-                            iostat_row_dict["Date"] = run_start_date.strftime("%m/%d/%y")
+                                iostat_row_dict = dict(zip(aix_iostat_columns, values_converted))
+                                iostat_row_dict["html name"] = html_filename
+                                iostat_row_dict["Date"] = run_start_date.strftime("%m/%d/%y")
 
-                            # Added for pretty processing
-                            iostat_row_dict["datetime"] = f'{iostat_row_dict["Date"]} {iostat_row_dict["Time"]}'
-                            iostat_rows_list.append(iostat_row_dict)
+                                # Added for pretty processing
+                                iostat_row_dict["datetime"] = f'{iostat_row_dict["Date"]} {iostat_row_dict["Time"]}'
+                                iostat_rows_list.append(iostat_row_dict)
 
                     # First time in create column names
                     if iostat_processing and iostat_header == "":
