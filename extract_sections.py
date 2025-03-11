@@ -382,13 +382,13 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                                     if iostat_date_included:
                                         if iostat_am_pm:
                                             line = (
-                                                    date_time.split()[0]
-                                                    + ","
-                                                    + date_time.split()[1]
-                                                    + " "
-                                                    + date_time.split()[2]
-                                                    + ","
-                                                    + line
+                                                date_time.split()[0]
+                                                + ","
+                                                + date_time.split()[1]
+                                                + " "
+                                                + date_time.split()[2]
+                                                + ","
+                                                + line
                                             )
                                         else:
                                             line = date_time.split()[0] + "," + str(date_time.split()[1]) + "," + line
