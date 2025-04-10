@@ -567,11 +567,17 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
         file_prefix = f"{file_prefix}_"
 
     png_data = data.copy()
-    png_data.loc[:, "datetime"] = pd.to_datetime(
-        data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
-    )
 
-    png_data.set_index("datetime", inplace=True)
+    # Use the pre-processed datetime column if available
+    if "datetime_parsed" in png_data.columns:
+        # Use the already parsed datetime as the index
+        png_data.set_index("datetime_parsed", inplace=True)
+    else:
+        # Fall back to original conversion if not available
+        png_data.loc[:, "datetime"] = pd.to_datetime(
+            data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
+        )
+        png_data.set_index("datetime", inplace=True)
 
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
@@ -620,11 +626,17 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
         file_prefix = f"{file_prefix}_"
 
     png_data = data.copy()
-    png_data.loc[:, "datetime"] = pd.to_datetime(
-        data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
-    )
 
-    png_data.set_index("datetime", inplace=True)
+    # Use the pre-processed datetime column if available
+    if "datetime_parsed" in png_data.columns:
+        # Use the already parsed datetime as the index
+        png_data.set_index("datetime_parsed", inplace=True)
+    else:
+        # Fall back to original conversion if not available
+        png_data.loc[:, "datetime"] = pd.to_datetime(
+            data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
+        )
+        png_data.set_index("datetime", inplace=True)
 
     # {'r/s': 'Reads per sec', 'w/s': 'Writes per sec'}
     column_0 = list(columns_to_stack.keys())[0]
@@ -781,8 +793,11 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out):
     # Add a new total CPU column, add a datetime column
     df["Total CPU"] = 100 - df["id"]
     df["datetime"] = df["RunDate"] + " " + df["RunTime"]
-    # Create a cached datetime column - do this once for all charts
+
+    # *** NEW CODE: Pre-process datetime conversion once ***
+    # Create a cached datetime column
     df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
+
     # Create stacked CPU chart if columns exist
     if png_out or png_html_out:
         if "sy" in df.columns and "wa" in df.columns and "us" in df.columns:
@@ -793,19 +808,13 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out):
     # Format the data for Altair
     # Cut down the df to just the list of categorical data we care about (columns)
     columns_to_chart = list(df.columns)
-    unwanted_columns = ["id_key", "RunDate", "RunTime", "html name", "hr", "datetime_parsed"]
+    unwanted_columns = ["id_key", "RunDate", "RunTime", "html name", "hr", "datetime_parsed"]  # Add datetime_parsed
     columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
-    vmstat_df = df[columns_to_chart + ["datetime_parsed"]]
+    vmstat_df = df[columns_to_chart + ["datetime_parsed"]]  # Add datetime_parsed to preserved columns
 
     # unpivot the dataframe; first column is date time column, column name is next, then the value in that column
     vmstat_df = vmstat_df.melt(id_vars=["datetime", "datetime_parsed"], var_name="Type", value_name="metric")
-
-    # print(f"{vmstat_df.sample(3)}")
-    #                 datetime      Type         metric
-    # 33774  06/18/21 08:59:02     bo          104.0
-    # 43902  06/18/21 08:47:50     us            1.0
-    # 12710  06/18/21 09:07:59   free        60652.0
 
     # For each column create a linked html chart
     for column_name in columns_to_chart:
@@ -926,16 +935,25 @@ def chart_perfmon(connection, filepath, output_prefix, png_out, png_html_out):
             raise e
     df.dropna(inplace=True)
 
+    # *** NEW CODE: Pre-process datetime conversion once ***
+    # Assume perfmon already has a "datetime" column, otherwise create it
+    if "datetime" not in df.columns and "Time" in df.columns:
+        df["datetime"] = df["Time"]  # Adjust based on actual perfmon data structure
+
+    # Parse the datetime column once for all charts
+    df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
+
     # Format the data for Altair
-    # Cut down the df to just the the list of categorical data we care about (columns)
+    # Cut down the df to just the list of categorical data we care about (columns)
     columns_to_chart = list(df.columns)
-    unwanted_columns = ["id_key", "Time", "html name"]
+    unwanted_columns = ["id_key", "Time", "html name", "datetime_parsed"]  # Add datetime_parsed to unwanted
     columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
-    perfmon_df = df[columns_to_chart]
+    # Include datetime_parsed in the dataframe we'll be charting, but not as a column to chart
+    perfmon_df = df[columns_to_chart + ["datetime_parsed"]]
 
-    # unpivot the dataframe; first column is date time column, column name is next, then the value in that column
-    perfmon_df = perfmon_df.melt("datetime", var_name="Type", value_name="metric")
+    # unpivot the dataframe; include both datetime and datetime_parsed as id_vars
+    perfmon_df = perfmon_df.melt(id_vars=["datetime", "datetime_parsed"], var_name="Type", value_name="metric")
 
     # For each column create a chart
     for column_name in columns_to_chart:
@@ -991,20 +1009,21 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
     # If there is no date and time in iostat then just use index as x axis
     if "RunDate" in df.columns:
         df["datetime"] = df["RunDate"] + " " + df["RunTime"]
+
+        # *** NEW CODE: Pre-process datetime conversion once ***
         # Create a cached datetime column - do this once for all charts
         df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
 
         # Format the data for Altair
         # Cut down the df to just the list of categorical data we care about (columns)
         columns_to_chart = list(df.columns)
-        unwanted_columns = ["id_key", "RunDate", "RunTime", "html name", "datetime_parsed"]
+        unwanted_columns = ["id_key", "RunDate", "RunTime", "html name", "datetime_parsed"]  # Add datetime_parsed
         columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
-        iostat_df = df[columns_to_chart + ["datetime_parsed"]]
+        iostat_df = df[columns_to_chart + ["datetime_parsed"]]  # Include datetime_parsed
         devices = iostat_df["Device"].unique()
 
         # If a disk list has been passed in. Validate the list.
-
         if disk_list:
             disk_list = list(set(disk_list).intersection(devices))
             if disk_list:
@@ -1052,13 +1071,14 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
                                 device_df, columns_to_histogram, device, title, filepath, output_prefix
                             )
 
-            # unpivot the dataframe; first column is date time column, column name is next, then the value in that
-            # column
-            device_df = device_df.melt(id_vars=["datetime", "datetime_parsed"], var_name="Type", value_name="metric")
+            # unpivot the dataframe; include both datetime and datetime_parsed as id_vars
+            device_df = device_df.melt(
+                id_vars=["datetime", "datetime_parsed", "Device"], var_name="Type", value_name="metric"
+            )
 
             # For each column create a chart
             for column_name in columns_to_chart:
-                if column_name == "datetime" or column_name == "Device":
+                if column_name in ["datetime", "Device"]:
                     pass
                 else:
                     title = f"{device} : {column_name} - {customer}"
@@ -1081,11 +1101,6 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
                     else:
                         linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
-                        if False:
-                            interactive_chart(
-                                data, column_name, title, max_y, filepath, output_prefix, file_prefix=device
-                            )
-
     else:
         # No date or time, chart all columns, index is x axis
 
@@ -1095,6 +1110,13 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
 
         iostat_df = df
         devices = iostat_df["Device"].unique()
+
+        # If a disk list has been passed in. Validate the list.
+        if disk_list:
+            disk_list = list(set(disk_list).intersection(devices))
+            if disk_list:
+                # print(f"Only devices: {disk_list}")
+                devices = disk_list
 
         # Chart each disk
         for device in devices:
@@ -1119,8 +1141,13 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
                     data = to_chart_df
 
                     if png_out:
-                        pass
+                        simple_chart_no_time(
+                            data, column_name, title, max_y, filepath, output_prefix, file_prefix=device
+                        )
                     elif png_html_out:
+                        simple_chart_no_time(
+                            data, column_name, title, max_y, filepath, output_prefix, file_prefix=device
+                        )
                         linked_chart_no_time(
                             data, column_name, title, max_y, filepath, output_prefix, file_prefix=device
                         )
