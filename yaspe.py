@@ -54,6 +54,11 @@ def create_connection(path):
     connection = None
     try:
         connection = sqlite3.connect(path)
+        # Add pragma statements for performance
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = NORMAL")
+        connection.execute("PRAGMA cache_size = 10000")
+        connection.execute("PRAGMA temp_store = MEMORY")
     except Error as e:
         print(f"The error '{e}' occurred")
 
@@ -344,15 +349,18 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
-    # # Convert datetime string to datetime type (data is a _view_ of full dataframe, create a copy to update here)
-    # # Apply the function to the DataFrame column
-    # data["datetime"] = data["datetime"].apply(guess_datetime_format)
-    # print(data["datetime"].head(3))
-
+    # Make a copy of the data for plotting
     png_data = data.copy()
-    png_data.loc[:, "datetime"] = pd.to_datetime(
-        data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
-    )
+
+    # Use the pre-processed datetime column if available
+    if "datetime_parsed" in png_data.columns:
+        # Simply use the already parsed datetime column
+        pass
+    else:
+        # Convert datetime string to datetime type
+        png_data.loc[:, "datetime"] = pd.to_datetime(
+            data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
+        )
 
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
@@ -368,8 +376,11 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     plt.gcf().set_size_inches(16, 6)
     # plt.gcf().set_dpi(300)
 
+    # For plotting, use datetime_parsed if it exists, otherwise use datetime
+    datetime_column = "datetime_parsed" if "datetime_parsed" in png_data.columns else "datetime"
+
     ax.plot(
-        png_data["datetime"],
+        png_data[datetime_column],
         png_data["metric"],
         label=column_name,
         color=color,
@@ -461,17 +472,18 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
-    # First we’ll create an interval selection using the selection_interval() function (in this case for x axis only)
-
+    # First we'll create an interval selection using the selection_interval() function (in this case for x axis only)
     brush = alt.selection_interval(encodings=["x"])
 
-    # Create the chart
+    # Determine which datetime column to use - prefer the parsed version if available
+    x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
+
+    # Create the chart using the appropriate datetime column
     base = (
         alt.Chart(data)
         .mark_line()
         .encode(
-            # alt.X("datetime:T", title="Time", axis=alt.Axis(format='%e %b, %Y')),
-            alt.X("datetime:T", title="Time"),
+            alt.X(f"{x_column}:T", title="Time"),
             alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
             alt.Color("Type", title="Metric"),
             tooltip=["metric"],
@@ -480,7 +492,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     )
 
     # Upper is zoomed area X axis
-    upper = base.encode(alt.X("datetime:T", title="Time Zoom", scale=alt.Scale(domain=brush)))
+    upper = base.encode(alt.X(f"{x_column}:T", title="Time Zoom", scale=alt.Scale(domain=brush)))
 
     # Lower chart bind the brush in our chart by setting the selection property
     lower = base.properties(height=150, title="").add_params(brush)
@@ -769,7 +781,8 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out):
     # Add a new total CPU column, add a datetime column
     df["Total CPU"] = 100 - df["id"]
     df["datetime"] = df["RunDate"] + " " + df["RunTime"]
-
+    # Create a cached datetime column - do this once for all charts
+    df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
     # Create stacked CPU chart if columns exist
     if png_out or png_html_out:
         if "sy" in df.columns and "wa" in df.columns and "us" in df.columns:
@@ -780,13 +793,13 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out):
     # Format the data for Altair
     # Cut down the df to just the list of categorical data we care about (columns)
     columns_to_chart = list(df.columns)
-    unwanted_columns = ["id_key", "RunDate", "RunTime", "html name", "hr"]
+    unwanted_columns = ["id_key", "RunDate", "RunTime", "html name", "hr", "datetime_parsed"]
     columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
-    vmstat_df = df[columns_to_chart]
+    vmstat_df = df[columns_to_chart + ["datetime_parsed"]]
 
     # unpivot the dataframe; first column is date time column, column name is next, then the value in that column
-    vmstat_df = vmstat_df.melt("datetime", var_name="Type", value_name="metric")
+    vmstat_df = vmstat_df.melt(id_vars=["datetime", "datetime_parsed"], var_name="Type", value_name="metric")
 
     # print(f"{vmstat_df.sample(3)}")
     #                 datetime      Type         metric
@@ -846,23 +859,31 @@ def chart_mgstat(connection, filepath, output_prefix, png_out, png_html_out, mgs
             raise e
     df.dropna(inplace=True)
 
-    # hack until good way to detect date format is mm/dd/yyyy or not
-    # if False:
-    #     df["RunDate"] = df.apply(lambda row: make_mdy_date(row["RunDate"]), axis=1)
-
     # Add a datetime column
     df["datetime"] = df["RunDate"] + " " + df["RunTime"]
 
+    # *** NEW CODE: Pre-process datetime conversion once ***
+    # Create a cached datetime column - do this once for all charts
+    df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
+
     # Format the data for Altair
-    # Cut down the df to just the the list of categorical data we care about (columns)
+    # Cut down the df to just the list of categorical data we care about (columns)
     columns_to_chart = list(df.columns)
-    unwanted_columns = ["id_key", "RunDate", "RunTime", "html name"]
+    unwanted_columns = [
+        "id_key",
+        "RunDate",
+        "RunTime",
+        "html name",
+        "datetime_parsed",
+    ]  # Add datetime_parsed to unwanted
     columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
-    mgstat_df = df[columns_to_chart]
+    # Include datetime_parsed in the dataframe we'll be charting, but not as a column to chart
+    mgstat_df = df[columns_to_chart + ["datetime_parsed"]]
 
     # unpivot the dataframe; first column is date time column, column name is next, then the value in that column
-    mgstat_df = mgstat_df.melt("datetime", var_name="Type", value_name="metric")
+    # Include both datetime and datetime_parsed in the melt operation as id_vars (not to be melted)
+    mgstat_df = mgstat_df.melt(id_vars=["datetime", "datetime_parsed"], var_name="Type", value_name="metric")
 
     # For each column create a chart
     for column_name in columns_to_chart:
@@ -970,14 +991,16 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
     # If there is no date and time in iostat then just use index as x axis
     if "RunDate" in df.columns:
         df["datetime"] = df["RunDate"] + " " + df["RunTime"]
+        # Create a cached datetime column - do this once for all charts
+        df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
 
         # Format the data for Altair
         # Cut down the df to just the list of categorical data we care about (columns)
         columns_to_chart = list(df.columns)
-        unwanted_columns = ["id_key", "RunDate", "RunTime", "html name"]
+        unwanted_columns = ["id_key", "RunDate", "RunTime", "html name", "datetime_parsed"]
         columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
 
-        iostat_df = df[columns_to_chart]
+        iostat_df = df[columns_to_chart + ["datetime_parsed"]]
         devices = iostat_df["Device"].unique()
 
         # If a disk list has been passed in. Validate the list.
@@ -1031,7 +1054,7 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
 
             # unpivot the dataframe; first column is date time column, column name is next, then the value in that
             # column
-            device_df = device_df.melt("datetime", var_name="Type", value_name="metric")
+            device_df = device_df.melt(id_vars=["datetime", "datetime_parsed"], var_name="Type", value_name="metric")
 
             # For each column create a chart
             for column_name in columns_to_chart:
@@ -1465,7 +1488,7 @@ def mainline(
     return
 
 
-# Start here, entry point for command line - Also for Flask app
+# Start here, entry point for command line
 
 if __name__ == "__main__":
     input_file = ""
