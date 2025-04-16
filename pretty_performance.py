@@ -34,6 +34,12 @@ from sqlite3 import Error
 
 import logging
 from functools import reduce
+import warnings
+
+# Suppress specific Future Warnings related to interpolate
+warnings.filterwarnings(
+    "ignore", category=FutureWarning, message="DataFrame.interpolate with object dtype is deprecated"
+)
 
 from pandas.plotting import register_matplotlib_converters
 
@@ -60,7 +66,21 @@ def check_data(db, name):
 
 
 def fix_index(df):
-    df.index = pd.to_datetime(df["datetime"])
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
+        try:
+            df.index = pd.to_datetime(df["datetime"], infer_datetime_format=True)
+        except Exception as e:
+            print(f"Error parsing dates: {e}")
+            print("Sample date strings:", df["datetime"].head().tolist())
+            # Fall back to very permissive parsing
+            df.index = pd.to_datetime(df["datetime"], errors="coerce")
+            # Check for NaT values which indicate parsing failures
+            nat_count = df.index.isna().sum()
+            if nat_count > 0:
+                print(f"Warning: {nat_count} date values could not be parsed")
     df = df.drop(["datetime"], axis=1)
     df.index.name = "datetime"
     return df
@@ -70,7 +90,6 @@ def fix_index(df):
 
 
 def get_subset_dataframe(db, subsetname):
-
     if not check_data(db, subsetname):
         return None
     data = pd.read_sql_query('select * from "' + subsetname + '"', db)
@@ -100,7 +119,6 @@ def get_subset_dataframe(db, subsetname):
 
 
 def get_disk_dataframe(db, disk_name):
-
     subsetname = "iostat"
     split_on = "Device"
     plotDisks = disk_name
@@ -152,7 +170,6 @@ def get_disk_dataframe(db, disk_name):
 
 
 def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name):
-
     if disk_name == "":
         TITLE = column_d["Text"] + " " + plot_d["TITLEDATES"]
     else:
@@ -278,7 +295,6 @@ def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name
 
 
 def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, y_max_l, y_max_r, zoom):
-
     # print(f'Dataframe: {df_master}')
 
     # What are the attribtes of this chart
@@ -313,7 +329,6 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
     YAxisMaxR = 0
 
     for column_d in columns_to_show:
-
         if column_d["axis"] == "left":
             if plot_d["limit_yaxis"] and y_max_l == 0:
                 # To remove outliers from chart limit x axis to 3 sigma
@@ -374,7 +389,6 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
     ax1.legend(loc="upper left", fontsize=14)
 
     if Right_axis_used:
-
         ax2 = ax1.twinx()
         for column_d in columns_to_show:
             if column_d["axis"] == "right":
@@ -458,7 +472,6 @@ def execute_single_read_query(connection, query):
 
 
 def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_plots, include_mgstat_plots):
-
     disk_list_d = plot_d["Disk List"]
 
     db = sqlite3.connect(db_filename)
@@ -474,7 +487,6 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
     print(f"{include_iostat_plots}")
 
     if include_iostat_plots:
-
         # Output zoom charts
         for key in disk_list_d.keys():
             print(key + " " + disk_list_d[key])
@@ -541,14 +553,31 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
         # Get rid of duplicates. e.g. if appending
         df_master_vm = df_master_vm.loc[~df_master_vm.index.duplicated(), :]
 
-        # df_master_vm = df_master_vm.reset_index().set_index("datetime").resample("1S", convention='start').interpolate(method="linear")
+        # Convert columns to numeric where appropriate
+        for col in df_master_vm.columns:
+            try:
+                df_master_vm[col] = pd.to_numeric(df_master_vm[col], errors="coerce")
+            except:
+                pass  # Keep as is if it can't be converted
+
+        # Then perform the resampling and interpolation
         df_master_vm = df_master_vm.reset_index().set_index("datetime").resample("1S").interpolate(method="linear")
 
         # Get mgstat
         df_master_mg = get_subset_dataframe(db, "mgstat")
         df_master_mg = df_master_mg.add_suffix("_mg")
+
         # Get rid of duplicates. e.g. if appending
         df_master_mg = df_master_mg.loc[~df_master_mg.index.duplicated(), :]
+
+        # Convert columns to numeric where appropriate
+        for col in df_master_mg.columns:
+            try:
+                df_master_mg[col] = pd.to_numeric(df_master_mg[col], errors="coerce")
+            except:
+                pass  # Keep as is if it can't be converted
+
+        # Then perform the resampling and interpolation
         df_master_mg = (
             df_master_mg.reset_index()
             .set_index("datetime")
@@ -586,6 +615,14 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
 
         df_merged_disks = df_merged_disks[~df_merged_disks.index.duplicated()]
 
+        # Convert columns to numeric where appropriate
+        for col in df_merged_disks.columns:
+            try:
+                df_merged_disks[col] = pd.to_numeric(df_merged_disks[col], errors="coerce")
+            except:
+                pass  # Keep as is if it can't be converted
+
+        # Then perform the resampling and interpolation
         df_merged_disks = (
             df_merged_disks.reset_index()
             .set_index("datetime")
@@ -666,7 +703,6 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
 
         # Couple of standard reports
         if include_mgstat_plots:
-
             print(f"Standard reports:")
 
             column_d = {"Text": "CPU Utilisation %", "Name": "Total CPU_vm"}
@@ -738,7 +774,6 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
 
 
 if __name__ == "__main__":
-
     # help="set log level:DEBUG,INFO,WARNING,ERROR,CRITICAL. The default is INFO"
     loglevel = "INFO"
     logging.basicConfig(level=loglevel)
