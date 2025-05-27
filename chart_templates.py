@@ -3,7 +3,7 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib import ticker
-
+import pandas as pd
 import re
 
 
@@ -48,7 +48,6 @@ def chart_common(site_survey_input, base_file_path, charts_path, sub_folder):
 
 
 def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
-
     base_file_path = kwargs.get("base_file_path", ".")
     charts_path = kwargs.get("charts_path", "")
 
@@ -59,6 +58,14 @@ def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
     sub_folder = kwargs.get("sub_folder", "")
     extra_horizontal = kwargs.get("extra_horizontal", (0, ""))
     line_style_in = kwargs.get("line_style", "")
+
+    # if "Total CPUx" or "rx" in field_names:
+    #     # Determine time period between data points
+    #     time_diffs = pd.Series(df.index).diff().dt.total_seconds()
+    #     time_period = time_diffs.dropna().median()  # Using median for robustness
+    #     # Calculate window size (5x the period)
+    #     window_size = int(5 * time_period)
+    #     rolling_window = max(2, int(window_size / time_period))  # At least 2 points
 
     if percentile_field == "False":
         percentile_field = ""
@@ -104,7 +111,6 @@ def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
 
     max_max_y = left_y_axis_max
     for field_name in field_names:
-
         max_y = df[field_name].max()
         if max_y > max_max_y:
             max_max_y = max_y
@@ -114,7 +120,7 @@ def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
             if writes in field_name:
                 line_style = "solid"
 
-        # Plot it
+        # Plot original data
         ax1.plot(
             df.index,
             df[field_name],
@@ -124,14 +130,25 @@ def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
             label=f"{field_name} max {df[field_name].max():,.0f}",
         )
 
-    if not percentile_field == "":
+        # if "Total CPU" or "r" in field_names:
+        #     # Add rolling average line
+        #     rolling_avg = df[field_name].rolling(window=rolling_window, center=True).mean()
+        #     ax1.plot(
+        #         df.index,
+        #         rolling_avg,
+        #         linestyle="solid",
+        #         color="lightblue",  # Different color for average
+        #         linewidth=2,
+        #         alpha=0.9,
+        #         label=f"{field_name} {window_size:.0f}s avg",
+        #     )
 
+    if not percentile_field == "":
         percentile_color = "m"
         # if percentile_98_plus20 < max_y:
         #     percentile_color = "m"
 
         if max_max_y > 15:
-
             ax1.axhline(y=percentile_98, color="b", linestyle="--", label=f"98th percentile: {percentile_98:,.0f}")
             ax1.axhline(
                 y=percentile_98_plus20,
@@ -153,7 +170,6 @@ def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
 
     extra_color = "m"
     if extra_horizontal[0] > 0:
-
         if extra_horizontal[0] < max_y:
             extra_color = "r"
 
@@ -199,7 +215,6 @@ def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
 
 
 def iostat_metrics(df, site_survey_input, disk_list, title, **kwargs):
-
     base_file_path = kwargs.get("base_file_path", ".")
     charts_path = kwargs.get("charts_path", "")
 
@@ -212,7 +227,6 @@ def iostat_metrics(df, site_survey_input, disk_list, title, **kwargs):
     if episodes_per_year == 0 or average_episodes_per_day == 0:
         print("Application metrics missing from input, please update yml file.")
     else:
-
         for device, value in disk_list.items():
             max_reads = df[f"r/s {device}"].describe().loc["max"]
             reads_98th = df[f"r/s {device}"].quantile(0.98)

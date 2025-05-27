@@ -246,6 +246,29 @@ def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name
             lw=2,
         )
 
+    # Calculate statistics for the zoomed data
+    zoom_data = df_master_zoom[column_d["Name"]]
+    zoom_max = zoom_data.max()
+    zoom_min = zoom_data.min()
+    zoom_avg = zoom_data.mean()
+
+    # Format the statistics based on data range with comma formatting
+    if zoom_max < 10:
+        stats_text = f"Max: {zoom_max:,.2f} | Min: {zoom_min:,.2f} | Avg: {zoom_avg:,.2f}"
+    else:
+        stats_text = f"Max: {zoom_max:,.0f} | Min: {zoom_min:,.0f} | Avg: {zoom_avg:,.0f}"
+
+    # Add statistics text to the bottom chart
+    ax2.text(
+        0.02,
+        0.98,
+        stats_text,
+        transform=ax2.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+    )
+
     ax2.set_ylabel(column_d["Text"], fontsize=10, color=color)
     ax2.tick_params(labelsize=10)
     ax2.set_ylim(bottom=0)  # Always zero start
@@ -704,6 +727,9 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
         # Couple of standard reports
         if include_mgstat_plots:
             print(f"Standard reports:")
+
+            column_d = {"Text": "RouCMs", "Name": "RouCMs_mg"}
+            zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
 
             column_d = {"Text": "CPU Utilisation %", "Name": "Total CPU_vm"}
             zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
