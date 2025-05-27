@@ -731,6 +731,12 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
             column_d = {"Text": "RouCMs", "Name": "RouCMs_mg"}
             zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
 
+            column_d = {"Text": "ObjSz", "Name": "ObjSz_mg"}
+            zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
+
+            column_d = {"Text": "GblSz", "Name": "GblSz_mg"}
+            zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
+
             column_d = {"Text": "CPU Utilisation %", "Name": "Total CPU_vm"}
             zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
 
