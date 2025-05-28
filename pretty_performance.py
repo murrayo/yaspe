@@ -728,30 +728,22 @@ def mainline(db_filename, zoom_start, zoom_end, plot_d, config, include_iostat_p
         if include_mgstat_plots:
             print(f"Standard reports:")
 
-            column_d = {"Text": "RouCMs", "Name": "RouCMs_mg"}
-            zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
+            columns_to_process = [
+                {"Text": "RouCMs", "Name": "RouCMs_mg"},
+                {"Text": "ObjSz", "Name": "ObjSz_mg"},
+                {"Text": "GblSz", "Name": "GblSz_mg"},
+                {"Text": "CPU Utilisation %", "Name": "Total CPU_vm"},
+                {"Text": "Glorefs", "Name": "Glorefs_mg"},
+                {"Text": "Gloupds", "Name": "Gloupds_mg"},
+                {"Text": "Rdratio", "Name": "Rdratio_mg"},
+                {"Text": "CPU wait", "Name": "wa_vm"},
+            ]
 
-            column_d = {"Text": "ObjSz", "Name": "ObjSz_mg"}
-            zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
-
-            column_d = {"Text": "GblSz", "Name": "GblSz_mg"}
-            zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
-
-            column_d = {"Text": "CPU Utilisation %", "Name": "Total CPU_vm"}
-            zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
-
-            column_d = {"Text": "Glorefs", "Name": "Glorefs_mg"}
-
-            zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
-
-            column_d = {"Text": "Gloupds", "Name": "Gloupds_mg"}
-            zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
-
-            column_d = {"Text": "Rdratio", "Name": "Rdratio_mg"}
-            zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
-
-            column_d = {"Text": "CPU wait", "Name": "wa_vm"}
-            zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
+            for column_d in columns_to_process:
+                try:
+                    zoom_chart(df_bigmerge, df_bigmerge_zoom, plot_d, column_d, "", "")
+                except KeyError as e:
+                    print(f"Column not found for {column_d['Text']}: {e}")
 
         # For each chart in the chart extras file
         for c_id, c_info in config.items():
