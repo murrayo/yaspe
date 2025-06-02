@@ -6,6 +6,7 @@
 # /path_to_file/pretty_performance.py -f yaspe_SystemPerformance.sqlite -s 10:00 -e 11:00 -p ./input.yml -i -m -c ./charts.yml -o ./pretty_yaspe
 
 import os
+import re
 import pandas as pd
 import matplotlib as mpl
 
@@ -44,6 +45,24 @@ warnings.filterwarnings(
 from pandas.plotting import register_matplotlib_converters
 
 register_matplotlib_converters()
+
+
+def sanitize_filename(filename):
+    """Keep only alphanumeric characters and underscores"""
+    # Replace any character that isn't alphanumeric or underscore with underscore
+    sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", filename)
+
+    # # Remove multiple consecutive underscores
+    # sanitized = re.sub(r"_+", "_", sanitized)
+
+    # Remove leading/trailing underscores
+    sanitized = sanitized.strip("_")
+
+    # Ensure filename isn't empty after sanitization
+    if not sanitized:
+        sanitized = "untitled"
+
+    return sanitized
 
 
 def smooth(y, box_pts):
@@ -272,6 +291,8 @@ def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name
     ax2.set_ylabel(column_d["Text"], fontsize=10, color=color)
     ax2.tick_params(labelsize=10)
     ax2.set_ylim(bottom=0)  # Always zero start
+    if column_d["Name"] == "Total CPU_vm":
+        ax2.set_ylim(top=100)
     if df_master_zoom[column_d["Name"]].max() < 10:
         ax2.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.2f}"))
     else:
@@ -302,7 +323,7 @@ def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name
     FinalFileName = (
         plot_d["outputFile_png"]
         + "_"
-        + (
+        + sanitize_filename(
             plot_d["RunDate"][0].strftime("%Y-%m-%d")
             + " "
             + disk_type
@@ -310,9 +331,10 @@ def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name
             + column_d["Text"]
             + " "
             + plot_d["ZOOM_TO"]
-            + ".png"
         ).replace(" ", "_")
+        + ".png"
     )
+
     plt.savefig(FinalFileName, format="png", dpi=plot_d["DPI"])
     plt.close(fig)
 
