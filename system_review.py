@@ -118,6 +118,9 @@ def system_charts(base_file_path):
 
     df["Total CPU"] = 100 - df["id"]
 
+    # Remove newer or discontinued column names
+    site_survey_input["vmstat columns"] = [col for col in site_survey_input["vmstat columns"] if col in df.columns]
+
     # Chart vmstat
     chart_output.chart_vmstat(
         df,
@@ -214,6 +217,9 @@ def system_charts(base_file_path):
 
     df, date_string = what_date_format(df, mgstat_date_format, "datetime", "mgstat")
 
+    # Remove newer or discontinued column names
+    site_survey_input["mgstat columns"] = [col for col in site_survey_input["mgstat columns"] if col in df.columns]
+
     chart_output.chart_mgstat(df, site_survey_input, base_file_path=base_file_path, charts_path=charts_path)
 
     if site_survey_input["Business Hours"]["use business hours"] and single_day:
@@ -293,6 +299,9 @@ def system_charts(base_file_path):
     disk_list = site_survey_input["Disk List"]
     device_human_names = list(disk_list.keys())
     device_names = list(disk_list.values())
+
+    # Remove newer or discontinued column names
+    site_survey_input["iostat columns"] = [col for col in site_survey_input["iostat columns"] if col in df.columns]
 
     # Get details of one or more selected disks
     iostat_columns = site_survey_input["iostat columns"]

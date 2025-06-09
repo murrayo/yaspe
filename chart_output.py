@@ -11,7 +11,6 @@ def get_date_string(df):
 
 
 def chart_iostat(df, site_survey_input, **kwargs):
-
     if yaspe_utilities.check_keyword_exists(site_survey_input, "chart sub folder"):
         charts_path = site_survey_input["Chart"]["chart sub folder"]
     else:
@@ -30,10 +29,8 @@ def chart_iostat(df, site_survey_input, **kwargs):
     iostat_columns = site_survey_input["iostat columns"]
 
     for device in device_human_names:
-
         # Loop through all
         for counter in iostat_columns:
-
             if "peak" in title_comment.lower():
                 percentile_field = f"{counter} {device}"
 
@@ -102,7 +99,6 @@ def chart_iostat(df, site_survey_input, **kwargs):
 
 
 def chart_vmstat(df, site_survey_input, **kwargs):
-
     if yaspe_utilities.check_keyword_exists(site_survey_input, "chart sub folder"):
         charts_path = site_survey_input["Chart"]["chart sub folder"]
     else:
@@ -158,7 +154,6 @@ def chart_vmstat(df, site_survey_input, **kwargs):
 
 
 def chart_mgstat(df, site_survey_input, **kwargs):
-
     if yaspe_utilities.check_keyword_exists(site_survey_input, "chart sub folder"):
         charts_path = site_survey_input["Chart"]["chart sub folder"]
     else:
@@ -174,7 +169,6 @@ def chart_mgstat(df, site_survey_input, **kwargs):
     mgstat_columns = site_survey_input["mgstat columns"]
 
     for counter in mgstat_columns:
-
         if "peak" in title_comment.lower():
             percentile_field = counter
         else:
