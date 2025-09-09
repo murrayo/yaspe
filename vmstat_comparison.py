@@ -240,53 +240,61 @@ class VmstatAnalyzer:
         for name, config in self.key_metrics.items():
             print(f"  {name}: title='{config['title']}'")
 
-        # Set up the plot
+        # Set up the plot - side by side layout for each dataset
         n_metrics = len(metrics_to_plot)
-        fig, axes = plt.subplots(n_metrics, 1, figsize=(15, 4 * n_metrics))
-        if n_metrics == 1:
+        n_datasets = len(self.datasets)
+        fig, axes = plt.subplots(n_metrics, n_datasets, figsize=(8 * n_datasets, 4 * n_metrics))
+
+        # Handle single metric or single dataset cases
+        if n_metrics == 1 and n_datasets == 1:
+            axes = [[axes]]
+        elif n_metrics == 1:
             axes = [axes]
+        elif n_datasets == 1:
+            axes = [[ax] for ax in axes]
 
         # Color palette for different datasets
         colors = plt.cm.Set1(np.linspace(0, 1, len(self.datasets)))
 
+        dataset_labels = list(self.datasets.keys())
+
         for i, metric_name in enumerate(metrics_to_plot):
-            ax = axes[i]
             metric_config = self.key_metrics[metric_name]
 
-            plots_created = 0
             for j, (label, dataset) in enumerate(self.datasets.items()):
+                ax = axes[i][j]
+
                 if "processed_data" not in dataset or metric_name not in dataset["processed_data"].columns:
-                    print(f"  Warning: {metric_name} not available for {label}")
+                    ax.text(0.5, 0.5, f"{metric_name}\nnot available", ha="center", va="center", transform=ax.transAxes)
+                    ax.set_title(f"{label}")
                     continue
 
                 df = dataset["processed_data"]
                 print(f"  Plotting {metric_name} for {label}: {len(df)} data points")
 
-                # Plot time series
-                ax.plot(df["timestamp"], df[metric_name], label=label, color=colors[j], alpha=0.7, linewidth=1)
-                plots_created += 1
+                # Plot time series for this dataset
+                ax.plot(df["timestamp"], df[metric_name], color=colors[j], alpha=0.7, linewidth=1)
 
-            if plots_created == 0:
-                print(f"  Warning: No data plotted for {metric_name}")
+                # Set title and labels
+                if i == 0:  # Only set dataset label on top row
+                    ax.set_title(f"{label}")
 
-            chart_title = f"{metric_config['title']} ({metric_config['unit']})"
-            ax.set_title(chart_title)
-            ax.set_ylabel(metric_config["unit"])
-            ax.legend()
-            ax.grid(True, alpha=0.3)
+                if j == 0:  # Only set metric label on left column
+                    ax.set_ylabel(f"{metric_config['title']}\n({metric_config['unit']})")
 
-            # Debug output to verify title
-            print(f"  Chart title set to: {chart_title}")
+                ax.grid(True, alpha=0.3)
 
-            # Set Y-axis limits for percentage metrics
-            if metric_config["unit"] == "%":
-                ax.set_ylim(0, 100)
+                # Set Y-axis limits for percentage metrics
+                if metric_config["unit"] == "%":
+                    ax.set_ylim(0, 100)
 
-            # Format x-axis
-            if i == n_metrics - 1:  # Only on last subplot
-                ax.set_xlabel("Time")
-            else:
-                ax.set_xticklabels([])
+                # Format x-axis - only show labels on bottom row
+                if i == n_metrics - 1:
+                    ax.set_xlabel("Time")
+                    # Rotate x-axis labels for better readability
+                    plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
+                else:
+                    ax.set_xticklabels([])
 
         plt.tight_layout()
 
