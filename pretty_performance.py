@@ -226,9 +226,9 @@ def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name
     if column_d["Name"] == "Total CPU_vm":
         ax1.set_ylim(top=100)
     if df_master[column_d["Name"]].max() < 10:
-        ax1.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.2f}"))
+        ax1.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda x, p: f"{x:,.2f}" if x != 0 else "0"))
     else:
-        ax1.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+        ax1.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda x, p: f"{int(x):,}" if x != 0 else "0"))
 
     TotalMinutes = (df_master.index[-1] - df_master.index[0]).total_seconds() / 60
 
@@ -294,9 +294,9 @@ def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name
     if column_d["Name"] == "Total CPU_vm":
         ax2.set_ylim(top=100)
     if df_master_zoom[column_d["Name"]].max() < 10:
-        ax2.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.2f}"))
+        ax2.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda x, p: f"{x:,.2f}" if x != 0 else "0"))
     else:
-        ax2.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+        ax2.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda x, p: f"{int(x):,}" if x != 0 else "0"))
 
     TotalMinutes = (df_master_zoom.index[-1] - df_master_zoom.index[0]).total_seconds() / 60
 
@@ -413,9 +413,9 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
     if y_max_l > 0:
         ax1.set_ylim(top=y_max_l)
     if axis_greater_than_10_left:
-        ax1.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+        ax1.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda x, p: f"{int(x):,}" if x != 0 else "0"))
     else:
-        ax1.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.2f}"))
+        ax1.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda x, p: f"{x:,.2f}" if x != 0 else "0"))
 
     if TotalMinutes <= 15:
         ax1.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
@@ -470,9 +470,9 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
         if y_max_r > 0:
             ax2.set_ylim(top=y_max_r)
         if axis_greater_than_10_right:
-            ax2.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+            ax2.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda x, p: f"{int(x):,}" if x != 0 else "0"))
         else:
-            ax2.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.2f}"))
+            ax2.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda x, p: f"{x:,.2f}" if x != 0 else "0"))
 
         ax2.grid(None)
 

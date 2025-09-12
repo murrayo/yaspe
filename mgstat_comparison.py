@@ -420,6 +420,14 @@ class MgstatAnalyzer:
         for i, metric_name in enumerate(metrics_to_plot):
             metric_config = common_metrics[metric_name]
 
+            # First pass: find the max value across all datasets for this metric to align Y-axis
+            metric_max = 0
+            for label, dataset in self.datasets.items():
+                if "processed_data" in dataset and metric_name in dataset["processed_data"].columns:
+                    df = dataset["processed_data"]
+                    if not df[metric_name].empty:
+                        metric_max = max(metric_max, df[metric_name].max())
+
             for j, (label, dataset) in enumerate(self.datasets.items()):
                 ax = axes[i][j]
 
@@ -436,16 +444,27 @@ class MgstatAnalyzer:
 
                 # Set title and labels
                 if i == 0:  # Only set dataset label on top row
-                    ax.set_title(f"{label}")
+                    # Extract date from first timestamp for legend
+                    dataset_date = df["timestamp"].iloc[0].strftime("%Y-%m-%d")
+                    ax.set_title(f"{label}\n{dataset_date}")
 
                 if j == 0:  # Only set metric label on left column
                     ax.set_ylabel(f"{metric_config['title']}\n({metric_config['unit']})")
 
                 ax.grid(True, alpha=0.3)
 
+                # Format Y-axis to prevent scientific notation
+                if metric_max < 10 and metric_max != 0:
+                    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:,.2f}" if x != 0 else "0"))
+                else:
+                    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{int(x):,}" if x != 0 else "0"))
+
                 # Set Y-axis limits for percentage metrics
                 if metric_config["unit"] == "%":
                     ax.set_ylim(0, 100)
+                else:
+                    # Align Y-axis across all datasets for this metric
+                    ax.set_ylim(0, metric_max * 1.05)  # Add 5% padding
 
                 # Format x-axis - only show labels on bottom row
                 if i == n_metrics - 1:
@@ -509,6 +528,13 @@ class MgstatAnalyzer:
                 ax.set_ylabel(metric_config["unit"])
                 ax.grid(True, alpha=0.3)
 
+                # Format Y-axis to prevent scientific notation
+                max_val = max(max(data) if len(data) > 0 else 0 for data in data_for_plot)
+                if max_val < 10 and max_val != 0:
+                    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:,.2f}" if x != 0 else "0"))
+                else:
+                    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{int(x):,}" if x != 0 else "0"))
+
         # Remove empty subplots
         for i in range(len(metrics_to_plot), 4):
             fig.delaxes(axes[i])
@@ -557,7 +583,11 @@ class MgstatAnalyzer:
                 # Group by hour and calculate mean
                 hourly_avg = df.groupby("hour")[metric_name].mean()
 
-                ax.plot(hourly_avg.index, hourly_avg.values, marker="o", label=label, linewidth=2, markersize=4)
+                # Extract date for legend
+                dataset_date = df["timestamp"].iloc[0].strftime("%Y-%m-%d")
+                legend_label = f"{label} ({dataset_date})"
+
+                ax.plot(hourly_avg.index, hourly_avg.values, marker="o", label=legend_label, linewidth=2, markersize=4)
 
             hourly_title = f"Hourly Pattern: {metric_config['title']}"
             ax.set_title(hourly_title)
@@ -566,6 +596,19 @@ class MgstatAnalyzer:
             ax.set_xticks(range(0, 24, 2))
             ax.legend()
             ax.grid(True, alpha=0.3)
+
+            # Format Y-axis to prevent scientific notation
+            y_max = 0
+            for label, dataset in self.datasets.items():
+                if "processed_data" in dataset and metric_name in dataset["processed_data"].columns:
+                    hourly_avg = dataset["processed_data"].groupby("hour")[metric_name].mean()
+                    if not hourly_avg.empty:
+                        y_max = max(y_max, hourly_avg.max())
+
+            if y_max < 10 and y_max != 0:
+                ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:,.2f}" if x != 0 else "0"))
+            else:
+                ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{int(x):,}" if x != 0 else "0"))
 
             # Set Y-axis limits for percentage metrics
             if metric_config["unit"] == "%":
