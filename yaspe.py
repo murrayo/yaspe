@@ -366,7 +366,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 7))
+    plt.figure(num=None, figsize=(16, 6))
     plt.tight_layout()
 
     palette = plt.get_cmap(colormap_name)
@@ -374,7 +374,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     color = palette(1)
 
     fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 7)
+    plt.gcf().set_size_inches(16, 6)
     # plt.gcf().set_dpi(300)
 
     # For plotting, use datetime_parsed if it exists, otherwise use datetime
@@ -519,13 +519,13 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
-    plt.figure(num=None, figsize=(16, 7))
+    plt.figure(num=None, figsize=(16, 6))
     palette = plt.get_cmap(colormap_name)
 
     color = palette(1)
 
     fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 7)
+    plt.gcf().set_size_inches(16, 6)
     # plt.gcf().set_dpi(300)
 
     ax.plot(
@@ -672,7 +672,7 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 7))
+    plt.figure(num=None, figsize=(16, 6))
     plt.tight_layout()
 
     palette = plt.get_cmap(colormap_name)
@@ -680,7 +680,7 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     color = palette(1)
 
     fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 7)
+    plt.gcf().set_size_inches(16, 6)
     # plt.gcf().set_dpi(300)
 
     ax.stackplot(png_data.index, png_data["sy"], png_data["wa"], png_data["us"], labels=["sy", "wa", "us"], alpha=0.7)
@@ -737,7 +737,7 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 7))
+    plt.figure(num=None, figsize=(16, 6))
     plt.tight_layout()
 
     palette = plt.get_cmap(colormap_name)
@@ -745,7 +745,7 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
     color = palette(1)
 
     fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 7)
+    plt.gcf().set_size_inches(16, 6)
 
     ax.stackplot(
         png_data.index,
@@ -803,7 +803,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 7))
+    plt.figure(num=None, figsize=(16, 6))
     plt.tight_layout()
 
     palette = plt.get_cmap(colormap_name)
@@ -813,7 +813,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     # Reads
 
     fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 7)
+    plt.gcf().set_size_inches(16, 6)
     # plt.gcf().set_dpi(300)
 
     ax.hist(reads, bins=10, edgecolor="black")
@@ -836,7 +836,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     # Writes
 
     fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 7)
+    plt.gcf().set_size_inches(16, 6)
     # plt.gcf().set_dpi(300)
 
     ax.hist(writes, bins=10, edgecolor="black")
