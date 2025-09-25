@@ -346,6 +346,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     #     print(f'_{data["metric"].max()}_ : {type(data["metric"].max())}')
 
     file_prefix = kwargs.get("file_prefix", "")
+    min_max = kwargs.get("min_max", False)
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -365,7 +366,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
+    plt.figure(num=None, figsize=(16, 7))
     plt.tight_layout()
 
     palette = plt.get_cmap(colormap_name)
@@ -373,11 +374,15 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     color = palette(1)
 
     fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
+    plt.gcf().set_size_inches(16, 7)
     # plt.gcf().set_dpi(300)
 
     # For plotting, use datetime_parsed if it exists, otherwise use datetime
     datetime_column = "datetime_parsed" if "datetime_parsed" in png_data.columns else "datetime"
+
+    # Calculate time period duration
+    time_range = png_data[datetime_column].max() - png_data[datetime_column].min()
+    is_long_period = time_range.total_seconds() > (25 * 60 * 60)  # More than 25 hours
 
     ax.plot(
         png_data[datetime_column],
@@ -388,8 +393,99 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         linestyle="none",
         alpha=0.7,
     )
+
+    # Add min/max legend if requested
+    if min_max and not is_long_period:
+        # Only show min/max for periods <= 25 hours
+        # Calculate absolute min/max
+        abs_min = png_data["metric"].min()
+        abs_max = png_data["metric"].max()
+
+        # For shorter periods, use percentile filtering
+        # Detect outliers using 2nd and 99th percentile method (better for system metrics)
+        p2 = png_data["metric"].quantile(0.02)  # 2nd percentile
+        p99 = png_data["metric"].quantile(0.99)  # 99th percentile
+
+        # Filter out outliers (keep values between 2nd and 99th percentile)
+        filtered_data = png_data[(png_data["metric"] >= p2) & (png_data["metric"] <= p99)]
+
+        # Check if we have outliers
+        has_outliers = len(filtered_data) < len(png_data)
+
+        if has_outliers and len(filtered_data) > 0:
+            # Use filtered data for adjusted min/max
+            adj_min = filtered_data["metric"].min()
+            adj_max = filtered_data["metric"].max()
+
+            # Add lines and labels for both absolute and adjusted values
+            ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Absolute Min: {abs_min:,.0f}")
+            ax.axhline(
+                y=adj_min,
+                color="red",
+                linestyle="--",
+                alpha=0.7,
+                label=f"98th Percentile Min: {adj_min:,.0f} (no outliers)",
+            )
+            ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Absolute Max: {abs_max:,.0f}")
+            ax.axhline(
+                y=adj_max,
+                color="green",
+                linestyle="--",
+                alpha=0.7,
+                label=f"99th Percentile Max: {adj_max:,.0f} (no outliers)",
+            )
+        else:
+            # No outliers detected, use absolute values
+            ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Minimum: {abs_min:,.0f}")
+            ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Maximum: {abs_max:,.0f}")
+
+        # Show the legend
+        ax.legend(loc="best")
+
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(title, fontsize=16)
+
+    # Adjust title and x-axis formatting based on time period
+    if is_long_period:
+        # For long periods, add date range to title and use day of week on x-axis
+        start_date = png_data[datetime_column].min()
+        end_date = png_data[datetime_column].max()
+        start_str = start_date.strftime("%d-%b-%y")
+        end_str = end_date.strftime("%d-%b-%y")
+        ax.set_title(f"{title} - {start_str} to {end_str}", fontsize=16)
+
+        # Create custom tick positions at noon of each day (center of 24-hour period)
+        from datetime import timedelta
+        import numpy as np
+
+        # Get date range - exclude last day if data ends near midnight to avoid blank space
+        data_end_hour = end_date.hour
+        if data_end_hour <= 2:  # If data ends at midnight or just after (0-2 AM)
+            # Don't include the last day to avoid blank space
+            date_range = pd.date_range(start=start_date.date(), end=end_date.date() - timedelta(days=1), freq="D")
+        else:
+            # Include all days if data goes well into the last day
+            date_range = pd.date_range(start=start_date.date(), end=end_date.date(), freq="D")
+
+        # Position ticks at noon (center of each day) with time shown
+        tick_positions = [pd.Timestamp(date) + timedelta(hours=12) for date in date_range]
+
+        ax.set_xticks(tick_positions)
+        ax.set_xticklabels([tick.strftime("%a 12:00") for tick in tick_positions])
+
+        # Remove rotation for day labels
+        plt.setp(ax.get_xticklabels(), rotation=0, ha="center")
+    else:
+        # For short periods, add date to title in DD-MMM-YY format, use only time on x-axis
+        start_date = png_data[datetime_column].min()
+        date_str = start_date.strftime("%a %d-%b-%y")
+        ax.set_title(f"{title} - {date_str}", fontsize=16)
+        locator = plt_dates.AutoDateLocator()
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(plt_dates.DateFormatter("%H:%M"))
+
+        # Keep rotation for time labels (they can be crowded)
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
     ax.set_ylabel(column_name, fontsize=14)
     ax.tick_params(labelsize=14)
     plt.subplots_adjust(bottom=0.15)
@@ -405,12 +501,6 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.4f}"))
     else:
         ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
-
-    locator = plt_dates.AutoDateLocator()
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(plt_dates.AutoDateFormatter(locator=locator, defaultfmt="%H:%M"))
-
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     # plt.tight_layout()
 
@@ -429,13 +519,13 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
-    plt.figure(num=None, figsize=(16, 6))
+    plt.figure(num=None, figsize=(16, 7))
     palette = plt.get_cmap(colormap_name)
 
     color = palette(1)
 
     fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
+    plt.gcf().set_size_inches(16, 7)
     # plt.gcf().set_dpi(300)
 
     ax.plot(
@@ -582,7 +672,7 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
+    plt.figure(num=None, figsize=(16, 7))
     plt.tight_layout()
 
     palette = plt.get_cmap(colormap_name)
@@ -590,7 +680,7 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     color = palette(1)
 
     fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
+    plt.gcf().set_size_inches(16, 7)
     # plt.gcf().set_dpi(300)
 
     ax.stackplot(png_data.index, png_data["sy"], png_data["wa"], png_data["us"], labels=["sy", "wa", "us"], alpha=0.7)
@@ -647,7 +737,7 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
+    plt.figure(num=None, figsize=(16, 7))
     plt.tight_layout()
 
     palette = plt.get_cmap(colormap_name)
@@ -655,7 +745,7 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
     color = palette(1)
 
     fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
+    plt.gcf().set_size_inches(16, 7)
 
     ax.stackplot(
         png_data.index,
@@ -713,7 +803,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
+    plt.figure(num=None, figsize=(16, 7))
     plt.tight_layout()
 
     palette = plt.get_cmap(colormap_name)
@@ -723,7 +813,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     # Reads
 
     fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
+    plt.gcf().set_size_inches(16, 7)
     # plt.gcf().set_dpi(300)
 
     ax.hist(reads, bins=10, edgecolor="black")
@@ -746,7 +836,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     # Writes
 
     fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
+    plt.gcf().set_size_inches(16, 7)
     # plt.gcf().set_dpi(300)
 
     ax.hist(writes, bins=10, edgecolor="black")
@@ -818,6 +908,7 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out):
 
     # For each column create a linked html chart
     for column_name in columns_to_chart:
+        min_max = False  # Put legend on chart
         if column_name == "datetime":
             pass
         else:
@@ -831,6 +922,8 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out):
 
             if column_name in ("Total CPU", "wa", "id", "us", "sy"):
                 max_y = 100
+                if column_name in ("Total CPU"):
+                    min_max = True
             else:
                 # Remove outliers first, will result in nan for zero values, so needs more work
                 # to_chart_df = to_chart_df[((to_chart_df.metric - to_chart_df.metric.mean()) / to_chart_df.metric.std()).abs() < 3]
@@ -839,7 +932,7 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out):
             data = to_chart_df
 
             if png_out:
-                simple_chart(data, column_name, title, max_y, filepath, output_prefix)
+                simple_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
             elif png_html_out:
                 simple_chart(data, column_name, title, max_y, filepath, output_prefix)
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
@@ -896,6 +989,7 @@ def chart_mgstat(connection, filepath, output_prefix, png_out, png_html_out, mgs
 
     # For each column create a chart
     for column_name in columns_to_chart:
+        min_max = False
         if column_name == "datetime":
             pass
         else:
@@ -907,9 +1001,11 @@ def chart_mgstat(connection, filepath, output_prefix, png_out, png_html_out, mgs
             max_y = to_chart_df["metric"].max()
 
             data = to_chart_df
+            if column_name in ("Glorefs", "RemGrefs"):
+                min_max = True
 
             if png_out:
-                simple_chart(data, column_name, title, max_y, filepath, output_prefix)
+                simple_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
             elif png_html_out:
                 simple_chart(data, column_name, title, max_y, filepath, output_prefix)
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
