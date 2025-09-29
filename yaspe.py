@@ -111,7 +111,7 @@ def data_types_map(df):
 
 
 def create_generic_table(connection, table_name, df):
-    # Build the table, headings can vary depending on OS or Caché or IRIS version or other reasons.
+    # Build the table, headings can vary depending on OS or CachÃ© or IRIS version or other reasons.
     create_table = f"CREATE TABLE IF NOT EXISTS {table_name} (id_key INTEGER PRIMARY KEY AUTOINCREMENT);"
     execute_simple_query(connection, create_table)
 
@@ -201,7 +201,7 @@ def create_sections(
     # Get the start date for date format validation
     # profile_run = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'profile run';")[2]
 
-    mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df, aix_sar_d_df = extract_sections(
+    mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df, aix_sar_d_df, free_df = extract_sections(
         operating_system, input_file, include_iostat, include_nfsiostat, html_filename, disk_list
     )
 
@@ -313,6 +313,23 @@ def create_sections(
                 aix_sar_d_df.to_csv(aix_sar_d_output_csv, header="column_names", index=False, encoding="utf-8")
             else:  # else it exists so append without writing the header
                 aix_sar_d_df.to_csv(aix_sar_d_output_csv, mode="a", header=False, index=False, encoding="utf-8")
+
+    if not free_df.empty:
+        free_df.to_sql("free_memory", connection, if_exists="append", index=True, index_label="id_key")
+        connection.commit()
+
+        if csv_out:
+            free_output_csv = f"{output_filepath_prefix}free.csv"
+
+            if csv_date_format:
+                free_df["RunDate"] = pd.to_datetime(free_df["RunDate"])
+                free_df["RunDate"] = free_df["RunDate"].dt.strftime("%d/%m/%Y")
+
+            # if file does not exist write header
+            if not os.path.isfile(free_output_csv):
+                free_df.to_csv(free_output_csv, header="column_names", index=False, encoding="utf-8")
+            else:  # else it exists so append without writing the header
+                free_df.to_csv(free_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
 
 def create_overview(connection, sp_dict):
@@ -922,7 +939,7 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out):
 
             if column_name in ("Total CPU", "wa", "id", "us", "sy"):
                 max_y = 100
-                if column_name in ("Total CPU"):
+                if column_name in ("Total CPU", "wa", "sy"):
                     min_max = True
             else:
                 # Remove outliers first, will result in nan for zero values, so needs more work
@@ -1384,6 +1401,60 @@ def chart_aix_sar_d(connection, filepath, output_prefix, operating_system, png_o
                         interactive_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
 
+def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out):
+    customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+
+    # Read in to dataframe, drop any bad rows
+    try:
+        df = pd.read_sql_query("SELECT * FROM free_memory", connection)
+    except DatabaseError as e:
+        # Check if the error message indicates a missing table
+        if "no such table" in str(e):
+            return None
+        else:
+            # For other types of Error, handle them accordingly
+            raise e
+    df.dropna(inplace=True)
+
+    # Add a datetime column
+    df["datetime"] = df["RunDate"] + " " + df["RunTime"]
+
+    # Pre-process datetime conversion once
+    df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
+
+    # Format the data for charting
+    columns_to_chart = list(df.columns)
+    unwanted_columns = ["id_key", "RunDate", "RunTime", "html name", "datetime_parsed"]
+    columns_to_chart = [ele for ele in columns_to_chart if ele not in unwanted_columns]
+
+    free_df = df[columns_to_chart + ["datetime_parsed"]]
+
+    # unpivot the dataframe
+    free_df = free_df.melt(id_vars=["datetime", "datetime_parsed"], var_name="Type", value_name="metric")
+
+    # For each column create a chart
+    for column_name in columns_to_chart:
+        if column_name == "datetime":
+            pass
+        else:
+            title = f"Memory: {column_name} - {customer}"
+            to_chart_df = free_df.loc[free_df["Type"] == column_name]
+
+            max_y = to_chart_df["metric"].max()
+            data = to_chart_df
+
+            # Add min/max lines for key memory metrics
+            min_max = column_name in ("used", "free", "available")
+
+            if png_out:
+                simple_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
+            elif png_html_out:
+                simple_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+            else:
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+
+
 def mainline(
     input_file,
     include_iostat,
@@ -1570,6 +1641,13 @@ def mainline(
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
             chart_vmstat(connection, output_file_path, output_prefix, png_out, png_html_out)
+
+            # free memory (Linux/Ubuntu only)
+            if operating_system == "Linux" or operating_system == "Ubuntu":
+                output_file_path = f"{output_file_path_base}/free_memory/"
+                if not os.path.isdir(output_file_path):
+                    os.mkdir(output_file_path)
+                chart_free_memory(connection, output_file_path, output_prefix, png_out, png_html_out)
 
             if include_iostat:
                 output_file_path = f"{output_file_path_base}/iostat/"

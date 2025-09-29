@@ -58,6 +58,11 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
     - `aix_sar_d_line_date`: The date extracted from the first column of an AIX sar -d row for processing.
     - `aix_sar_d_previous_time`: The previous time value in the AIX sar -d section.
 
+    - `free_memory_processing`: Boolean flag indicating if free memory data is being processed.
+    - `free_memory_header`: The header line of the free memory section.
+    - `free_memory_rows_list`: List of dictionaries representing individual rows of free memory data.
+    - `free_memory_date`: The current date being processed in the free memory section.
+
     The method opens the input_file using the specified encoding and reads it line by line. It processes different sections based on the HTML tags present in the lines. For each section, it checks if the header line is present and collects the data into the respective rows_list. It also performs formatting and conversion operations on the extracted data.
 
     Note: The method uses some additional helper functions and variables that are not provided in the given code snippet. These functions are assumed to be defined elsewhere in the codebase.
@@ -106,6 +111,11 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
     aix_sar_d_line_date = ""
     aix_sar_d_previous_time = "00:00:00"
 
+    free_memory_processing = False
+    free_memory_header = ""
+    free_memory_rows_list = []
+    free_memory_date = ""
+
     with open(input_file, "r", encoding="ISO-8859-1") as file:
         for line in file:
             # Date data collected is always above other sections
@@ -123,6 +133,52 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                 continue
             if include_nfsiostat is False and "id=nfsiostat" in line:
                 continue
+
+            # Free memory processing
+            if "div id=free" in line:
+                free_memory_processing = True
+            if free_memory_processing and ("pre>" in line or "div id=" in line) and "div id=free" not in line:
+                free_memory_processing = False
+            if free_memory_processing and free_memory_header != "":
+                line_stripped = line.strip()
+                if line_stripped and "," in line_stripped:
+                    # Check if this looks like data (starts with a date pattern)
+                    parts = line_stripped.split(",")
+                    if len(parts) >= 3 and "/" in parts[0]:  # Basic check for date format
+                        free_memory_row_dict = {}
+                        values = [i.strip() for i in parts]
+                        values_converted = [get_number_type(v) for v in values]
+
+                        # Map to expected column names
+                        if len(values_converted) >= len(free_memory_columns):
+                            free_memory_row_dict = dict(
+                                zip(free_memory_columns, values_converted[: len(free_memory_columns)])
+                            )
+                            free_memory_row_dict["html name"] = html_filename
+
+                            # Standardise date format first time or if date changes
+                            if free_memory_row_dict["Date"] != free_memory_date:
+                                # Get date in yyyy/mm/dd format
+                                new_date = format_date(run_start_date, free_memory_row_dict["Date"])
+
+                            free_memory_date = free_memory_row_dict["Date"]
+                            free_memory_row_dict.update({"Date": new_date})
+
+                            # Added for pretty processing
+                            free_memory_row_dict[
+                                "datetime"
+                            ] = f'{free_memory_row_dict["Date"]} {free_memory_row_dict["Time"]}'
+                            free_memory_rows_list.append(free_memory_row_dict)
+            if free_memory_processing and "Memtotal" in line:
+                free_memory_header = line.strip()
+                if free_memory_header.endswith(","):
+                    free_memory_header = free_memory_header[:-1]  # Remove trailing comma
+                free_memory_columns = free_memory_header.split(",")
+                free_memory_columns = [i.strip() for i in free_memory_columns]  # strip off carriage return etc
+                # Rename columns to match expected format
+                if len(free_memory_columns) >= 2:
+                    free_memory_columns[0] = "Date"
+                    free_memory_columns[1] = "Time"
 
             if "<!-- beg_mgstat -->" in line:
                 mgstat_processing = True
@@ -637,4 +693,12 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
     else:
         aix_sar_d_df = pd.DataFrame({"empty": []})
 
-    return mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df, aix_sar_d_df
+    if free_memory_header != "":
+        free_memory_df = pd.DataFrame(free_memory_rows_list)
+        # "date" and "time" are reserved words in SQL. Rename the columns to avoid clashes later.
+        free_memory_df.rename(columns={"Date": "RunDate", "Time": "RunTime"}, inplace=True)
+        free_memory_df.dropna(inplace=True)
+    else:
+        free_memory_df = pd.DataFrame({"empty": []})
+
+    return mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df, aix_sar_d_df, free_memory_df
