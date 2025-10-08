@@ -92,7 +92,7 @@ options:
   -l "string to split on", --large_file_split_on_string "string to split on"
                         Split large input file on first occurrence of this string. Blank -l "" defaults to "div id=iostat"
 
-Be safe, "quote the path"
+Be safe, "quote the path".
 ```
 
 For example, change to the folder with a SystemPerformance html file and run the command:
