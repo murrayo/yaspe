@@ -242,7 +242,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         vmstat_row_dict.update({"Date": new_date})
 
                         # Added for pretty processing
-                        vmstat_row_dict["datetime"] = f'{vmstat_row_dict["Date"]} {vmstat_row_dict["Time"]}'
+                        vmstat_row_dict["datetime"] = f'{vmstat_row_dict["Date"]} {vmstat_row_dict.get("Time", "")}'
                         vmstat_rows_list.append(vmstat_row_dict)
                 if vmstat_processing and "us sy id wa" in line:
                     # vmstat !sometimes! has column names on same line as html
