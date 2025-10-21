@@ -1024,7 +1024,7 @@ def chart_mgstat(connection, filepath, output_prefix, png_out, png_html_out, mgs
             if png_out:
                 simple_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
             elif png_html_out:
-                simple_chart(data, column_name, title, max_y, filepath, output_prefix)
+                simple_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
@@ -1449,7 +1449,7 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
             if png_out:
                 simple_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
             elif png_html_out:
-                simple_chart(data, column_name, title, max_y, filepath, output_prefix)
+                simple_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
