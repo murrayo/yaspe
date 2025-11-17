@@ -98,6 +98,24 @@ def system_check(input_file):
             if "Version String: " in line or "Product Version String: " in line:
                 sp_dict["version string"] = (line.split(":", 1)[1]).strip()
 
+                # Extract year and dot-version from the version string, e.g.
+                # "IRIS for UNIX (RHEL 8 ...) 2024.1.1 (Build ...)"
+                version_text = sp_dict["version string"]
+                m = re.search(r"\)\s+(\d{4})\.(\d+(?:\.\d+)*)", version_text)
+                if m:
+                    try:
+                        sp_dict["version year"] = int(m.group(1))
+                        sp_dict["version release"] = f"{m.group(1)}.{m.group(2)}"
+                    except ValueError:
+                        pass
+                else:
+                    m = re.search(r"\)\s+(\d{4})", version_text)
+                    if m:
+                        try:
+                            sp_dict["version year"] = int(m.group(1))
+                        except ValueError:
+                            pass
+
                 if "Windows" in line:
                     sp_dict["operating system"] = "Windows"
                     operating_system = "Windows"
@@ -154,6 +172,8 @@ def system_check(input_file):
 
             # CPF file
 
+            # CPF file
+
             if cpf_section:
                 if line.startswith("AlternateDirectory="):
                     sp_dict["alternate journal"] = (line.split("=")[1]).strip()
@@ -177,6 +197,14 @@ def system_check(input_file):
                     sp_dict["wduseasyncio"] = (line.split("=")[1]).strip()
                 if line.startswith("jrnbufs="):
                     sp_dict["jrnbufs"] = (line.split("=")[1]).strip()
+                if line.startswith("AdaptiveMode="):
+                    sp_dict["AdaptiveMode"] = (line.split("=")[1]).strip()
+                if line.startswith("AutoParallel="):
+                    sp_dict["AutoParallel"] = (line.split("=")[1]).strip()
+                if line.startswith("LockThreshold="):
+                    sp_dict["LockThreshold"] = (line.split("=")[1]).strip()
+                if line.startswith("RTPC="):
+                    sp_dict["RTPC"] = (line.split("=")[1]).strip()
 
             # Chad's metrics
             if "CACHESYS=" in line:
@@ -455,6 +483,91 @@ def build_log(sp_dict):
         if sp_dict["wijdir"] == "":
             warn_count += 1
             sp_dict[f"warning {warn_count}"] = f"WIJ in Installation Directory"
+
+    # SQL / CPF settings
+
+    # AdaptiveMode: SQL Adaptive Mode ON/OFF
+    if "AdaptiveMode" in sp_dict:
+        try:
+            adaptive_mode = int(sp_dict["AdaptiveMode"])
+        except ValueError:
+            adaptive_mode = None
+
+        if adaptive_mode in (0, 1):
+            sp_dict["SQL Adaptive Mode"] = "ON" if adaptive_mode == 1 else "OFF"
+
+            # Warning only if version year < 2024 and AdaptiveMode=1
+            if (
+                adaptive_mode == 1
+                and "version year" in sp_dict
+                and isinstance(sp_dict["version year"], int)
+                and sp_dict["version year"] < 2024
+            ):
+                warn_count += 1
+                sp_dict[f"warning {warn_count}"] = (
+                    f"SQL Adaptive Mode is ON (AdaptiveMode=1) but IRIS version year is " f"{sp_dict['version year']}."
+                )
+            else:
+                # No warning for this setting -> record as pass
+                pass_count += 1
+                sp_dict[f"pass {pass_count}"] = (
+                    f"SQL Adaptive Mode is {sp_dict['SQL Adaptive Mode']} " f"(AdaptiveMode={adaptive_mode})."
+                )
+
+    # AutoParallel: Execute queries in a single process ON/OFF
+    if "AutoParallel" in sp_dict:
+        try:
+            autoparallel = int(sp_dict["AutoParallel"])
+        except ValueError:
+            autoparallel = None
+
+        if autoparallel in (0, 1):
+            # AutoParallel=0 => Execute queries in a single process ON
+            status = "ON" if autoparallel == 0 else "OFF"
+            sp_dict["Execute queries in a single process"] = status
+
+            if autoparallel == 1:
+                # OFF is a warning
+                warn_count += 1
+                sp_dict[f"warning {warn_count}"] = "Execute queries in a single process is OFF (AutoParallel=1)."
+            else:
+                # No warning -> pass
+                pass_count += 1
+                sp_dict[f"pass {pass_count}"] = "Execute queries in a single process is ON (AutoParallel=0)."
+
+    # LockThreshold: OK / High / Warning
+    if "LockThreshold" in sp_dict:
+        try:
+            lock_threshold = int(sp_dict["LockThreshold"])
+        except ValueError:
+            lock_threshold = None
+
+        if lock_threshold is not None:
+            if lock_threshold == 10000:
+                sp_dict["LockThreshold status"] = "OK"
+                pass_count += 1
+                sp_dict[f"pass {pass_count}"] = "LockThreshold is 10000 (OK)."
+            elif lock_threshold == 100000:
+                sp_dict["LockThreshold status"] = "High"
+                warn_count += 1
+                sp_dict[f"warning {warn_count}"] = "LockThreshold is 100000 (High). Review lock table threshold."
+            else:
+                sp_dict["LockThreshold status"] = "Warning"
+                warn_count += 1
+                sp_dict[f"warning {warn_count}"] = f"LockThreshold is {lock_threshold}, expected 10000."
+
+    # RTPC: ON/OFF, always report as a pass (no warning defined)
+    if "RTPC" in sp_dict:
+        try:
+            rtpc_val = int(sp_dict["RTPC"])
+        except ValueError:
+            rtpc_val = None
+
+        if rtpc_val in (0, 1):
+            rtpc_status = "ON" if rtpc_val == 1 else "OFF"
+            sp_dict["RTPC status"] = rtpc_status
+            pass_count += 1
+            sp_dict[f"pass {pass_count}"] = f"RTPC is {rtpc_status} (RTPC={rtpc_val})."
 
     # Linux kernel
     if "overcommit_memory" in sp_dict:

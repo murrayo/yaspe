@@ -1574,8 +1574,11 @@ def mainline(
                 if system_out:
                     output_log, yaspe_yaml = sp_check.build_log(sp_dict)
 
+                    # Text overview plus YAML summary appended at the end
                     with open(f"{output_filepath_prefix}overview.txt", "w") as text_file:
                         print(f"{output_log}", file=text_file)
+                        print("", file=text_file)
+                        print(yaspe_yaml, file=text_file)
 
                     # Simple dump of all data in overview
                     overview_df = pd.DataFrame(list(sp_dict.items()), columns=["key", "value"])
