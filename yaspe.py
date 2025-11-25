@@ -369,7 +369,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     file_prefix = kwargs.get("file_prefix", "")
     min_max = kwargs.get("min_max", False)
     peak_chart = kwargs.get("peak_chart", True)
-    glorefs_peak_window = kwargs.get("glorefs_peak_window", None)
+    glorefs_peak_window = kwargs.get("glorefs_peak_window")  # Can be None or (start, end) tuple
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -547,7 +547,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     # Create Glorefs peak chart if glorefs_peak_window is provided and valid
     # This shows how this metric behaved during the peak Glorefs period
     if (
-        glorefs_peak_window is not None
+        isinstance(glorefs_peak_window, tuple)
         and glorefs_peak_window[0] is not None
         and min_max
         and is_medium_period
@@ -583,7 +583,9 @@ def _find_peak_60_window(png_data, datetime_column):
     sorted_data = sorted_data.set_index(datetime_column)
 
     # Use a 60-minute rolling window to find the window with highest mean
-    rolling_mean = sorted_data["metric"].rolling(window="60min", min_periods=1).mean()
+    # min_periods=30 ensures we have enough data points before considering a window valid
+    # (avoids false peaks at data boundaries where only a few points exist)
+    rolling_mean = sorted_data["metric"].rolling(window="60min", min_periods=30).mean()
 
     # Find the end time of the peak 60-minute window
     peak_end_time = rolling_mean.idxmax()
@@ -606,8 +608,25 @@ def _create_peak_60_chart(png_data, column_name, title, max_y, filepath, output_
     sorted_data = png_data.sort_values(by=datetime_column).copy()
     sorted_data = sorted_data.set_index(datetime_column)
 
-    # Filter data to the peak 60-minute window
-    peak_data = sorted_data.loc[peak_start_time:peak_end_time].copy()
+    # Get the actual data boundaries
+    min_data_time = sorted_data.index.min()
+    max_data_time = sorted_data.index.max()
+
+    # Adjust filter range to actual data boundaries while maintaining 60-minute window
+    # If peak_start_time is before data starts, shift the window forward
+    if peak_start_time < min_data_time:
+        chart_start_time = min_data_time
+        chart_end_time = min(min_data_time + timedelta(minutes=60), max_data_time)
+    # If peak_end_time is after data ends, shift the window backward
+    elif peak_end_time > max_data_time:
+        chart_end_time = max_data_time
+        chart_start_time = max(max_data_time - timedelta(minutes=60), min_data_time)
+    else:
+        chart_start_time = peak_start_time
+        chart_end_time = peak_end_time
+
+    # Filter data to the adjusted peak window
+    peak_data = sorted_data.loc[chart_start_time:chart_end_time].copy()
 
     # Reset index to get datetime column back
     peak_data = peak_data.reset_index()
@@ -676,11 +695,11 @@ def _create_peak_60_chart(png_data, column_name, title, max_y, filepath, output_
     ax.legend(loc="best")
     ax.grid(which="major", axis="both", linestyle="--")
 
-    # Format title with peak period time range
-    peak_start_str = peak_start_time.strftime("%H:%M")
-    peak_end_str = peak_end_time.strftime("%H:%M")
-    date_str = peak_start_time.strftime("%a %d-%b-%y")
-    ax.set_title(f"{title} - Peak 60 min ({peak_start_str} to {peak_end_str}) - {date_str}", fontsize=16)
+    # Format title with peak period time range (using adjusted chart times)
+    chart_start_str = chart_start_time.strftime("%H:%M")
+    chart_end_str = chart_end_time.strftime("%H:%M")
+    date_str = chart_start_time.strftime("%a %d-%b-%y")
+    ax.set_title(f"{title} - Peak 60 min ({chart_start_str} to {chart_end_str}) - {date_str}", fontsize=16)
 
     ax.set_ylabel(column_name, fontsize=14)
     ax.tick_params(labelsize=14)
@@ -728,9 +747,22 @@ def _create_glorefs_peak_chart(
     sorted_data = png_data.sort_values(by=datetime_column).copy()
     sorted_data = sorted_data.set_index(datetime_column)
 
-    # Filter data to the Glorefs peak 60-minute window
+    # Get the actual min and max datetime in this metric's data
+    min_data_time = sorted_data.index.min()
+    max_data_time = sorted_data.index.max()
+
+    # Adjust the glorefs window to fit within this metric's data range
+    # This handles cases where glorefs peak crosses midnight but this metric doesn't span that range
+    adjusted_start = max(glorefs_start, min_data_time)
+    adjusted_end = min(glorefs_end, max_data_time)
+
+    # If the adjusted window is invalid (start >= end), skip this chart
+    if adjusted_start >= adjusted_end:
+        return
+
+    # Filter data to the adjusted Glorefs peak window
     try:
-        peak_data = sorted_data.loc[glorefs_start:glorefs_end].copy()
+        peak_data = sorted_data.loc[adjusted_start:adjusted_end].copy()
     except KeyError:
         # Time range doesn't overlap with this data
         return
@@ -802,10 +834,10 @@ def _create_glorefs_peak_chart(
     ax.legend(loc="best")
     ax.grid(which="major", axis="both", linestyle="--")
 
-    # Format title with Glorefs peak period time range
-    peak_start_str = glorefs_start.strftime("%H:%M")
-    peak_end_str = glorefs_end.strftime("%H:%M")
-    date_str = glorefs_start.strftime("%a %d-%b-%y")
+    # Format title with Glorefs peak period time range (using adjusted times)
+    peak_start_str = adjusted_start.strftime("%H:%M")
+    peak_end_str = adjusted_end.strftime("%H:%M")
+    date_str = adjusted_start.strftime("%a %d-%b-%y")
     ax.set_title(f"{title} - Glorefs Peak ({peak_start_str} to {peak_end_str}) - {date_str}", fontsize=16)
 
     ax.set_ylabel(column_name, fontsize=14)
