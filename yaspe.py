@@ -364,6 +364,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     file_prefix = kwargs.get("file_prefix", "")
     min_max = kwargs.get("min_max", False)
+    peak_chart = kwargs.get("peak_chart", True)
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -400,6 +401,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     # Calculate time period duration
     time_range = png_data[datetime_column].max() - png_data[datetime_column].min()
     is_long_period = time_range.total_seconds() > (25 * 60 * 60)  # More than 25 hours
+    is_medium_period = time_range.total_seconds() > (8 * 60 * 60)  # More than 8 hours
 
     ax.plot(
         png_data[datetime_column],
@@ -523,6 +525,140 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     output_name = column_name.replace("/", "_")
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=100)
+    plt.close("all")
+
+    # Create peak 60-minute chart if conditions are met:
+    # - peak_chart is True
+    # - min_max is True
+    # - Data is more than 8 hours but less than 25 hours
+    if peak_chart and min_max and is_medium_period and not is_long_period:
+        _create_peak_60_chart(
+            png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column
+        )
+
+
+def _create_peak_60_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column):
+    """Create a chart showing only the peak 60 minutes for the column."""
+    from datetime import timedelta
+
+    # Sort data by datetime to ensure proper rolling window calculation
+    sorted_data = png_data.sort_values(by=datetime_column).copy()
+
+    # Find the peak 60-minute window using a rolling sum approach
+    # First, set the datetime column as index for rolling operations
+    sorted_data = sorted_data.set_index(datetime_column)
+
+    # Use a 60-minute rolling window to find the window with highest sum/mean
+    # This captures the "busiest" 60-minute period
+    rolling_mean = sorted_data["metric"].rolling(window="60min", min_periods=1).mean()
+
+    # Find the end time of the peak 60-minute window (where rolling mean is maximum)
+    peak_end_time = rolling_mean.idxmax()
+    peak_start_time = peak_end_time - timedelta(minutes=60)
+
+    # Filter data to the peak 60-minute window
+    peak_data = sorted_data.loc[peak_start_time:peak_end_time].copy()
+
+    # Reset index to get datetime column back
+    peak_data = peak_data.reset_index()
+
+    if len(peak_data) < 2:
+        # Not enough data points for a meaningful chart
+        return
+
+    colormap_name = "Set1"
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+    plt.figure(num=None, figsize=(16, 6))
+    plt.tight_layout()
+
+    palette = plt.get_cmap(colormap_name)
+    color = palette(1)
+
+    fig, ax = plt.subplots()
+    plt.gcf().set_size_inches(16, 6)
+
+    ax.plot(
+        peak_data[datetime_column],
+        peak_data["metric"],
+        label=column_name,
+        color=color,
+        marker=".",
+        linestyle="none",
+        alpha=0.7,
+    )
+
+    # Add min/max lines for the peak period
+    abs_min = peak_data["metric"].min()
+    abs_max = peak_data["metric"].max()
+
+    # For the peak window, use percentile filtering
+    p2 = peak_data["metric"].quantile(0.02)
+    p99 = peak_data["metric"].quantile(0.99)
+
+    filtered_data = peak_data[(peak_data["metric"] >= p2) & (peak_data["metric"] <= p99)]
+    has_outliers = len(filtered_data) < len(peak_data)
+
+    if has_outliers and len(filtered_data) > 0:
+        adj_min = filtered_data["metric"].min()
+        adj_max = filtered_data["metric"].max()
+
+        ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Absolute Min: {abs_min:,.0f}")
+        ax.axhline(
+            y=adj_min,
+            color="red",
+            linestyle="--",
+            alpha=0.7,
+            label=f"98th Percentile Min: {adj_min:,.0f} (no outliers)",
+        )
+        ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Absolute Max: {abs_max:,.0f}")
+        ax.axhline(
+            y=adj_max,
+            color="green",
+            linestyle="--",
+            alpha=0.7,
+            label=f"99th Percentile Max: {adj_max:,.0f} (no outliers)",
+        )
+    else:
+        ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Minimum: {abs_min:,.0f}")
+        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Maximum: {abs_max:,.0f}")
+
+    ax.legend(loc="best")
+    ax.grid(which="major", axis="both", linestyle="--")
+
+    # Format title with peak period time range
+    peak_start_str = peak_start_time.strftime("%H:%M")
+    peak_end_str = peak_end_time.strftime("%H:%M")
+    date_str = peak_start_time.strftime("%a %d-%b-%y")
+    ax.set_title(f"{title} - Peak 60 min ({peak_start_str} to {peak_end_str}) - {date_str}", fontsize=16)
+
+    ax.set_ylabel(column_name, fontsize=14)
+    ax.tick_params(labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
+    ax.set_ylim(bottom=0)
+    if max_y != 0:
+        ax.set_ylim(top=max_y)
+
+    cpu_names = ["wa", "sy", "us"]
+    if (
+        peak_data["metric"].max() > 5
+        or "%" in column_name
+        or column_name in cpu_names
+        or peak_data["metric"].max() == 0
+    ):
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    elif peak_data["metric"].max() < 0.002:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.4f}"))
+    else:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
+
+    locator = plt_dates.AutoDateLocator()
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(plt_dates.DateFormatter("%H:%M"))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    output_name = column_name.replace("/", "_")
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_peak60.png", format="png", dpi=100)
     plt.close("all")
 
 
@@ -874,7 +1010,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     plt.close("all")
 
 
-def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out):
+def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True):
     # print(f"vmstat...")
     # Get useful
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -949,15 +1085,19 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out):
             data = to_chart_df
 
             if png_out:
-                simple_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
+                simple_chart(
+                    data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
+                )
             elif png_html_out:
-                simple_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
+                simple_chart(
+                    data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
+                )
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
-def chart_mgstat(connection, filepath, output_prefix, png_out, png_html_out, mgstat_file):
+def chart_mgstat(connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True):
     # print(f"mgstat...")
 
     if not mgstat_file:
@@ -1022,15 +1162,19 @@ def chart_mgstat(connection, filepath, output_prefix, png_out, png_html_out, mgs
                 min_max = True
 
             if png_out:
-                simple_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
+                simple_chart(
+                    data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
+                )
             elif png_html_out:
-                simple_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
+                simple_chart(
+                    data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
+                )
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
-def chart_perfmon(connection, filepath, output_prefix, png_out, png_html_out):
+def chart_perfmon(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True):
     # print(f"perfmon...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -1069,10 +1213,25 @@ def chart_perfmon(connection, filepath, output_prefix, png_out, png_html_out):
     perfmon_df = perfmon_df.melt(id_vars=["datetime", "datetime_parsed"], var_name="Type", value_name="metric")
 
     # For each column create a chart
+    # Define columns that should have min_max enabled
+    perfmon_min_max_patterns = [
+        "ProcessorTotal_Processor_Time",
+        "SystemProcesses",
+        "SystemProcessor_Queue_Length",
+        "PhysicalDiskTotalAvg_Disk_secRead",
+        "PhysicalDiskTotalAvg_Disk_secWrite",
+        "TotalDisk_Readssec",
+        "TotalDisk_Transferssec",
+        "TotalDisk_Writessec",
+    ]
+
     for column_name in columns_to_chart:
         if column_name == "datetime":
             pass
         else:
+            # Check if min_max should be enabled for this column
+            min_max = any(pattern in column_name for pattern in perfmon_min_max_patterns)
+
             if "Total_Processor_Time" in column_name or "Processor_Queue_Length" in column_name:
                 title = f"{column_name} - {customer}"
                 title += f"\n {number_cpus} cores"
@@ -1091,15 +1250,21 @@ def chart_perfmon(connection, filepath, output_prefix, png_out, png_html_out):
             data = to_chart_df
 
             if png_out:
-                simple_chart(data, column_name, title, max_y, filepath, output_prefix)
+                simple_chart(
+                    data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
+                )
             elif png_html_out:
-                simple_chart(data, column_name, title, max_y, filepath, output_prefix)
+                simple_chart(
+                    data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
+                )
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
-def chart_iostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out, disk_list):
+def chart_iostat(
+    connection, filepath, output_prefix, operating_system, png_out, png_html_out, disk_list, peak_chart=True
+):
     # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -1207,9 +1372,27 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
                     data = to_chart_df
 
                     if png_out:
-                        simple_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                        simple_chart(
+                            data,
+                            column_name,
+                            title,
+                            max_y,
+                            filepath,
+                            output_prefix,
+                            file_prefix=device,
+                            peak_chart=peak_chart,
+                        )
                     elif png_html_out:
-                        simple_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                        simple_chart(
+                            data,
+                            column_name,
+                            title,
+                            max_y,
+                            filepath,
+                            output_prefix,
+                            file_prefix=device,
+                            peak_chart=peak_chart,
+                        )
                         linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
                     else:
                         linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
@@ -1270,7 +1453,7 @@ def chart_iostat(connection, filepath, output_prefix, operating_system, png_out,
                         )
 
 
-def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out):
+def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out, peak_chart=True):
     # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -1334,7 +1517,9 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
                     )
 
 
-def chart_aix_sar_d(connection, filepath, output_prefix, operating_system, png_out, png_html_out, disk_list):
+def chart_aix_sar_d(
+    connection, filepath, output_prefix, operating_system, png_out, png_html_out, disk_list, peak_chart=True
+):
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
     # Read in to dataframe, drop any bad rows
@@ -1390,9 +1575,27 @@ def chart_aix_sar_d(connection, filepath, output_prefix, operating_system, png_o
                 data = to_chart_df
 
                 if png_out:
-                    simple_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                    simple_chart(
+                        data,
+                        column_name,
+                        title,
+                        max_y,
+                        filepath,
+                        output_prefix,
+                        file_prefix=device,
+                        peak_chart=peak_chart,
+                    )
                 elif png_html_out:
-                    simple_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                    simple_chart(
+                        data,
+                        column_name,
+                        title,
+                        max_y,
+                        filepath,
+                        output_prefix,
+                        file_prefix=device,
+                        peak_chart=peak_chart,
+                    )
                     linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
                 else:
                     linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
@@ -1401,7 +1604,7 @@ def chart_aix_sar_d(connection, filepath, output_prefix, operating_system, png_o
                         interactive_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
 
-def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out):
+def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True):
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
     # Read in to dataframe, drop any bad rows
@@ -1447,9 +1650,13 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
             min_max = column_name in ("used", "free", "available")
 
             if png_out:
-                simple_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
+                simple_chart(
+                    data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
+                )
             elif png_html_out:
-                simple_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
+                simple_chart(
+                    data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
+                )
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
@@ -1470,6 +1677,7 @@ def mainline(
     split_on,
     csv_date_format,
     mgstat_file,
+    peak_chart=True,
 ):
     input_error = False
 
@@ -1627,7 +1835,7 @@ def mainline(
         if not os.path.isdir(output_file_path):
             os.mkdir(output_file_path)
 
-        chart_mgstat(connection, output_file_path, output_prefix, png_out, png_html_out, mgstat_file)
+        chart_mgstat(connection, output_file_path, output_prefix, png_out, png_html_out, mgstat_file, peak_chart)
 
         # No need to go further for .mgst file
         if mgstat_file:
@@ -1643,21 +1851,28 @@ def mainline(
             output_file_path = f"{output_file_path_base}/vmstat/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
-            chart_vmstat(connection, output_file_path, output_prefix, png_out, png_html_out)
+            chart_vmstat(connection, output_file_path, output_prefix, png_out, png_html_out, peak_chart)
 
             # free memory (Linux/Ubuntu only)
             if operating_system == "Linux" or operating_system == "Ubuntu":
                 output_file_path = f"{output_file_path_base}/free_memory/"
                 if not os.path.isdir(output_file_path):
                     os.mkdir(output_file_path)
-                chart_free_memory(connection, output_file_path, output_prefix, png_out, png_html_out)
+                chart_free_memory(connection, output_file_path, output_prefix, png_out, png_html_out, peak_chart)
 
             if include_iostat:
                 output_file_path = f"{output_file_path_base}/iostat/"
                 if not os.path.isdir(output_file_path):
                     os.mkdir(output_file_path)
                 chart_iostat(
-                    connection, output_file_path, output_prefix, operating_system, png_out, png_html_out, disk_list
+                    connection,
+                    output_file_path,
+                    output_prefix,
+                    operating_system,
+                    png_out,
+                    png_html_out,
+                    disk_list,
+                    peak_chart,
                 )
 
                 if operating_system == "AIX":
@@ -1665,7 +1880,14 @@ def mainline(
                     if not os.path.isdir(output_file_path):
                         os.mkdir(output_file_path)
                     chart_aix_sar_d(
-                        connection, output_file_path, output_prefix, operating_system, png_out, png_html_out, disk_list
+                        connection,
+                        output_file_path,
+                        output_prefix,
+                        operating_system,
+                        png_out,
+                        png_html_out,
+                        disk_list,
+                        peak_chart,
                     )
 
             if include_nfsiostat:
@@ -1679,13 +1901,14 @@ def mainline(
                     operating_system,
                     png_out,
                     png_html_out,
+                    peak_chart,
                 )
 
         if operating_system == "Windows":
             output_file_path = f"{output_file_path_base}/perfmon/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
-            chart_perfmon(connection, output_file_path, output_prefix, png_out, png_html_out)
+            chart_perfmon(connection, output_file_path, output_prefix, png_out, png_html_out, peak_chart)
 
         connection.close()
 
@@ -1819,6 +2042,21 @@ if __name__ == "__main__":
         metavar='"string to split on"',
     )
 
+    parser.add_argument(
+        "--peak_chart",
+        dest="peak_chart",
+        help="Create additional peak 60-minute charts for metrics with min_max enabled when data is 8-25 hours. Default is True.",
+        action="store_true",
+        default=True,
+    )
+
+    parser.add_argument(
+        "--no_peak_chart",
+        dest="peak_chart",
+        help="Disable peak 60-minute charts.",
+        action="store_false",
+    )
+
     args = parser.parse_args()
 
     # Validate input file
@@ -1868,6 +2106,7 @@ if __name__ == "__main__":
             args.split_on,
             args.csv_date_format,
             args.mgstat_file,
+            args.peak_chart,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
