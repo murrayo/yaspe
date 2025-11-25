@@ -354,10 +354,14 @@ def create_overview(connection, sp_dict):
 
 
 def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
+    """
+    Create a simple chart. Returns (peak_start, peak_end) if this is a Glorefs chart with peak enabled,
+    otherwise returns (None, None).
+    """
     # Check column only has numeric data (strings can sneak in with AIX)
     if not is_column_numeric(data, "metric"):
         print(f"Non numeric data in in column: {column_name} for chart {title}:\n{data.head(2)}")
-        return
+        return None, None
     # else:
     #     print(column_name)
     #     print(f'_{data["metric"].max()}_ : {type(data["metric"].max())}')
@@ -365,6 +369,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     file_prefix = kwargs.get("file_prefix", "")
     min_max = kwargs.get("min_max", False)
     peak_chart = kwargs.get("peak_chart", True)
+    glorefs_peak_window = kwargs.get("glorefs_peak_window", None)
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -527,34 +532,79 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=100)
     plt.close("all")
 
+    # Track peak times for Glorefs
+    peak_start_time, peak_end_time = None, None
+
     # Create peak 60-minute chart if conditions are met:
     # - peak_chart is True
     # - min_max is True
     # - Data is more than 8 hours but less than 25 hours
     if peak_chart and min_max and is_medium_period and not is_long_period:
-        _create_peak_60_chart(
+        peak_start_time, peak_end_time = _create_peak_60_chart(
             png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column
         )
 
+    # Create Glorefs peak chart if glorefs_peak_window is provided and valid
+    # This shows how this metric behaved during the peak Glorefs period
+    if (
+        glorefs_peak_window is not None
+        and glorefs_peak_window[0] is not None
+        and min_max
+        and is_medium_period
+        and not is_long_period
+    ):
+        _create_glorefs_peak_chart(
+            png_data,
+            column_name,
+            title,
+            max_y,
+            filepath,
+            output_prefix,
+            file_prefix,
+            datetime_column,
+            glorefs_peak_window,
+        )
 
-def _create_peak_60_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column):
-    """Create a chart showing only the peak 60 minutes for the column."""
+    # Return peak times (useful for Glorefs to pass to other charts)
+    return peak_start_time, peak_end_time
+
+
+def _find_peak_60_window(png_data, datetime_column):
+    """Find the peak 60-minute window for the data. Returns (peak_start_time, peak_end_time) or (None, None)."""
     from datetime import timedelta
+
+    if len(png_data) < 2:
+        return None, None
 
     # Sort data by datetime to ensure proper rolling window calculation
     sorted_data = png_data.sort_values(by=datetime_column).copy()
 
-    # Find the peak 60-minute window using a rolling sum approach
-    # First, set the datetime column as index for rolling operations
+    # Set the datetime column as index for rolling operations
     sorted_data = sorted_data.set_index(datetime_column)
 
-    # Use a 60-minute rolling window to find the window with highest sum/mean
-    # This captures the "busiest" 60-minute period
+    # Use a 60-minute rolling window to find the window with highest mean
     rolling_mean = sorted_data["metric"].rolling(window="60min", min_periods=1).mean()
 
-    # Find the end time of the peak 60-minute window (where rolling mean is maximum)
+    # Find the end time of the peak 60-minute window
     peak_end_time = rolling_mean.idxmax()
     peak_start_time = peak_end_time - timedelta(minutes=60)
+
+    return peak_start_time, peak_end_time
+
+
+def _create_peak_60_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column):
+    """Create a chart showing only the peak 60 minutes for the column. Returns (peak_start_time, peak_end_time)."""
+    from datetime import timedelta
+
+    # Find the peak window
+    peak_start_time, peak_end_time = _find_peak_60_window(png_data, datetime_column)
+
+    if peak_start_time is None:
+        return None, None
+
+    # Sort and filter data to peak window
+    sorted_data = png_data.sort_values(by=datetime_column).copy()
+    sorted_data = sorted_data.set_index(datetime_column)
 
     # Filter data to the peak 60-minute window
     peak_data = sorted_data.loc[peak_start_time:peak_end_time].copy()
@@ -564,7 +614,7 @@ def _create_peak_60_chart(png_data, column_name, title, max_y, filepath, output_
 
     if len(peak_data) < 2:
         # Not enough data points for a meaningful chart
-        return
+        return None, None
 
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
@@ -659,6 +709,132 @@ def _create_peak_60_chart(png_data, column_name, title, max_y, filepath, output_
 
     output_name = column_name.replace("/", "_")
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_peak60.png", format="png", dpi=100)
+    plt.close("all")
+
+    return peak_start_time, peak_end_time
+
+
+def _create_glorefs_peak_chart(
+    png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, glorefs_peak_window
+):
+    """Create a chart showing the Glorefs peak 60-minute window for this column."""
+
+    glorefs_start, glorefs_end = glorefs_peak_window
+
+    if glorefs_start is None or glorefs_end is None:
+        return
+
+    # Sort and filter data to glorefs peak window
+    sorted_data = png_data.sort_values(by=datetime_column).copy()
+    sorted_data = sorted_data.set_index(datetime_column)
+
+    # Filter data to the Glorefs peak 60-minute window
+    try:
+        peak_data = sorted_data.loc[glorefs_start:glorefs_end].copy()
+    except KeyError:
+        # Time range doesn't overlap with this data
+        return
+
+    # Reset index to get datetime column back
+    peak_data = peak_data.reset_index()
+
+    if len(peak_data) < 2:
+        # Not enough data points for a meaningful chart
+        return
+
+    colormap_name = "Set1"
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+    plt.figure(num=None, figsize=(16, 6))
+    plt.tight_layout()
+
+    palette = plt.get_cmap(colormap_name)
+    color = palette(2)  # Different color to distinguish from regular peak chart
+
+    fig, ax = plt.subplots()
+    plt.gcf().set_size_inches(16, 6)
+
+    ax.plot(
+        peak_data[datetime_column],
+        peak_data["metric"],
+        label=column_name,
+        color=color,
+        marker=".",
+        linestyle="none",
+        alpha=0.7,
+    )
+
+    # Add min/max lines for the glorefs peak period
+    abs_min = peak_data["metric"].min()
+    abs_max = peak_data["metric"].max()
+
+    # For the peak window, use percentile filtering
+    p2 = peak_data["metric"].quantile(0.02)
+    p99 = peak_data["metric"].quantile(0.99)
+
+    filtered_data = peak_data[(peak_data["metric"] >= p2) & (peak_data["metric"] <= p99)]
+    has_outliers = len(filtered_data) < len(peak_data)
+
+    if has_outliers and len(filtered_data) > 0:
+        adj_min = filtered_data["metric"].min()
+        adj_max = filtered_data["metric"].max()
+
+        ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Absolute Min: {abs_min:,.0f}")
+        ax.axhline(
+            y=adj_min,
+            color="red",
+            linestyle="--",
+            alpha=0.7,
+            label=f"98th Percentile Min: {adj_min:,.0f} (no outliers)",
+        )
+        ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Absolute Max: {abs_max:,.0f}")
+        ax.axhline(
+            y=adj_max,
+            color="green",
+            linestyle="--",
+            alpha=0.7,
+            label=f"99th Percentile Max: {adj_max:,.0f} (no outliers)",
+        )
+    else:
+        ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Minimum: {abs_min:,.0f}")
+        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Maximum: {abs_max:,.0f}")
+
+    ax.legend(loc="best")
+    ax.grid(which="major", axis="both", linestyle="--")
+
+    # Format title with Glorefs peak period time range
+    peak_start_str = glorefs_start.strftime("%H:%M")
+    peak_end_str = glorefs_end.strftime("%H:%M")
+    date_str = glorefs_start.strftime("%a %d-%b-%y")
+    ax.set_title(f"{title} - Glorefs Peak ({peak_start_str} to {peak_end_str}) - {date_str}", fontsize=16)
+
+    ax.set_ylabel(column_name, fontsize=14)
+    ax.tick_params(labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
+    ax.set_ylim(bottom=0)
+    if max_y != 0:
+        ax.set_ylim(top=max_y)
+
+    cpu_names = ["wa", "sy", "us"]
+    if (
+        peak_data["metric"].max() > 5
+        or "%" in column_name
+        or column_name in cpu_names
+        or peak_data["metric"].max() == 0
+    ):
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    elif peak_data["metric"].max() < 0.002:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.4f}"))
+    else:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
+
+    locator = plt_dates.AutoDateLocator()
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(plt_dates.DateFormatter("%H:%M"))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    output_name = column_name.replace("/", "_")
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_glorefs_peak.png", format="png", dpi=100)
     plt.close("all")
 
 
@@ -1010,7 +1186,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     plt.close("all")
 
 
-def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True):
+def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True, glorefs_peak_window=None):
     # print(f"vmstat...")
     # Get useful
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -1075,7 +1251,7 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out, pea
 
             if column_name in ("Total CPU", "wa", "id", "us", "sy"):
                 max_y = 100
-                if column_name in ("Total CPU", "wa", "sy"):
+                if column_name in ("Total CPU", "wa", "sy", "us", "r"):
                     min_max = True
             else:
                 # Remove outliers first, will result in nan for zero values, so needs more work
@@ -1086,11 +1262,27 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out, pea
 
             if png_out:
                 simple_chart(
-                    data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
+                    data,
+                    column_name,
+                    title,
+                    max_y,
+                    filepath,
+                    output_prefix,
+                    min_max=min_max,
+                    peak_chart=peak_chart,
+                    glorefs_peak_window=glorefs_peak_window,
                 )
             elif png_html_out:
                 simple_chart(
-                    data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
+                    data,
+                    column_name,
+                    title,
+                    max_y,
+                    filepath,
+                    output_prefix,
+                    min_max=min_max,
+                    peak_chart=peak_chart,
+                    glorefs_peak_window=glorefs_peak_window,
                 )
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
@@ -1098,7 +1290,12 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out, pea
 
 
 def chart_mgstat(connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True):
+    """
+    Chart mgstat data. Returns the Glorefs peak window (start, end) if available, otherwise (None, None).
+    """
     # print(f"mgstat...")
+
+    glorefs_peak_window = (None, None)  # Will be populated if Glorefs peak chart is created
 
     if not mgstat_file:
         customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -1112,7 +1309,7 @@ def chart_mgstat(connection, filepath, output_prefix, png_out, png_html_out, mgs
     except DatabaseError as e:
         # Check if the error message indicates a missing table
         if "no such table" in str(e):
-            return None
+            return glorefs_peak_window
         else:
             # For other types of Error, handle them accordingly
             raise e
@@ -1158,23 +1355,44 @@ def chart_mgstat(connection, filepath, output_prefix, png_out, png_html_out, mgs
             max_y = to_chart_df["metric"].max()
 
             data = to_chart_df
-            if column_name in ("Glorefs", "RemGrefs"):
+            if column_name in (
+                "Glorefs",
+                "RemGrefs",
+                "Gloupds",
+                "RemGupds",
+                "Jrnwrts",
+                "PhyRds",
+                "PhyWrs",
+                "RouCMs",
+                "RouLaS",
+                "WIJwri",
+            ):
                 min_max = True
 
             if png_out:
-                simple_chart(
+                peak_start, peak_end = simple_chart(
                     data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
                 )
+                # Capture Glorefs peak window
+                if column_name == "Glorefs" and peak_start is not None:
+                    glorefs_peak_window = (peak_start, peak_end)
             elif png_html_out:
-                simple_chart(
+                peak_start, peak_end = simple_chart(
                     data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
                 )
+                # Capture Glorefs peak window
+                if column_name == "Glorefs" and peak_start is not None:
+                    glorefs_peak_window = (peak_start, peak_end)
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
+    return glorefs_peak_window
 
-def chart_perfmon(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True):
+
+def chart_perfmon(
+    connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True, glorefs_peak_window=None
+):
     # print(f"perfmon...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -1251,11 +1469,27 @@ def chart_perfmon(connection, filepath, output_prefix, png_out, png_html_out, pe
 
             if png_out:
                 simple_chart(
-                    data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
+                    data,
+                    column_name,
+                    title,
+                    max_y,
+                    filepath,
+                    output_prefix,
+                    min_max=min_max,
+                    peak_chart=peak_chart,
+                    glorefs_peak_window=glorefs_peak_window,
                 )
             elif png_html_out:
                 simple_chart(
-                    data, column_name, title, max_y, filepath, output_prefix, min_max=min_max, peak_chart=peak_chart
+                    data,
+                    column_name,
+                    title,
+                    max_y,
+                    filepath,
+                    output_prefix,
+                    min_max=min_max,
+                    peak_chart=peak_chart,
+                    glorefs_peak_window=glorefs_peak_window,
                 )
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
@@ -1829,13 +2063,15 @@ def mainline(
                 connection, "SELECT * FROM overview WHERE field = 'operating system';"
             )[2]
 
-        # mgstat
+        # mgstat - capture Glorefs peak window for use in other charts
         output_file_path = f"{output_file_path_base}/mgstat/"
 
         if not os.path.isdir(output_file_path):
             os.mkdir(output_file_path)
 
-        chart_mgstat(connection, output_file_path, output_prefix, png_out, png_html_out, mgstat_file, peak_chart)
+        glorefs_peak_window = chart_mgstat(
+            connection, output_file_path, output_prefix, png_out, png_html_out, mgstat_file, peak_chart
+        )
 
         # No need to go further for .mgst file
         if mgstat_file:
@@ -1851,7 +2087,9 @@ def mainline(
             output_file_path = f"{output_file_path_base}/vmstat/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
-            chart_vmstat(connection, output_file_path, output_prefix, png_out, png_html_out, peak_chart)
+            chart_vmstat(
+                connection, output_file_path, output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window
+            )
 
             # free memory (Linux/Ubuntu only)
             if operating_system == "Linux" or operating_system == "Ubuntu":
@@ -1908,7 +2146,9 @@ def mainline(
             output_file_path = f"{output_file_path_base}/perfmon/"
             if not os.path.isdir(output_file_path):
                 os.mkdir(output_file_path)
-            chart_perfmon(connection, output_file_path, output_prefix, png_out, png_html_out, peak_chart)
+            chart_perfmon(
+                connection, output_file_path, output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window
+            )
 
         connection.close()
 
