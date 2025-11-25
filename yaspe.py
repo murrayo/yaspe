@@ -1249,10 +1249,11 @@ def chart_vmstat(connection, filepath, output_prefix, png_out, png_html_out, pea
 
             to_chart_df = vmstat_df.loc[vmstat_df["Type"] == column_name]
 
+            if column_name in ("Total CPU", "wa", "sy", "us", "r"):
+                min_max = True
+
             if column_name in ("Total CPU", "wa", "id", "us", "sy"):
                 max_y = 100
-                if column_name in ("Total CPU", "wa", "sy", "us", "r"):
-                    min_max = True
             else:
                 # Remove outliers first, will result in nan for zero values, so needs more work
                 # to_chart_df = to_chart_df[((to_chart_df.metric - to_chart_df.metric.mean()) / to_chart_df.metric.std()).abs() < 3]
