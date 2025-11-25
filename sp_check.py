@@ -406,6 +406,7 @@ def build_log(sp_dict):
     # Build log for cut and paste
 
     pass_count = warn_count = recommend_count = 0
+    app_pass_count = app_warn_count = 0
     swappiness_max = 10
     swappiness_low_memory = 5
     swappiness_high_memory_gb = 64
@@ -414,11 +415,28 @@ def build_log(sp_dict):
 
     # split up mgstat header
 
+    mgstat_globalbuffers_mb = 0
+    mgstat_routinebuffers_mb = 0
+
     if "mgstat header" in sp_dict:
         mgstat_header = sp_dict["mgstat header"].split(",")
         for item in mgstat_header:
             if "numberofcpus" in item:
                 sp_dict["number cpus"] = item.split("=")[1].split(":")[0]
+            if "globalbuffers" in item:
+                # e.g. globalbuffers=3984MB:0^0^3984^0^0^0
+                gb_value = item.split("=")[1].split("MB")[0]
+                try:
+                    mgstat_globalbuffers_mb = int(gb_value)
+                except ValueError:
+                    mgstat_globalbuffers_mb = 0
+            if "routinebuffers" in item:
+                # e.g. routinebuffers=299MB:0^37^0^112^0^150
+                rb_value = item.split("=")[1].split("MB")[0]
+                try:
+                    mgstat_routinebuffers_mb = int(rb_value)
+                except ValueError:
+                    mgstat_routinebuffers_mb = 0
 
     # CPF
 
@@ -451,6 +469,12 @@ def build_log(sp_dict):
         # Calculate the sum of all parts
         globals_total = sum(filled_parts)
 
+        # If globals is zero in CPF, use value from mgstat header
+        if globals_total == 0 and mgstat_globalbuffers_mb > 0:
+            globals_total = mgstat_globalbuffers_mb
+            warn_count += 1
+            sp_dict[f"warning {warn_count}"] = f"globals is set to zero in the CPF file"
+
         sp_dict["globals total MB"] = globals_total
 
     if "routines" in sp_dict:
@@ -458,11 +482,34 @@ def build_log(sp_dict):
         routines_total = 0
         for item in routines:
             routines_total += int(item)
+
+        # If routines is zero in CPF, use value from mgstat header
+        if routines_total == 0 and mgstat_routinebuffers_mb > 0:
+            routines_total = mgstat_routinebuffers_mb
+            warn_count += 1
+            sp_dict[f"warning {warn_count}"] = f"routines is set to zero in the CPF file"
+
         sp_dict["routines total MB"] = routines_total
 
     # Chad's metrics
 
     if "gmheap" in sp_dict:
+        # If gmheap is 0, IRIS calculates a default: 3% of global buffers, min 300MB, max ~2GB
+        if int(sp_dict["gmheap"]) == 0 and "globals total MB" in sp_dict:
+            globals_total_mb = sp_dict["globals total MB"]
+            # Calculate 3% of global buffers in KB
+            estimated_gmheap_kb = int(globals_total_mb * 1024 * 0.03)
+            # Apply bounds: min 307,200 KB (300 MB), max 2,097,000 KB (~2 GB)
+            gmheap_min_kb = 307200
+            gmheap_max_kb = 2097000
+            estimated_gmheap_kb = max(gmheap_min_kb, min(gmheap_max_kb, estimated_gmheap_kb))
+            sp_dict["gmheap"] = str(estimated_gmheap_kb)
+            warn_count += 1
+            sp_dict[f"warning {warn_count}"] = (
+                f"gmheap is set to zero in the CPF file, estimated as {estimated_gmheap_kb} KB "
+                f"({round(estimated_gmheap_kb / 1024)} MB). Check messages.log for the actual value."
+            )
+
         if int(sp_dict["gmheap"]) == 37568:
             warn_count += 1
             sp_dict[f"warning {warn_count}"] = f"gmheap is default"
@@ -472,12 +519,31 @@ def build_log(sp_dict):
             sp_dict[f"warning {warn_count}"] = f"gmheap {sp_dict['gmheap']} size does not support parallel dejournaling"
 
     if "locksiz" in sp_dict:
-        if int(sp_dict["locksiz"]) == 16777216:
+        locksiz = int(sp_dict["locksiz"])
+        gmheap_kb = int(sp_dict["gmheap"]) if "gmheap" in sp_dict else 0
+        gmheap_bytes = gmheap_kb * 1024
+        operating_system = sp_dict.get("operating system", "")
+
+        if locksiz == 0:
             warn_count += 1
-            sp_dict[f"warning {warn_count}"] = f"locksiz is default"
-        if int(sp_dict["locksiz"]) < 16777216:
+            sp_dict[
+                f"warning {warn_count}"
+            ] = f"locksiz is 0; lock table size is limited only by gmheap ({gmheap_kb} KB)"
+        elif locksiz == 16777216:
+            # Old default for most platforms (16 MB)
             warn_count += 1
-            sp_dict[f"warning {warn_count}"] = f"locksiz {sp_dict['locksiz']} is less than IRIS default (16777216)"
+            sp_dict[f"warning {warn_count}"] = f"locksiz is at older Caché/IRIS default (16777216 bytes = 16 MB)"
+        elif locksiz == 33554432 and operating_system == "AIX":
+            # Old default for AIX (32 MB)
+            warn_count += 1
+            sp_dict[f"warning {warn_count}"] = f"locksiz is at older AIX default (33554432 bytes = 32 MB)"
+
+        # Check if locksiz is more than 50% of gmheap
+        if locksiz > 0 and gmheap_bytes > 0 and locksiz > (gmheap_bytes * 0.5):
+            warn_count += 1
+            sp_dict[
+                f"warning {warn_count}"
+            ] = f"locksiz ({locksiz:,} bytes) is more than 50% of gmheap ({gmheap_bytes:,} bytes)"
 
     if "wijdir" in sp_dict:
         if sp_dict["wijdir"] == "":
@@ -503,14 +569,14 @@ def build_log(sp_dict):
                 and isinstance(sp_dict["version year"], int)
                 and sp_dict["version year"] < 2024
             ):
-                warn_count += 1
-                sp_dict[f"warning {warn_count}"] = (
+                app_warn_count += 1
+                sp_dict[f"app warning {app_warn_count}"] = (
                     f"SQL Adaptive Mode is ON (AdaptiveMode=1) but IRIS version year is " f"{sp_dict['version year']}."
                 )
             else:
                 # No warning for this setting -> record as pass
-                pass_count += 1
-                sp_dict[f"pass {pass_count}"] = (
+                app_pass_count += 1
+                sp_dict[f"app pass {app_pass_count}"] = (
                     f"SQL Adaptive Mode is {sp_dict['SQL Adaptive Mode']} " f"(AdaptiveMode={adaptive_mode})."
                 )
 
@@ -528,12 +594,14 @@ def build_log(sp_dict):
 
             if autoparallel == 1:
                 # OFF is a warning
-                warn_count += 1
-                sp_dict[f"warning {warn_count}"] = "Execute queries in a single process is OFF (AutoParallel=1)."
+                app_warn_count += 1
+                sp_dict[
+                    f"app warning {app_warn_count}"
+                ] = "Execute queries in a single process is OFF (AutoParallel=1)."
             else:
                 # No warning -> pass
-                pass_count += 1
-                sp_dict[f"pass {pass_count}"] = "Execute queries in a single process is ON (AutoParallel=0)."
+                app_pass_count += 1
+                sp_dict[f"app pass {app_pass_count}"] = "Execute queries in a single process is ON (AutoParallel=0)."
 
     # LockThreshold: OK / High / Warning
     if "LockThreshold" in sp_dict:
@@ -545,16 +613,18 @@ def build_log(sp_dict):
         if lock_threshold is not None:
             if lock_threshold == 10000:
                 sp_dict["LockThreshold status"] = "OK"
-                pass_count += 1
-                sp_dict[f"pass {pass_count}"] = "LockThreshold is 10000 (OK)."
+                app_pass_count += 1
+                sp_dict[f"app pass {app_pass_count}"] = "LockThreshold is 10000 (OK)."
             elif lock_threshold == 100000:
                 sp_dict["LockThreshold status"] = "High"
-                warn_count += 1
-                sp_dict[f"warning {warn_count}"] = "LockThreshold is 100000 (High). Review lock table threshold."
+                app_warn_count += 1
+                sp_dict[
+                    f"app warning {app_warn_count}"
+                ] = "LockThreshold is 100000 (High). Review lock table threshold, see app documentation."
             else:
                 sp_dict["LockThreshold status"] = "Warning"
-                warn_count += 1
-                sp_dict[f"warning {warn_count}"] = f"LockThreshold is {lock_threshold}, expected 10000."
+                app_warn_count += 1
+                sp_dict[f"app warning {app_warn_count}"] = f"LockThreshold is {lock_threshold}, see app documentation."
 
     # RTPC: ON/OFF, always report as a pass (no warning defined)
     if "RTPC" in sp_dict:
@@ -566,8 +636,8 @@ def build_log(sp_dict):
         if rtpc_val in (0, 1):
             rtpc_status = "ON" if rtpc_val == 1 else "OFF"
             sp_dict["RTPC status"] = rtpc_status
-            pass_count += 1
-            sp_dict[f"pass {pass_count}"] = f"RTPC is {rtpc_status} (RTPC={rtpc_val})."
+            app_pass_count += 1
+            sp_dict[f"app pass {app_pass_count}"] = f"RTPC is {rtpc_status} (RTPC={rtpc_val})."
 
     # Linux kernel
     if "overcommit_memory" in sp_dict:
@@ -870,7 +940,7 @@ def build_log(sp_dict):
 
     first_pass = True
     for key in sp_dict:
-        if "pass" in key:
+        if "pass" in key and "app pass" not in key:
             if first_pass:
                 log += "\nPasses:\n"
                 first_pass = False
@@ -878,10 +948,18 @@ def build_log(sp_dict):
 
     first_warning = True
     for key in sp_dict:
-        if "warn" in key:
+        if "warn" in key and "app warn" not in key:
             if first_warning:
                 log += "\nWarnings:\n"
                 first_warning = False
+            log += f"- {sp_dict[key]}\n"
+
+    first_app_note = True
+    for key in sp_dict:
+        if "app pass" in key or "app warn" in key:
+            if first_app_note:
+                log += "\nApplication specific notes:\n"
+                first_app_note = False
             log += f"- {sp_dict[key]}\n"
 
     recommendations_count = False
