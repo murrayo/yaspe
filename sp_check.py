@@ -906,6 +906,24 @@ def build_log(sp_dict):
     if "windows host name" in sp_dict:
         hostname = sp_dict["windows host name"]
 
+    # Check filesystem usage - warn if Use% > 90%
+    for key in list(sp_dict.keys()):
+        if "filesystem df" in key and key != "filesystem df 0":  # Skip header row
+            line = sp_dict[key]
+            # Find the percentage value (e.g., "91%")
+            match = re.search(r"(\d+)%", line)
+            if match:
+                use_percent = int(match.group(1))
+                if use_percent > 90:
+                    # Extract filesystem name (first column) and mount point (last column)
+                    parts = line.split()
+                    filesystem = parts[0] if parts else "Unknown"
+                    mount_point = parts[-1] if parts else "Unknown"
+                    warn_count += 1
+                    sp_dict[
+                        f"warning {warn_count}"
+                    ] = f"Filesystem {filesystem} mounted on {mount_point} is {use_percent}% full"
+
     # Build log
 
     log = f"System Summary for {sp_dict['customer']}\n\n"

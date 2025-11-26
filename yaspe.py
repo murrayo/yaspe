@@ -1530,7 +1530,15 @@ def chart_perfmon(
 
 
 def chart_iostat(
-    connection, filepath, output_prefix, operating_system, png_out, png_html_out, disk_list, peak_chart=True
+    connection,
+    filepath,
+    output_prefix,
+    operating_system,
+    png_out,
+    png_html_out,
+    disk_list,
+    peak_chart=True,
+    glorefs_peak_window=None,
 ):
     # print(f"iostat...")
 
@@ -1638,6 +1646,10 @@ def chart_iostat(
 
                     data = to_chart_df
 
+                    min_max = False
+                    if column_name in ("r/s", "w/s", "r_await", "w_await"):
+                        min_max = True
+
                     if png_out:
                         simple_chart(
                             data,
@@ -1647,7 +1659,9 @@ def chart_iostat(
                             filepath,
                             output_prefix,
                             file_prefix=device,
+                            min_max=min_max,
                             peak_chart=peak_chart,
+                            glorefs_peak_window=glorefs_peak_window,
                         )
                     elif png_html_out:
                         simple_chart(
@@ -1658,7 +1672,9 @@ def chart_iostat(
                             filepath,
                             output_prefix,
                             file_prefix=device,
+                            min_max=min_max,
                             peak_chart=peak_chart,
+                            glorefs_peak_window=glorefs_peak_window,
                         )
                         linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
                     else:
@@ -2144,6 +2160,7 @@ def mainline(
                     png_html_out,
                     disk_list,
                     peak_chart,
+                    glorefs_peak_window,
                 )
 
                 if operating_system == "AIX":
