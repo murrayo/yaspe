@@ -370,7 +370,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     min_max = kwargs.get("min_max", False)
     peak_chart = kwargs.get("peak_chart", True)
     glorefs_peak_window = kwargs.get("glorefs_peak_window")  # Can be None or (start, end) tuple
-    line_chart = kwargs.get("line_chart", False)  # Use line charts instead of dots
+    line_chart = kwargs.get("line_chart", True)  # Use line charts by default
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -610,7 +610,7 @@ def _find_peak_60_window(png_data, datetime_column):
 
 
 def _create_peak_60_chart(
-    png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=False
+    png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True
 ):
     """Create a chart showing only the peak 60 minutes for the column. Returns (peak_start_time, peak_end_time)."""
     from datetime import timedelta
@@ -773,7 +773,7 @@ def _create_glorefs_peak_chart(
     file_prefix,
     datetime_column,
     glorefs_peak_window,
-    line_chart=False,
+    line_chart=True,
 ):
     """Create a chart showing the Glorefs peak 60-minute window for this column."""
 
@@ -1278,7 +1278,7 @@ def chart_vmstat(
     png_html_out,
     peak_chart=True,
     glorefs_peak_window=None,
-    line_chart=False,
+    line_chart=True,
 ):
     # print(f"vmstat...")
     # Get useful
@@ -1386,7 +1386,7 @@ def chart_vmstat(
 
 
 def chart_mgstat(
-    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=False
+    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=True
 ):
     """
     Chart mgstat data. Returns the Glorefs peak window (start, end) if available, otherwise (None, None).
@@ -1512,7 +1512,7 @@ def chart_perfmon(
     png_html_out,
     peak_chart=True,
     glorefs_peak_window=None,
-    line_chart=False,
+    line_chart=True,
 ):
     # print(f"perfmon...")
 
@@ -1629,7 +1629,7 @@ def chart_iostat(
     disk_list,
     peak_chart=True,
     glorefs_peak_window=None,
-    line_chart=False,
+    line_chart=True,
 ):
     # print(f"iostat...")
 
@@ -1902,7 +1902,7 @@ def chart_aix_sar_d(
     png_html_out,
     disk_list,
     peak_chart=True,
-    line_chart=False,
+    line_chart=True,
 ):
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
@@ -1990,7 +1990,7 @@ def chart_aix_sar_d(
                         interactive_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
 
-def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True, line_chart=False):
+def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True, line_chart=True):
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
     # Read in to dataframe, drop any bad rows
@@ -2080,7 +2080,7 @@ def mainline(
     csv_date_format,
     mgstat_file,
     peak_chart=True,
-    line_chart=False,
+    line_chart=True,
 ):
     input_error = False
 
@@ -2431,10 +2431,9 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "-L",
-        "--line",
-        dest="line_chart",
-        help="Create PNG charts as line charts instead of dot charts (default is dots).",
+        "--dots",
+        dest="dot_chart",
+        help="Create PNG charts as dot charts instead of line charts (default is lines).",
         action="store_true",
     )
 
@@ -2544,7 +2543,7 @@ if __name__ == "__main__":
             args.csv_date_format,
             args.mgstat_file,
             args.peak_chart,
-            args.line_chart,
+            not args.dot_chart,  # line_chart is True by default (when dot_chart is False)
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
