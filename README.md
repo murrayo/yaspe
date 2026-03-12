@@ -65,7 +65,8 @@ For local version:
 
 ``` commandline
 usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c]
-             [-p] [-P] [-s] [-m] [-D] [-d DISK_LIST [DISK_LIST ...]] [-l "string to split on"]
+             [-p] [-P] [--dots] [-s] [-m] [-D] [-d DISK_LIST [DISK_LIST ...]] [-l "string to split on"]
+             [--peak_chart] [--no_peak_chart]
 
 Performance file review.
 
@@ -84,6 +85,7 @@ options:
   -c, --csv             Create CSV files of each HTML files metrics, append if csv file exists.
   -p, --png             Create PNG charts of metrics. No HTML. HTML is the default if PNG not selected.
   -P, --PNG             Create PNG and HTML charts of metrics. HTML is the default if PNG not selected.
+  --dots                Create PNG charts as dot charts instead of line charts (default is lines).
   -s, --system          Output system overview.
   -m, --mgstat_file     This is an mgstat file log file (with extension .mgst).
   -D, --DDMMYYYY        Date format for csv files is DDMMYYYY
@@ -91,6 +93,8 @@ options:
                         List of disks, if not entered all are processed. No commas or quotes, e.g. -d dm-0 dm-1
   -l "string to split on", --large_file_split_on_string "string to split on"
                         Split large input file on first occurrence of this string. Blank -l "" defaults to "div id=iostat"
+  --peak_chart          Create additional peak 60-minute charts for metrics with min_max enabled when data is 8-25 hours. Default is True.
+  --no_peak_chart       Disable peak 60-minute charts.
 
 Be safe, "quote the path".
 ```
