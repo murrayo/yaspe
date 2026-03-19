@@ -8,7 +8,7 @@ RUN apt-get update && \
     dpkg-reconfigure --frontend=noninteractive locales
     
 RUN apt-get update && apt-get install -y \
-    python3-tk libgl1-mesa-glx \
+    python3-tk libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
     
