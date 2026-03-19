@@ -65,8 +65,8 @@ For local version:
 
 ``` commandline
 usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c]
-             [-p] [-P] [--dots] [-s] [-m] [-D] [-d DISK_LIST [DISK_LIST ...]] [-l "string to split on"]
-             [--peak_chart] [--no_peak_chart]
+             [-p] [-P] [--dots] [-s] [-m] [-D] [-d DISK_LIST [DISK_LIST ...]] [--iostat_subfolders]
+             [-l "string to split on"] [--peak_chart] [--no_peak_chart]
 
 Performance file review.
 
@@ -91,6 +91,7 @@ options:
   -D, --DDMMYYYY        Date format for csv files is DDMMYYYY
   -d DISK_LIST [DISK_LIST ...], --disk_list DISK_LIST [DISK_LIST ...]
                         List of disks, if not entered all are processed. No commas or quotes, e.g. -d dm-0 dm-1
+  --iostat_subfolders   Save iostat charts into separate subfolders, one per disk device name.
   -l "string to split on", --large_file_split_on_string "string to split on"
                         Split large input file on first occurrence of this string. Blank -l "" defaults to "div id=iostat"
   --peak_chart          Create additional peak 60-minute charts for metrics with min_max enabled when data is 8-25 hours. Default is True.
@@ -124,6 +125,14 @@ If you care only about a selected list of disks you can optionally add a disk li
 ``` commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p -x -d dm-0 dm-1
 ```
+
+To save iostat charts into separate subfolders — one subfolder per disk device — add `--iostat_subfolders`:
+
+``` commandline
+docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p -x --iostat_subfolders
+```
+
+This creates `{prefix}_metrics/iostat/dm-0/`, `{prefix}_metrics/iostat/dm-1/`, etc. instead of placing all disk charts in a single `iostat/` folder.
 
 ### For Apple ARM container
 

@@ -1630,6 +1630,7 @@ def chart_iostat(
     peak_chart=True,
     glorefs_peak_window=None,
     line_chart=True,
+    iostat_subfolders=False,
 ):
     # print(f"iostat...")
 
@@ -1678,6 +1679,13 @@ def chart_iostat(
         for device in devices:
             device_df = iostat_df.loc[iostat_df["Device"] == device]
 
+            if iostat_subfolders:
+                device_filepath = f"{filepath}{device}/"
+                if not os.path.isdir(device_filepath):
+                    os.mkdir(device_filepath)
+            else:
+                device_filepath = filepath
+
             # Create stacked read write chart if columns exist
             if png_out:
                 if operating_system == "AIX":
@@ -1689,14 +1697,14 @@ def chart_iostat(
                         title = f"{device} : Total IOPS - {customer}"
                         columns_to_stack = {"read rps": "Reads per sec", "write wps": "Writes per sec"}
                         simple_chart_stacked_iostat(
-                            device_df, columns_to_stack, device, title, 0, filepath, output_prefix
+                            device_df, columns_to_stack, device, title, 0, device_filepath, output_prefix
                         )
 
                         if "read avg serv" in device_df.columns and "write avg serv" in device_df.columns:
                             title = f"{device} : Latency - {customer}"
                             columns_to_histogram = {"read avg serv": "read rps", "write avg serv": "write wps"}
                             simple_chart_histogram_iostat(
-                                device_df, columns_to_histogram, device, title, filepath, output_prefix
+                                device_df, columns_to_histogram, device, title, device_filepath, output_prefix
                             )
 
                 else:
@@ -1704,7 +1712,7 @@ def chart_iostat(
                         title = f"{device} : Total IOPS - {customer}"
                         columns_to_stack = {"r/s": "Reads per sec", "w/s": "Writes per sec"}
                         simple_chart_stacked_iostat(
-                            device_df, columns_to_stack, device, title, 0, filepath, output_prefix
+                            device_df, columns_to_stack, device, title, 0, device_filepath, output_prefix
                         )
 
                         if "r_await" in device_df.columns and "w_await" in device_df.columns:
@@ -1712,7 +1720,7 @@ def chart_iostat(
                             # Column name : check for non-zero column
                             columns_to_histogram = {"r_await": "r/s", "w_await": "w/s"}
                             simple_chart_histogram_iostat(
-                                device_df, columns_to_histogram, device, title, filepath, output_prefix
+                                device_df, columns_to_histogram, device, title, device_filepath, output_prefix
                             )
 
             # unpivot the dataframe; include both datetime and datetime_parsed as id_vars
@@ -1747,7 +1755,7 @@ def chart_iostat(
                             column_name,
                             title,
                             max_y,
-                            filepath,
+                            device_filepath,
                             output_prefix,
                             file_prefix=device,
                             min_max=min_max,
@@ -1761,7 +1769,7 @@ def chart_iostat(
                             column_name,
                             title,
                             max_y,
-                            filepath,
+                            device_filepath,
                             output_prefix,
                             file_prefix=device,
                             min_max=min_max,
@@ -1769,9 +1777,9 @@ def chart_iostat(
                             glorefs_peak_window=glorefs_peak_window,
                             line_chart=line_chart,
                         )
-                        linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                        linked_chart(data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device)
                     else:
-                        linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                        linked_chart(data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device)
 
     else:
         # No date or time, chart all columns, index is x axis
@@ -1794,6 +1802,13 @@ def chart_iostat(
         for device in devices:
             device_df = iostat_df.loc[iostat_df["Device"] == device]
 
+            if iostat_subfolders:
+                device_filepath = f"{filepath}{device}/"
+                if not os.path.isdir(device_filepath):
+                    os.mkdir(device_filepath)
+            else:
+                device_filepath = filepath
+
             # unpivot the dataframe; first column is index, column name is next, then the value in that column
             device_df = device_df.melt("id_key", var_name="Type", value_name="metric")
 
@@ -1814,18 +1829,18 @@ def chart_iostat(
 
                     if png_out:
                         simple_chart_no_time(
-                            data, column_name, title, max_y, filepath, output_prefix, file_prefix=device
+                            data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device
                         )
                     elif png_html_out:
                         simple_chart_no_time(
-                            data, column_name, title, max_y, filepath, output_prefix, file_prefix=device
+                            data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device
                         )
                         linked_chart_no_time(
-                            data, column_name, title, max_y, filepath, output_prefix, file_prefix=device
+                            data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device
                         )
                     else:
                         linked_chart_no_time(
-                            data, column_name, title, max_y, filepath, output_prefix, file_prefix=device
+                            data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device
                         )
 
 
@@ -2081,6 +2096,7 @@ def mainline(
     mgstat_file,
     peak_chart=True,
     line_chart=True,
+    iostat_subfolders=False,
 ):
     input_error = False
 
@@ -2291,6 +2307,7 @@ def mainline(
                     peak_chart,
                     glorefs_peak_window,
                     line_chart,
+                    iostat_subfolders,
                 )
 
                 if operating_system == "AIX":
@@ -2470,6 +2487,14 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--iostat_subfolders",
+        dest="iostat_subfolders",
+        help="Save iostat charts into separate subfolders, one per disk device name.",
+        action="store_true",
+        default=False,
+    )
+
+    parser.add_argument(
         "-l",
         "--large_file_split_on_string",
         dest="split_on",
@@ -2544,6 +2569,7 @@ if __name__ == "__main__":
             args.mgstat_file,
             args.peak_chart,
             not args.dot_chart,  # line_chart is True by default (when dot_chart is False)
+            args.iostat_subfolders,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
