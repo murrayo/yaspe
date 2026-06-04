@@ -1083,10 +1083,11 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
+    min_max = kwargs.get("min_max", False)
+    threshold = kwargs.get("threshold")  # Optional (value, label) tuple
 
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
-    # Two subplots with independent x-axes so the overview stays full while main zooms
     fig = make_subplots(
         rows=2, cols=1,
         shared_xaxes=False,
@@ -1108,6 +1109,40 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         showlegend=False,
         hoverinfo="skip",
     ), row=2, col=1)
+
+    # Min/max and percentile reference lines on the main chart
+    if min_max:
+        metric = data["metric"]
+        abs_min = metric.min()
+        abs_max = metric.max()
+        p2 = metric.quantile(0.02)
+        p99 = metric.quantile(0.99)
+        filtered = metric[(metric >= p2) & (metric <= p99)]
+        has_outliers = len(filtered) < len(metric)
+
+        if has_outliers and len(filtered) > 0:
+            adj_min = filtered.min()
+            adj_max = filtered.max()
+            fig.add_hline(y=abs_min, line=dict(color="darkred", dash="dot", width=1),
+                          annotation_text=f"Abs Min: {abs_min:,.0f}", annotation_position="bottom right", row=1, col=1)
+            fig.add_hline(y=adj_min, line=dict(color="red", dash="dash", width=1),
+                          annotation_text=f"98th pct Min: {adj_min:,.0f}", annotation_position="bottom right", row=1, col=1)
+            fig.add_hline(y=abs_max, line=dict(color="darkgreen", dash="dot", width=1),
+                          annotation_text=f"Abs Max: {abs_max:,.0f}", annotation_position="top right", row=1, col=1)
+            fig.add_hline(y=adj_max, line=dict(color="green", dash="dash", width=1),
+                          annotation_text=f"99th pct Max: {adj_max:,.0f}", annotation_position="top right", row=1, col=1)
+        else:
+            fig.add_hline(y=abs_min, line=dict(color="red", dash="dash", width=1),
+                          annotation_text=f"Min: {abs_min:,.0f}", annotation_position="bottom right", row=1, col=1)
+            fig.add_hline(y=abs_max, line=dict(color="green", dash="dash", width=1),
+                          annotation_text=f"Max: {abs_max:,.0f}", annotation_position="top right", row=1, col=1)
+
+    # Threshold reference line (e.g. 80% CPU, 1ms latency)
+    if threshold is not None:
+        thresh_val, thresh_label = threshold
+        thresh_color = "red" if data["metric"].max() > thresh_val else "orange"
+        fig.add_hline(y=thresh_val, line=dict(color=thresh_color, dash="dashdot", width=1.5),
+                      annotation_text=thresh_label, annotation_position="top left", row=1, col=1)
 
     yaxis_range = [0, max_y] if max_y > 0 else [0, None]
     fig.update_layout(
@@ -1485,9 +1520,11 @@ def chart_vmstat(
                     business_hours_chart=(column_name == "Total CPU"),
                 )
                 if png_html_out:
-                    linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                                 min_max=min_max, threshold=threshold)
             else:
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                             min_max=min_max, threshold=threshold)
 
 
 def chart_mgstat(
@@ -1589,9 +1626,11 @@ def chart_mgstat(
                 if column_name == "Glorefs" and peak_start is not None:
                     glorefs_peak_window = (peak_start, peak_end)
                 if png_html_out:
-                    linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                                 min_max=min_max)
             else:
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                             min_max=min_max)
 
     return glorefs_peak_window
 
@@ -1706,9 +1745,11 @@ def chart_perfmon(
                     glorefs_peak_window=glorefs_peak_window,
                     line_chart=line_chart,
                 )
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                             min_max=min_max)
             else:
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                             min_max=min_max)
 
 
 def chart_iostat(
@@ -1860,9 +1901,11 @@ def chart_iostat(
                             threshold=threshold,
                         )
                         if png_html_out:
-                            linked_chart(data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device)
+                            linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
+                                         file_prefix=device, min_max=min_max, threshold=threshold)
                     else:
-                        linked_chart(data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device)
+                        linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
+                                     file_prefix=device, min_max=min_max, threshold=threshold)
 
     else:
         # No date or time, chart all columns, index is x axis
@@ -2074,9 +2117,11 @@ def chart_aix_sar_d(
                         peak_chart=peak_chart,
                         line_chart=line_chart,
                     )
-                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                                 file_prefix=device, min_max=min_max)
                 else:
-                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                                 file_prefix=device, min_max=min_max)
 
 
 def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True, line_chart=True):
@@ -2148,9 +2193,11 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
                     peak_chart=peak_chart,
                     line_chart=line_chart,
                 )
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                             min_max=min_max)
             else:
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                             min_max=min_max)
 
 
 def _make_chart_dir(base, name):
