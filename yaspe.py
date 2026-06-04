@@ -334,6 +334,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     glorefs_peak_window = kwargs.get("glorefs_peak_window")  # Can be None or (start, end) tuple
     line_chart = kwargs.get("line_chart", True)  # Use line charts by default
     threshold = kwargs.get("threshold")  # Optional (value, label) tuple for a reference line
+    business_hours_chart = kwargs.get("business_hours_chart", False)  # Generate business-hours peak chart
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -541,6 +542,12 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
             line_chart,
         )
 
+    # Business hours peak chart for selected key metrics (Total CPU, Glorefs)
+    if business_hours_chart and peak_chart and min_max and is_medium_period and not is_long_period:
+        _create_business_hours_peak_chart(
+            png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart
+        )
+
     # Return peak times (useful for Glorefs to pass to other charts)
     return peak_start_time, peak_end_time
 
@@ -722,6 +729,126 @@ def _create_peak_60_chart(
 
     output_name = column_name.replace("/", "_")
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_peak60.png", format="png", dpi=150)
+    plt.close("all")
+
+    return peak_start_time, peak_end_time
+
+
+def _create_business_hours_peak_chart(
+    png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True,
+    bh_start=8, bh_end=18
+):
+    """Create a peak 60-min chart restricted to business hours (default 08:00-18:00).
+    Returns (peak_start_time, peak_end_time) or (None, None)."""
+    from datetime import timedelta
+
+    sorted_data = png_data.sort_values(by=datetime_column).copy()
+    sorted_data = sorted_data.set_index(datetime_column)
+
+    # Filter to business hours only for peak detection
+    bh_data = sorted_data.between_time(f"{bh_start:02d}:00", f"{bh_end:02d}:00")
+
+    if len(bh_data) < 10:
+        return None, None
+
+    # Compute min_periods from actual sampling interval
+    time_diffs = bh_data.index.to_series().diff().dropna()
+    if len(time_diffs) > 0:
+        median_interval_secs = time_diffs.median().total_seconds()
+        min_periods = max(10, int(50 * 60 / median_interval_secs))
+    else:
+        min_periods = 30
+
+    rolling_mean = bh_data["metric"].rolling(window="60min", min_periods=min_periods).mean()
+
+    if rolling_mean.isna().all():
+        return None, None
+
+    peak_end_time = rolling_mean.idxmax()
+    peak_start_time = peak_end_time - timedelta(minutes=60)
+
+    # Clamp to actual data boundaries
+    min_data_time = sorted_data.index.min()
+    max_data_time = sorted_data.index.max()
+    if peak_start_time < min_data_time:
+        peak_start_time = min_data_time
+        peak_end_time = min(min_data_time + timedelta(minutes=60), max_data_time)
+    elif peak_end_time > max_data_time:
+        peak_end_time = max_data_time
+        peak_start_time = max(max_data_time - timedelta(minutes=60), min_data_time)
+
+    peak_data = sorted_data.loc[peak_start_time:peak_end_time].copy().reset_index()
+
+    if len(peak_data) < 2:
+        return None, None
+
+    colormap_name = "Set1"
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+    palette = plt.get_cmap(colormap_name)
+    color = palette(3)  # Distinct colour from peak60 (palette(1)) and glorefs (palette(2))
+
+    fig, ax = plt.subplots(figsize=(16, 6))
+
+    if line_chart:
+        ax.plot(peak_data[datetime_column], peak_data["metric"],
+                label=column_name, color=color, marker="", linestyle="-", alpha=0.7, linewidth=1)
+    else:
+        ax.plot(peak_data[datetime_column], peak_data["metric"],
+                label=column_name, color=color, marker=".", linestyle="none", alpha=0.7)
+
+    abs_min = peak_data["metric"].min()
+    abs_max = peak_data["metric"].max()
+    p2 = peak_data["metric"].quantile(0.02)
+    p99 = peak_data["metric"].quantile(0.99)
+    filtered_data = peak_data[(peak_data["metric"] >= p2) & (peak_data["metric"] <= p99)]
+    has_outliers = len(filtered_data) < len(peak_data)
+
+    if has_outliers and len(filtered_data) > 0:
+        adj_min = filtered_data["metric"].min()
+        adj_max = filtered_data["metric"].max()
+        ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Absolute Min: {abs_min:,.0f}")
+        ax.axhline(y=adj_min, color="red", linestyle="--", alpha=0.7, label=f"98th Percentile Min: {adj_min:,.0f} (no outliers)")
+        ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Absolute Max: {abs_max:,.0f}")
+        ax.axhline(y=adj_max, color="green", linestyle="--", alpha=0.7, label=f"99th Percentile Max: {adj_max:,.0f} (no outliers)")
+    else:
+        ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Minimum: {abs_min:,.0f}")
+        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Maximum: {abs_max:,.0f}")
+
+    ax.legend(loc="best")
+    ax.grid(which="major", axis="both", linestyle="--")
+
+    chart_start_str = peak_start_time.strftime("%H:%M")
+    chart_end_str = peak_end_time.strftime("%H:%M")
+    date_str = peak_start_time.strftime("%a %d-%b-%y")
+    ax.set_title(
+        f"{title} - Business Hours Peak ({bh_start:02d}:00-{bh_end:02d}:00) "
+        f"({chart_start_str} to {chart_end_str}) - {date_str}",
+        fontsize=16,
+    )
+
+    ax.set_ylabel(column_name, fontsize=14)
+    ax.tick_params(labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
+    ax.set_ylim(bottom=0)
+    if max_y != 0:
+        ax.set_ylim(top=max_y)
+
+    cpu_names = ["wa", "sy", "us"]
+    if peak_data["metric"].max() > 5 or "%" in column_name or column_name in cpu_names or peak_data["metric"].max() == 0:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    elif peak_data["metric"].max() < 0.002:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.4f}"))
+    else:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
+
+    locator = plt_dates.AutoDateLocator()
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(plt_dates.DateFormatter("%H:%M"))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    output_name = column_name.replace("/", "_")
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_bh_peak.png", format="png", dpi=150)
     plt.close("all")
 
     return peak_start_time, peak_end_time
@@ -1322,6 +1449,7 @@ def chart_vmstat(
                     glorefs_peak_window=glorefs_peak_window,
                     line_chart=line_chart,
                     threshold=threshold,
+                    business_hours_chart=(column_name == "Total CPU"),
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, filepath, output_prefix)
@@ -1422,6 +1550,7 @@ def chart_mgstat(
                     min_max=min_max,
                     peak_chart=peak_chart,
                     line_chart=line_chart,
+                    business_hours_chart=(column_name == "Glorefs"),
                 )
                 # Capture Glorefs peak window
                 if column_name == "Glorefs" and peak_start is not None:
