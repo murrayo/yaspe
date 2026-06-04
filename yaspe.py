@@ -1158,7 +1158,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     fig.update_layout(
         title=dict(text=title, font=dict(size=16)),
         xaxis=dict(title="", tickfont=dict(size=13)),
-        xaxis2=dict(title="Drag box here to zoom ↑   (double-click to reset)", tickfont=dict(size=11)),
+        xaxis2=dict(title="Drag box here to zoom ↑   (double-click top chart to reset)", tickfont=dict(size=11)),
         yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
         yaxis2=dict(rangemode="tozero", showticklabels=False),
         legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
@@ -1208,7 +1208,7 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     fig.update_layout(
         title=dict(text=title, font=dict(size=16)),
         xaxis=dict(title="", tickfont=dict(size=13)),
-        xaxis2=dict(title="Drag box here to zoom ↑   (double-click to reset)", tickfont=dict(size=11)),
+        xaxis2=dict(title="Drag box here to zoom ↑   (double-click top chart to reset)", tickfont=dict(size=11)),
         yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
         yaxis2=dict(rangemode="tozero", showticklabels=False),
         legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
