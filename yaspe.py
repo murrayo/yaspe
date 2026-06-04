@@ -104,7 +104,7 @@ def execute_single_read_query(connection, query):
 def data_types_map(df):
     row = 0
     data_types = {}
-    for _, val in df.dtypes.iteritems():
+    for _, val in df.dtypes.items():
         data_types[row] = val
         row += 1
     return data_types
@@ -1844,7 +1844,7 @@ def chart_iostat(
                         )
 
 
-def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out, peak_chart=True):
+def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out, peak_chart=True, line_chart=True):
     # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]

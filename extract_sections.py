@@ -68,7 +68,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
     Note: The method uses some additional helper functions and variables that are not provided in the given code snippet. These functions are assumed to be defined elsewhere in the codebase.
     """
 
-    once = True
+    run_start_date = None
 
     vmstat_processing = False
     vmstat_header = ""
@@ -532,7 +532,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                             )
                             nfsiostat_header += f",html name"
                             nfsiostat_columns = nfsiostat_header.split(",")
-                            mgstat_columns = [i.strip() for i in nfsiostat_columns]  # strip off carriage return etc
+                            nfsiostat_columns = [i.strip() for i in nfsiostat_columns]  # strip off carriage return etc
                     if "write:" in line:
                         nfsiostat_read = False
                         nfsiostat_write = True
