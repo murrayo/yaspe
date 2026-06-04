@@ -21,7 +21,6 @@ from sqlite3 import Error
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.dates as plt_dates
-import seaborn as sns
 
 import altair as alt
 import pandas as pd
@@ -334,6 +333,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     peak_chart = kwargs.get("peak_chart", True)
     glorefs_peak_window = kwargs.get("glorefs_peak_window")  # Can be None or (start, end) tuple
     line_chart = kwargs.get("line_chart", True)  # Use line charts by default
+    threshold = kwargs.get("threshold")  # Optional (value, label) tuple for a reference line
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -497,10 +497,14 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     else:
         ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
 
-    # plt.tight_layout()
+    if threshold is not None:
+        thresh_val, thresh_label = threshold
+        color = "red" if png_data["metric"].max() > thresh_val else "orange"
+        ax.axhline(y=thresh_val, color=color, linestyle="-.", linewidth=1.5, alpha=0.8, label=thresh_label)
+        ax.legend(loc="best")
 
     output_name = column_name.replace("/", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=100)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150)
     plt.close("all")
 
     # Track peak times for Glorefs
@@ -554,10 +558,17 @@ def _find_peak_60_window(png_data, datetime_column):
     # Set the datetime column as index for rolling operations
     sorted_data = sorted_data.set_index(datetime_column)
 
-    # Use a 60-minute rolling window to find the window with highest mean
-    # min_periods=30 ensures we have enough data points before considering a window valid
-    # (avoids false peaks at data boundaries where only a few points exist)
-    rolling_mean = sorted_data["metric"].rolling(window="60min", min_periods=30).mean()
+    # Compute min_periods from the actual sampling interval so that a window
+    # must contain at least 50 minutes of data before it can be considered the peak.
+    # This prevents a short early spike (e.g. 15 min of data) from beating a genuine
+    # sustained 60-minute period later in the day.
+    time_diffs = sorted_data.index.to_series().diff().dropna()
+    if len(time_diffs) > 0:
+        median_interval_secs = time_diffs.median().total_seconds()
+        min_periods = max(10, int(50 * 60 / median_interval_secs))
+    else:
+        min_periods = 30
+    rolling_mean = sorted_data["metric"].rolling(window="60min", min_periods=min_periods).mean()
 
     # Find the end time of the peak 60-minute window
     peak_end_time = rolling_mean.idxmax()
@@ -710,7 +721,7 @@ def _create_peak_60_chart(
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     output_name = column_name.replace("/", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_peak60.png", format="png", dpi=100)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_peak60.png", format="png", dpi=150)
     plt.close("all")
 
     return peak_start_time, peak_end_time
@@ -867,7 +878,7 @@ def _create_glorefs_peak_chart(
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     output_name = column_name.replace("/", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_glorefs_peak.png", format="png", dpi=100)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_glorefs_peak.png", format="png", dpi=150)
     plt.close("all")
 
 
@@ -912,7 +923,7 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     plt.tight_layout()
 
     output_name = column_name.replace("/", "_per_").replace(" ", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=100)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150)
     plt.close("all")
 
 
@@ -1039,7 +1050,8 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     ax.stackplot(png_data.index, png_data["sy"], png_data["wa"], png_data["us"], labels=["sy", "wa", "us"], alpha=0.7)
 
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(title, fontsize=16)
+    date_str = png_data.index[0].strftime("%a %d-%b-%y")
+    ax.set_title(f"{title} - {date_str}", fontsize=16)
     ax.set_ylabel("CPU Utilisation %", fontsize=14)
     ax.legend(loc="upper left", reverse=True, fontsize=14)
     ax.tick_params(labelsize=14)
@@ -1059,7 +1071,7 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     # plt.tight_layout()
 
     output_name = "Stacked CPU"
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=100)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150)
     plt.close("all")
 
 
@@ -1104,7 +1116,8 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
     )
 
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(title, fontsize=16)
+    date_str = png_data.index[0].strftime("%a %d-%b-%y")
+    ax.set_title(f"{title} - {date_str}", fontsize=16)
     ax.set_ylabel("Total IOPS", fontsize=14)
     ax.legend(loc="upper left", reverse=True)
     ax.tick_params(labelsize=14)
@@ -1124,7 +1137,7 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
     # plt.tight_layout()
 
     output_name = "Stacked IOPS"
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=100)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=150)
     plt.close("all")
 
 
@@ -1178,7 +1191,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     # plt.tight_layout()
 
     output_name = f"Read Latency Histogram"
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=100)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=150)
     plt.close("all")
 
     # Writes
@@ -1201,7 +1214,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     # plt.tight_layout()
 
     output_name = f"Write Latency Histogram"
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=100)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=150)
     plt.close("all")
 
 
@@ -1289,7 +1302,14 @@ def chart_vmstat(
 
             data = to_chart_df
 
-            if png_out:
+            # Reference threshold lines for key CPU metrics
+            threshold = None
+            if column_name in ("Total CPU", "us"):
+                threshold = (80, "80% CPU threshold")
+            elif column_name == "wa":
+                threshold = (10, "10% iowait threshold")
+
+            if png_out or png_html_out:
                 simple_chart(
                     data,
                     column_name,
@@ -1301,21 +1321,10 @@ def chart_vmstat(
                     peak_chart=peak_chart,
                     glorefs_peak_window=glorefs_peak_window,
                     line_chart=line_chart,
+                    threshold=threshold,
                 )
-            elif png_html_out:
-                simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    glorefs_peak_window=glorefs_peak_window,
-                    line_chart=line_chart,
-                )
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                if png_html_out:
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
@@ -1668,7 +1677,12 @@ def chart_iostat(
                     if column_name in ("r/s", "w/s", "r_await", "w_await"):
                         min_max = True
 
-                    if png_out:
+                    # Reference threshold: storage latency target for IRIS
+                    threshold = None
+                    if column_name in ("r_await", "w_await"):
+                        threshold = (1, "1 ms latency target")
+
+                    if png_out or png_html_out:
                         simple_chart(
                             data,
                             column_name,
@@ -1681,22 +1695,10 @@ def chart_iostat(
                             peak_chart=peak_chart,
                             glorefs_peak_window=glorefs_peak_window,
                             line_chart=line_chart,
+                            threshold=threshold,
                         )
-                    elif png_html_out:
-                        simple_chart(
-                            data,
-                            column_name,
-                            title,
-                            max_y,
-                            device_filepath,
-                            output_prefix,
-                            file_prefix=device,
-                            min_max=min_max,
-                            peak_chart=peak_chart,
-                            glorefs_peak_window=glorefs_peak_window,
-                            line_chart=line_chart,
-                        )
-                        linked_chart(data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device)
+                        if png_html_out:
+                            linked_chart(data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device)
                     else:
                         linked_chart(data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device)
 
