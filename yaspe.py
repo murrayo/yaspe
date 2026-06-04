@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as plt_dates
 
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import pandas as pd
 from pandas.io.sql import DatabaseError
 import warnings
@@ -1050,44 +1051,52 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
 
 def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
-    """Interactive HTML chart with rangeslider for time-series data."""
+    """Interactive HTML chart: drag a selection on the overview (bottom) to zoom the main chart (top).
+    Double-click to reset. Matches the Altair upper/lower linked-brush pattern."""
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
-    fig = go.Figure()
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.75, 0.25],
+        vertical_spacing=0.05,
+    )
+
+    # Main chart (top)
     fig.add_trace(go.Scatter(
-        x=data[x_column],
-        y=data["metric"],
-        mode="lines",
-        name=column_name,
+        x=data[x_column], y=data["metric"],
+        mode="lines", name=column_name,
         line=dict(width=1),
         hovertemplate="%{x|%H:%M:%S}<br>%{y:,.2f}<extra></extra>",
-    ))
+    ), row=1, col=1)
+
+    # Overview chart (bottom) — drag here to select the zoom window
+    fig.add_trace(go.Scatter(
+        x=data[x_column], y=data["metric"],
+        mode="lines", name=column_name,
+        line=dict(width=1, color="lightsteelblue"),
+        showlegend=False,
+        hoverinfo="skip",
+    ), row=2, col=1)
 
     yaxis_range = [0, max_y] if max_y > 0 else [0, None]
     fig.update_layout(
         title=dict(text=title, font=dict(size=16)),
-        xaxis=dict(
-            title="Time",
-            rangeslider=dict(visible=True, thickness=0.08),
-            tickfont=dict(size=13),
-        ),
-        yaxis=dict(
-            title=column_name,
-            range=yaxis_range,
-            tickfont=dict(size=13),
-            rangemode="tozero",
-        ),
-        legend=dict(
-            bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1,
-            font=dict(size=13), orientation="v",
-        ),
-        height=600,
+        # xaxis2 is the overview x-axis — selecting here drives xaxis (main)
+        xaxis2=dict(title="Drag here to zoom ↑   (double-click to reset)", tickfont=dict(size=11)),
+        xaxis=dict(title="", tickfont=dict(size=13)),
+        yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
+        yaxis2=dict(tickfont=dict(size=10), rangemode="tozero", showticklabels=False),
+        legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
+        height=650,
         hovermode="x unified",
         template="plotly_white",
+        dragmode="select",
+        selectdirection="h",
     )
 
     output_name = column_name.replace("/", "_")
@@ -1099,42 +1108,46 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
 
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
-    """Interactive HTML chart with rangeslider for index-based (no timestamp) data."""
+    """Interactive HTML chart for index-based data: drag overview (bottom) to zoom main chart (top)."""
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
-    fig = go.Figure()
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.75, 0.25],
+        vertical_spacing=0.05,
+    )
+
     fig.add_trace(go.Scatter(
-        x=data["id_key"],
-        y=data["metric"],
-        mode="lines",
-        name=column_name,
+        x=data["id_key"], y=data["metric"],
+        mode="lines", name=column_name,
         line=dict(width=1),
         hovertemplate="Sample %{x}<br>%{y:,.2f}<extra></extra>",
-    ))
+    ), row=1, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=data["id_key"], y=data["metric"],
+        mode="lines", name=column_name,
+        line=dict(width=1, color="lightsteelblue"),
+        showlegend=False,
+        hoverinfo="skip",
+    ), row=2, col=1)
 
     yaxis_range = [0, max_y] if max_y > 0 else [0, None]
     fig.update_layout(
         title=dict(text=title, font=dict(size=16)),
-        xaxis=dict(
-            title="Sample",
-            rangeslider=dict(visible=True, thickness=0.08),
-            tickfont=dict(size=13),
-        ),
-        yaxis=dict(
-            title=column_name,
-            range=yaxis_range,
-            tickfont=dict(size=13),
-            rangemode="tozero",
-        ),
-        legend=dict(
-            bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1,
-            font=dict(size=13), orientation="v",
-        ),
-        height=600,
+        xaxis2=dict(title="Drag here to zoom ↑   (double-click to reset)", tickfont=dict(size=11)),
+        xaxis=dict(title="", tickfont=dict(size=13)),
+        yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
+        yaxis2=dict(tickfont=dict(size=10), rangemode="tozero", showticklabels=False),
+        legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
+        height=650,
         hovermode="x unified",
         template="plotly_white",
+        dragmode="select",
+        selectdirection="h",
     )
 
     output_name = column_name.replace(" ", "_").replace("/", "_per_")
