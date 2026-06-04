@@ -1989,6 +1989,13 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 
 
+def _make_chart_dir(base, name):
+    path = f"{base}/{name}/"
+    if not os.path.isdir(path):
+        os.mkdir(path)
+    return path
+
+
 def mainline(
     input_file,
     include_iostat,
@@ -2034,16 +2041,10 @@ def mainline(
         filepath = "."
 
     # This is a hidden option for now. Only activated if the yml file exists
-    extended_charts = False
-    if os.path.isfile(f"{filepath}/site_survey_input.yml"):
-        extended_charts = True
-        # print("Extended charts included...")
-    else:
-        # print(f"Extended charts not included...")
-        pass
+    extended_charts = os.path.isfile(f"{filepath}/site_survey_input.yml")
 
     # get the prefix
-    html_filename = filename.split(".")[0]
+    html_filename = os.path.splitext(filename)[0]
 
     if output_prefix is None:
         output_prefix = f"{html_filename}_"
@@ -2141,31 +2142,25 @@ def mainline(
                 )
 
         connection.close()
+        connection = None
 
     # Charting is separate
     if "Chart" in database_action and not input_error:
-        # print("Charting...")
-
         output_file_path_base = f"{output_filepath_prefix}metrics"
-
         if not os.path.isdir(output_file_path_base):
             os.mkdir(output_file_path_base)
 
-        connection = create_connection(sql_filename)
+        if connection is None:
+            connection = create_connection(sql_filename)
 
         if not mgstat_file:
             operating_system = execute_single_read_query(
                 connection, "SELECT * FROM overview WHERE field = 'operating system';"
             )[2]
 
-        # mgstat - capture Glorefs peak window for use in other charts
-        output_file_path = f"{output_file_path_base}/mgstat/"
-
-        if not os.path.isdir(output_file_path):
-            os.mkdir(output_file_path)
-
         glorefs_peak_window = chart_mgstat(
-            connection, output_file_path, output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart
+            connection, _make_chart_dir(output_file_path_base, "mgstat"),
+            output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart,
         )
 
         # No need to go further for .mgst file
@@ -2173,97 +2168,48 @@ def mainline(
             connection.close()
             return
 
-        # vmstat and iostat
-        if operating_system == "Linux" or operating_system == "Ubuntu" or operating_system == "AIX":
-            # Detailed system charts for performance reports
+        is_unix = operating_system in ("Linux", "Ubuntu", "AIX")
+        is_linux = operating_system in ("Linux", "Ubuntu")
+
+        if is_unix:
             if extended_charts:
                 system_review.system_charts(filepath)
 
-            output_file_path = f"{output_file_path_base}/vmstat/"
-            if not os.path.isdir(output_file_path):
-                os.mkdir(output_file_path)
             chart_vmstat(
-                connection,
-                output_file_path,
-                output_prefix,
-                png_out,
-                png_html_out,
-                peak_chart,
-                glorefs_peak_window,
-                line_chart,
+                connection, _make_chart_dir(output_file_path_base, "vmstat"),
+                output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart,
             )
 
-            # free memory (Linux/Ubuntu only)
-            if operating_system == "Linux" or operating_system == "Ubuntu":
-                output_file_path = f"{output_file_path_base}/free_memory/"
-                if not os.path.isdir(output_file_path):
-                    os.mkdir(output_file_path)
+            if is_linux:
                 chart_free_memory(
-                    connection, output_file_path, output_prefix, png_out, png_html_out, peak_chart, line_chart
+                    connection, _make_chart_dir(output_file_path_base, "free_memory"),
+                    output_prefix, png_out, png_html_out, peak_chart, line_chart,
                 )
 
             if include_iostat:
-                output_file_path = f"{output_file_path_base}/iostat/"
-                if not os.path.isdir(output_file_path):
-                    os.mkdir(output_file_path)
                 chart_iostat(
-                    connection,
-                    output_file_path,
-                    output_prefix,
-                    operating_system,
-                    png_out,
-                    png_html_out,
-                    disk_list,
-                    peak_chart,
-                    glorefs_peak_window,
-                    line_chart,
-                    iostat_subfolders,
+                    connection, _make_chart_dir(output_file_path_base, "iostat"),
+                    output_prefix, operating_system, png_out, png_html_out,
+                    disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders,
                 )
 
                 if operating_system == "AIX":
-                    output_file_path = f"{output_file_path_base}/sar_d/"
-                    if not os.path.isdir(output_file_path):
-                        os.mkdir(output_file_path)
                     chart_aix_sar_d(
-                        connection,
-                        output_file_path,
-                        output_prefix,
-                        operating_system,
-                        png_out,
-                        png_html_out,
-                        disk_list,
-                        peak_chart,
-                        line_chart,
+                        connection, _make_chart_dir(output_file_path_base, "sar_d"),
+                        output_prefix, operating_system, png_out, png_html_out,
+                        disk_list, peak_chart, line_chart,
                     )
 
             if include_nfsiostat:
-                output_file_path = f"{output_file_path_base}/nfsiostat/"
-                if not os.path.isdir(output_file_path):
-                    os.mkdir(output_file_path)
                 chart_nfsiostat(
-                    connection,
-                    output_file_path,
-                    output_prefix,
-                    operating_system,
-                    png_out,
-                    png_html_out,
-                    peak_chart,
-                    line_chart,
+                    connection, _make_chart_dir(output_file_path_base, "nfsiostat"),
+                    output_prefix, operating_system, png_out, png_html_out, peak_chart, line_chart,
                 )
 
         if operating_system == "Windows":
-            output_file_path = f"{output_file_path_base}/perfmon/"
-            if not os.path.isdir(output_file_path):
-                os.mkdir(output_file_path)
             chart_perfmon(
-                connection,
-                output_file_path,
-                output_prefix,
-                png_out,
-                png_html_out,
-                peak_chart,
-                glorefs_peak_window,
-                line_chart,
+                connection, _make_chart_dir(output_file_path_base, "perfmon"),
+                output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart,
             )
 
         connection.close()
