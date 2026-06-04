@@ -1,4 +1,4 @@
-altair
+plotly
 pandas
 matplotlib
 python-dateutil

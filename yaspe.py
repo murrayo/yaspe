@@ -22,7 +22,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.dates as plt_dates
 
-import altair as alt
+import plotly.graph_objects as go
 import pandas as pd
 from pandas.io.sql import DatabaseError
 import warnings
@@ -30,11 +30,6 @@ import warnings
 from extract_sections import extract_sections
 from extract_mgstat import extract_mgstat
 import system_review
-
-# Altair
-# Max is 5,000 rows by default
-
-alt.data_transformers.disable_max_rows()
 
 # Suppress FutureWarning messages
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -1055,97 +1050,99 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
 
 def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
+    """Interactive HTML chart with rangeslider for time-series data."""
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
-    # First we'll create an interval selection using the selection_interval() function (in this case for x axis only)
-    brush = alt.selection_interval(encodings=["x"])
-
-    # Determine which datetime column to use - prefer the parsed version if available
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
-    # Create the chart using the appropriate datetime column
-    base = (
-        alt.Chart(data)
-        .mark_line()
-        .encode(
-            alt.X(f"{x_column}:T", title="Time"),
-            alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
-            alt.Color("Type", title="Metric"),
-            tooltip=["metric"],
-        )
-        .properties(height=500, width=1333, title=title)
-    )
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=data[x_column],
+        y=data["metric"],
+        mode="lines",
+        name=column_name,
+        line=dict(width=1),
+        hovertemplate="%{x|%H:%M:%S}<br>%{y:,.2f}<extra></extra>",
+    ))
 
-    # Upper is zoomed area X axis
-    upper = base.encode(alt.X(f"{x_column}:T", title="Time Zoom", scale=alt.Scale(domain=brush)))
-
-    # Lower chart bind the brush in our chart by setting the selection property
-    lower = base.properties(height=150, title="").add_params(brush)
-
-    chart = alt.hconcat(upper & lower).configure_title(fontSize=16, color="black").configure_legend(
-        strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
-    ).configure_axis(
-        labelFontSize=20  # Customize label fontsize
+    yaxis_range = [0, max_y] if max_y > 0 else [0, None]
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=16)),
+        xaxis=dict(
+            title="Time",
+            rangeslider=dict(visible=True, thickness=0.08),
+            tickfont=dict(size=13),
+        ),
+        yaxis=dict(
+            title=column_name,
+            range=yaxis_range,
+            tickfont=dict(size=13),
+            rangemode="tozero",
+        ),
+        legend=dict(
+            bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1,
+            font=dict(size=13), orientation="v",
+        ),
+        height=600,
+        hovermode="x unified",
+        template="plotly_white",
     )
 
     output_name = column_name.replace("/", "_")
-
-    chart.save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html", scale_factor=2.0)
-
-
-def interactive_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
-    file_prefix = kwargs.get("file_prefix", "")
-    if file_prefix != "":
-        file_prefix = f"{file_prefix}_"
-
-    output_name = column_name.replace(" ", "_").replace("/", "_per_")
-
-    # Create the chart
-    alt.Chart(data).mark_line().encode(
-        alt.X("datetime:T", title="Time"),
-        alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
-        alt.Color("Type", title="Metric"),
-        tooltip=["metric"],
-    ).properties(height=500, width=1333, title=title).interactive().save(
-        f"{filepath}{output_prefix}{file_prefix}int_{output_name}.html", scale_factor=2.0
+    fig.write_html(
+        f"{filepath}{output_prefix}{file_prefix}{output_name}.html",
+        include_plotlyjs="cdn",
+        full_html=True,
     )
 
 
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
+    """Interactive HTML chart with rangeslider for index-based (no timestamp) data."""
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
-    brush = alt.selection_interval(encodings=["x"])
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=data["id_key"],
+        y=data["metric"],
+        mode="lines",
+        name=column_name,
+        line=dict(width=1),
+        hovertemplate="Sample %{x}<br>%{y:,.2f}<extra></extra>",
+    ))
 
-    # Create the chart
-    base = (
-        alt.Chart(data)
-        .mark_line()
-        .encode(
-            alt.X("id_key:Q", title="Count"),
-            alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
-            alt.Color("Type", title="Metric"),
-            tooltip=["metric:N"],
-        )
-        .properties(height=500, width=1333, title=title)
-    )
-
-    # Upper is zoomed area X axis
-    upper = base.encode(alt.X("id_key:Q", title="Count Zoom", scale=alt.Scale(domain=brush)))
-
-    # Lower chart bind the brush in our chart by setting the selection property
-    lower = base.properties(height=150, title="").add_params(brush)
-
-    alt.hconcat(upper & lower).configure_title(fontSize=16, color="black").configure_legend(
-        strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
+    yaxis_range = [0, max_y] if max_y > 0 else [0, None]
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=16)),
+        xaxis=dict(
+            title="Sample",
+            rangeslider=dict(visible=True, thickness=0.08),
+            tickfont=dict(size=13),
+        ),
+        yaxis=dict(
+            title=column_name,
+            range=yaxis_range,
+            tickfont=dict(size=13),
+            rangemode="tozero",
+        ),
+        legend=dict(
+            bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1,
+            font=dict(size=13), orientation="v",
+        ),
+        height=600,
+        hovermode="x unified",
+        template="plotly_white",
     )
 
     output_name = column_name.replace(" ", "_").replace("/", "_per_")
-
-    (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html", scale_factor=2.0)
+    fig.write_html(
+        f"{filepath}{output_prefix}{file_prefix}{output_name}.html",
+        include_plotlyjs="cdn",
+        full_html=True,
+    )
 
 
 def simple_chart_stacked(data, column_names, title, max_y, filepath, output_prefix, **kwargs):
