@@ -1050,23 +1050,50 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     plt.close("all")
 
 
+_OVERVIEW_ZOOM_JS = """
+var gd = document.querySelector('.plotly-graph-div');
+var syncing = false;
+gd.on('plotly_relayout', function(eventdata) {
+    if (syncing) return;
+    var r0 = eventdata['xaxis2.range[0]'];
+    var r1 = eventdata['xaxis2.range[1]'];
+    if (r0 !== undefined && r1 !== undefined) {
+        // User zoomed/dragged on overview — apply that range to main chart
+        // then snap overview back to full range
+        syncing = true;
+        Plotly.relayout(gd, {
+            'xaxis.range[0]': r0,
+            'xaxis.range[1]': r1,
+            'xaxis.autorange': false,
+            'xaxis2.autorange': true
+        }).then(function() { syncing = false; });
+    } else if (eventdata['xaxis2.autorange'] === true) {
+        // Overview was double-clicked/reset — also reset main chart
+        syncing = true;
+        Plotly.relayout(gd, {'xaxis.autorange': true})
+            .then(function() { syncing = false; });
+    }
+});
+"""
+
+
 def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
-    """Interactive HTML chart: drag a selection on the overview (bottom) to zoom the main chart (top).
-    Double-click to reset. Matches the Altair upper/lower linked-brush pattern."""
+    """Interactive HTML chart: drag a box on the overview (bottom) to zoom the main chart (top).
+    The overview resets to full range after each zoom. Double-click overview to reset both."""
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
+    # Two subplots with independent x-axes so the overview stays full while main zooms
     fig = make_subplots(
         rows=2, cols=1,
-        shared_xaxes=True,
+        shared_xaxes=False,
         row_heights=[0.75, 0.25],
         vertical_spacing=0.05,
     )
 
-    # Main chart (top)
     fig.add_trace(go.Scatter(
         x=data[x_column], y=data["metric"],
         mode="lines", name=column_name,
@@ -1074,7 +1101,6 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         hovertemplate="%{x|%H:%M:%S}<br>%{y:,.2f}<extra></extra>",
     ), row=1, col=1)
 
-    # Overview chart (bottom) — drag here to select the zoom window
     fig.add_trace(go.Scatter(
         x=data[x_column], y=data["metric"],
         mode="lines", name=column_name,
@@ -1086,23 +1112,21 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     yaxis_range = [0, max_y] if max_y > 0 else [0, None]
     fig.update_layout(
         title=dict(text=title, font=dict(size=16)),
-        # xaxis2 is the overview x-axis — selecting here drives xaxis (main)
-        xaxis2=dict(title="Drag here to zoom ↑   (double-click to reset)", tickfont=dict(size=11)),
         xaxis=dict(title="", tickfont=dict(size=13)),
+        xaxis2=dict(title="Drag box here to zoom ↑   (double-click to reset)", tickfont=dict(size=11)),
         yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
-        yaxis2=dict(tickfont=dict(size=10), rangemode="tozero", showticklabels=False),
+        yaxis2=dict(rangemode="tozero", showticklabels=False),
         legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
         height=650,
-        hovermode="x unified",
+        hovermode="x",
         template="plotly_white",
-        dragmode="select",
-        selectdirection="h",
     )
 
     output_name = column_name.replace("/", "_")
     fig.write_html(
         f"{filepath}{output_prefix}{file_prefix}{output_name}.html",
         include_plotlyjs="cdn",
+        post_script=_OVERVIEW_ZOOM_JS,
         full_html=True,
     )
 
@@ -1115,7 +1139,7 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
     fig = make_subplots(
         rows=2, cols=1,
-        shared_xaxes=True,
+        shared_xaxes=False,
         row_heights=[0.75, 0.25],
         vertical_spacing=0.05,
     )
@@ -1138,22 +1162,21 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     yaxis_range = [0, max_y] if max_y > 0 else [0, None]
     fig.update_layout(
         title=dict(text=title, font=dict(size=16)),
-        xaxis2=dict(title="Drag here to zoom ↑   (double-click to reset)", tickfont=dict(size=11)),
         xaxis=dict(title="", tickfont=dict(size=13)),
+        xaxis2=dict(title="Drag box here to zoom ↑   (double-click to reset)", tickfont=dict(size=11)),
         yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
-        yaxis2=dict(tickfont=dict(size=10), rangemode="tozero", showticklabels=False),
+        yaxis2=dict(rangemode="tozero", showticklabels=False),
         legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
         height=650,
-        hovermode="x unified",
+        hovermode="x",
         template="plotly_white",
-        dragmode="select",
-        selectdirection="h",
     )
 
     output_name = column_name.replace(" ", "_").replace("/", "_per_")
     fig.write_html(
         f"{filepath}{output_prefix}{file_prefix}{output_name}.html",
         include_plotlyjs="cdn",
+        post_script=_OVERVIEW_ZOOM_JS,
         full_html=True,
     )
 
