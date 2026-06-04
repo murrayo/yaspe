@@ -405,34 +405,26 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         has_outliers = len(filtered_data) < len(png_data)
 
         if has_outliers and len(filtered_data) > 0:
-            # Use filtered data for adjusted min/max
             adj_min = filtered_data["metric"].min()
             adj_max = filtered_data["metric"].max()
 
-            # Add lines and labels for both absolute and adjusted values
-            ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Absolute Min: {abs_min:,.0f}")
-            ax.axhline(
-                y=adj_min,
-                color="red",
-                linestyle="--",
-                alpha=0.7,
-                label=f"98th Percentile Min: {adj_min:,.0f} (no outliers)",
-            )
-            ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Absolute Max: {abs_max:,.0f}")
-            ax.axhline(
-                y=adj_max,
-                color="green",
-                linestyle="--",
-                alpha=0.7,
-                label=f"99th Percentile Max: {adj_max:,.0f} (no outliers)",
-            )
+            # Suppress lines that sit on zero — they just clutter the x-axis
+            if abs_min > 0:
+                ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Abs Min: {abs_min:,.0f}")
+            if adj_min > 0:
+                ax.axhline(y=adj_min, color="red", linestyle="--", alpha=0.7,
+                           label=f"98th pct Min (outliers removed): {adj_min:,.0f}")
+            if abs_max > 0:
+                ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Abs Max: {abs_max:,.0f}")
+            if adj_max > 0:
+                ax.axhline(y=adj_max, color="green", linestyle="--", alpha=0.7,
+                           label=f"99th pct Max (outliers removed): {adj_max:,.0f}")
         else:
-            # No outliers detected, use absolute values
-            ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Minimum: {abs_min:,.0f}")
-            ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Maximum: {abs_max:,.0f}")
+            if abs_min > 0:
+                ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Min: {abs_min:,.0f}")
+            ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Max: {abs_max:,.0f}")
 
-        # Show the legend
-        ax.legend(loc="best")
+        ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
 
     ax.grid(which="major", axis="both", linestyle="--")
 
@@ -498,10 +490,11 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         thresh_val, thresh_label = threshold
         color = "red" if png_data["metric"].max() > thresh_val else "orange"
         ax.axhline(y=thresh_val, color=color, linestyle="-.", linewidth=1.5, alpha=0.8, label=thresh_label)
-        ax.legend(loc="best")
+        ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
 
     output_name = column_name.replace("/", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150)
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
     # Track peak times for Glorefs
@@ -669,27 +662,22 @@ def _create_peak_60_chart(
         adj_min = filtered_data["metric"].min()
         adj_max = filtered_data["metric"].max()
 
-        ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Absolute Min: {abs_min:,.0f}")
-        ax.axhline(
-            y=adj_min,
-            color="red",
-            linestyle="--",
-            alpha=0.7,
-            label=f"98th Percentile Min: {adj_min:,.0f} (no outliers)",
-        )
-        ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Absolute Max: {abs_max:,.0f}")
-        ax.axhline(
-            y=adj_max,
-            color="green",
-            linestyle="--",
-            alpha=0.7,
-            label=f"99th Percentile Max: {adj_max:,.0f} (no outliers)",
-        )
+        if abs_min > 0:
+            ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Abs Min: {abs_min:,.0f}")
+        if adj_min > 0:
+            ax.axhline(y=adj_min, color="red", linestyle="--", alpha=0.7,
+                       label=f"98th pct Min (outliers removed): {adj_min:,.0f}")
+        if abs_max > 0:
+            ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Abs Max: {abs_max:,.0f}")
+        if adj_max > 0:
+            ax.axhline(y=adj_max, color="green", linestyle="--", alpha=0.7,
+                       label=f"99th pct Max (outliers removed): {adj_max:,.0f}")
     else:
-        ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Minimum: {abs_min:,.0f}")
-        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Maximum: {abs_max:,.0f}")
+        if abs_min > 0:
+            ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Min: {abs_min:,.0f}")
+        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Max: {abs_max:,.0f}")
 
-    ax.legend(loc="best")
+    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
     ax.grid(which="major", axis="both", linestyle="--")
 
     # Format title with peak period time range (using adjusted chart times)
@@ -724,7 +712,8 @@ def _create_peak_60_chart(
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     output_name = column_name.replace("/", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_peak60.png", format="png", dpi=150)
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_peak60.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
     return peak_start_time, peak_end_time
@@ -803,23 +792,29 @@ def _create_business_hours_peak_chart(
     if has_outliers and len(filtered_data) > 0:
         adj_min = filtered_data["metric"].min()
         adj_max = filtered_data["metric"].max()
-        ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Absolute Min: {abs_min:,.0f}")
-        ax.axhline(y=adj_min, color="red", linestyle="--", alpha=0.7, label=f"98th Percentile Min: {adj_min:,.0f} (no outliers)")
-        ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Absolute Max: {abs_max:,.0f}")
-        ax.axhline(y=adj_max, color="green", linestyle="--", alpha=0.7, label=f"99th Percentile Max: {adj_max:,.0f} (no outliers)")
+        if abs_min > 0:
+            ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Abs Min: {abs_min:,.0f}")
+        if adj_min > 0:
+            ax.axhline(y=adj_min, color="red", linestyle="--", alpha=0.7,
+                       label=f"98th pct Min (outliers removed): {adj_min:,.0f}")
+        if abs_max > 0:
+            ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Abs Max: {abs_max:,.0f}")
+        if adj_max > 0:
+            ax.axhline(y=adj_max, color="green", linestyle="--", alpha=0.7,
+                       label=f"99th pct Max (outliers removed): {adj_max:,.0f}")
     else:
-        ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Minimum: {abs_min:,.0f}")
-        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Maximum: {abs_max:,.0f}")
+        if abs_min > 0:
+            ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Min: {abs_min:,.0f}")
+        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Max: {abs_max:,.0f}")
 
-    ax.legend(loc="best")
+    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
     ax.grid(which="major", axis="both", linestyle="--")
 
     chart_start_str = peak_start_time.strftime("%H:%M")
     chart_end_str = peak_end_time.strftime("%H:%M")
     date_str = peak_start_time.strftime("%a %d-%b-%y")
     ax.set_title(
-        f"{title} - Business Hours Peak ({bh_start:02d}:00-{bh_end:02d}:00) "
-        f"({chart_start_str} to {chart_end_str}) - {date_str}",
+        f"{title} - BH Peak {chart_start_str}-{chart_end_str} - {date_str}",
         fontsize=16,
     )
 
@@ -844,7 +839,8 @@ def _create_business_hours_peak_chart(
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     output_name = column_name.replace("/", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_bh_peak.png", format="png", dpi=150)
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_bh_peak.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
     return peak_start_time, peak_end_time
@@ -946,27 +942,22 @@ def _create_glorefs_peak_chart(
         adj_min = filtered_data["metric"].min()
         adj_max = filtered_data["metric"].max()
 
-        ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Absolute Min: {abs_min:,.0f}")
-        ax.axhline(
-            y=adj_min,
-            color="red",
-            linestyle="--",
-            alpha=0.7,
-            label=f"98th Percentile Min: {adj_min:,.0f} (no outliers)",
-        )
-        ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Absolute Max: {abs_max:,.0f}")
-        ax.axhline(
-            y=adj_max,
-            color="green",
-            linestyle="--",
-            alpha=0.7,
-            label=f"99th Percentile Max: {adj_max:,.0f} (no outliers)",
-        )
+        if abs_min > 0:
+            ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Abs Min: {abs_min:,.0f}")
+        if adj_min > 0:
+            ax.axhline(y=adj_min, color="red", linestyle="--", alpha=0.7,
+                       label=f"98th pct Min (outliers removed): {adj_min:,.0f}")
+        if abs_max > 0:
+            ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Abs Max: {abs_max:,.0f}")
+        if adj_max > 0:
+            ax.axhline(y=adj_max, color="green", linestyle="--", alpha=0.7,
+                       label=f"99th pct Max (outliers removed): {adj_max:,.0f}")
     else:
-        ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Minimum: {abs_min:,.0f}")
-        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Maximum: {abs_max:,.0f}")
+        if abs_min > 0:
+            ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Min: {abs_min:,.0f}")
+        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Max: {abs_max:,.0f}")
 
-    ax.legend(loc="best")
+    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
     ax.grid(which="major", axis="both", linestyle="--")
 
     # Format title with Glorefs peak period time range (using adjusted times)
@@ -1001,7 +992,8 @@ def _create_glorefs_peak_chart(
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     output_name = column_name.replace("/", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_glorefs_peak.png", format="png", dpi=150)
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_glorefs_peak.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
 
@@ -1095,17 +1087,28 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         vertical_spacing=0.05,
     )
 
-    fig.add_trace(go.Scatter(
-        x=data[x_column], y=data["metric"],
-        mode="lines", name=column_name,
-        line=dict(width=1),
-        hovertemplate="%{x|%H:%M:%S}<br>%{y:,.2f}<extra></extra>",
-    ), row=1, col=1)
+    # Pick hover format based on magnitude
+    metric_max = data["metric"].max()
+    if metric_max > 5 or metric_max == 0:
+        hover_fmt = "%{y:,.0f}"
+    elif metric_max < 0.002:
+        hover_fmt = "%{y:,.4f}"
+    else:
+        hover_fmt = "%{y:,.3f}"
 
     fig.add_trace(go.Scatter(
         x=data[x_column], y=data["metric"],
         mode="lines", name=column_name,
-        line=dict(width=1, color="lightsteelblue"),
+        line=dict(width=1),
+        hovertemplate=f"%{{x|%H:%M:%S}}<br>{column_name}: {hover_fmt}<extra></extra>",
+    ), row=1, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=data[x_column], y=data["metric"],
+        mode="lines", fill="tozeroy",
+        name=column_name,
+        line=dict(width=0.5, color="steelblue"),
+        fillcolor="rgba(70,130,180,0.25)",
         showlegend=False,
         hoverinfo="skip",
     ), row=2, col=1)
