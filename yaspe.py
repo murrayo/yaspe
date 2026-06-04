@@ -1000,7 +1000,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     # Lower chart bind the brush in our chart by setting the selection property
     lower = base.properties(height=150, title="").add_params(brush)
 
-    alt.hconcat(upper & lower).configure_title(fontSize=16, color="black").configure_legend(
+    chart = alt.hconcat(upper & lower).configure_title(fontSize=16, color="black").configure_legend(
         strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
     ).configure_axis(
         labelFontSize=20  # Customize label fontsize
@@ -1008,7 +1008,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     output_name = column_name.replace("/", "_")
 
-    (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html", scale_factor=2.0)
+    chart.save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html", scale_factor=2.0)
 
 
 def interactive_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -1467,7 +1467,7 @@ def chart_mgstat(
             ):
                 min_max = True
 
-            if png_out:
+            if png_out or png_html_out:
                 peak_start, peak_end = simple_chart(
                     data,
                     column_name,
@@ -1482,22 +1482,8 @@ def chart_mgstat(
                 # Capture Glorefs peak window
                 if column_name == "Glorefs" and peak_start is not None:
                     glorefs_peak_window = (peak_start, peak_end)
-            elif png_html_out:
-                peak_start, peak_end = simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    line_chart=line_chart,
-                )
-                # Capture Glorefs peak window
-                if column_name == "Glorefs" and peak_start is not None:
-                    glorefs_peak_window = (peak_start, peak_end)
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                if png_html_out:
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix)
 

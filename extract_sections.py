@@ -270,9 +270,9 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         this_time = values[-1]
                         values.insert(0, this_time)
 
-                        # Have no date, only time. Make sure we haven't rolled over midnight
-                        # Comparing time as strings is a bit hacky, but we only care about the hour
-                        if this_time < previous_time:
+                        # Have no date, only time. Make sure we haven't rolled over midnight.
+                        # Zero-pad so lexicographic comparison works for single-digit hours (e.g. "9:00" vs "10:00").
+                        if this_time.zfill(8) < previous_time.zfill(8):
                             next_day = dateutil.parser.parse(aix_vmstat_line_date) + relativedelta(days=+1)
                             aix_vmstat_line_date = next_day.strftime("%m/%d/%Y")
                         previous_time = this_time
@@ -330,9 +330,9 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         else:
                             this_time = values[0]
 
-                        # Have no date, only time. Make sure we haven't rolled over midnight
-                        # Comparing time as strings is a bit hacky, but we only care about the hour
-                        if this_time < aix_sar_d_previous_time:
+                        # Have no date, only time. Make sure we haven't rolled over midnight.
+                        # Zero-pad so lexicographic comparison works for single-digit hours (e.g. "9:00" vs "10:00").
+                        if this_time.zfill(8) < aix_sar_d_previous_time.zfill(8):
                             next_day = dateutil.parser.parse(aix_sar_d_line_date) + relativedelta(days=+1)
                             aix_sar_d_line_date = next_day.strftime("%m/%d/%Y")
                         aix_sar_d_previous_time = this_time

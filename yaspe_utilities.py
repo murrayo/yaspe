@@ -108,4 +108,5 @@ def format_date(known_datetime, date_str):
             return perm_date.strftime("%Y/%m/%d")
 
     # Default to 1 Dec 2000 if no valid date found - at least you will get a chart
+    print(f"Warning: could not resolve date '{date_str}' relative to {known_datetime.date()}; using 2000/12/01 as fallback.")
     return "2000/12/01"
