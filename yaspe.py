@@ -1124,16 +1124,16 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
             adj_min = filtered.min()
             adj_max = filtered.max()
             fig.add_hline(y=abs_min, line=dict(color="darkred", dash="dot", width=1),
-                          annotation_text=f"Abs Min: {abs_min:,.0f}", annotation_position="bottom right", row=1, col=1)
+                          annotation_text=f"Abs Min: {abs_min:,.0f}", annotation_position="top right", row=1, col=1)
             fig.add_hline(y=adj_min, line=dict(color="red", dash="dash", width=1),
-                          annotation_text=f"98th pct Min: {adj_min:,.0f}", annotation_position="bottom right", row=1, col=1)
+                          annotation_text=f"98th pct Min: {adj_min:,.0f}", annotation_position="top right", row=1, col=1)
             fig.add_hline(y=abs_max, line=dict(color="darkgreen", dash="dot", width=1),
                           annotation_text=f"Abs Max: {abs_max:,.0f}", annotation_position="top right", row=1, col=1)
             fig.add_hline(y=adj_max, line=dict(color="green", dash="dash", width=1),
                           annotation_text=f"99th pct Max: {adj_max:,.0f}", annotation_position="top right", row=1, col=1)
         else:
             fig.add_hline(y=abs_min, line=dict(color="red", dash="dash", width=1),
-                          annotation_text=f"Min: {abs_min:,.0f}", annotation_position="bottom right", row=1, col=1)
+                          annotation_text=f"Min: {abs_min:,.0f}", annotation_position="top right", row=1, col=1)
             fig.add_hline(y=abs_max, line=dict(color="green", dash="dash", width=1),
                           annotation_text=f"Max: {abs_max:,.0f}", annotation_position="top right", row=1, col=1)
 
