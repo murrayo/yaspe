@@ -101,39 +101,6 @@ def execute_single_read_query(connection, query):
         print(f"The error '{e}' occurred")
 
 
-def data_types_map(df):
-    row = 0
-    data_types = {}
-    for _, val in df.dtypes.items():
-        data_types[row] = val
-        row += 1
-    return data_types
-
-
-def create_generic_table(connection, table_name, df):
-    # Build the table, headings can vary depending on OS or CachÃ© or IRIS version or other reasons.
-    create_table = f"CREATE TABLE IF NOT EXISTS {table_name} (id_key INTEGER PRIMARY KEY AUTOINCREMENT);"
-    execute_simple_query(connection, create_table)
-
-    # Loop through and create the rest of the columns based on data type
-    # Create a map of the data types
-    data_types = data_types_map(df)
-
-    columns = list(df)
-    row = 0
-
-    for column in columns:
-        if data_types[row] == "int64":
-            q = f"ALTER TABLE {table_name} ADD COLUMN '{column}' INTEGER;"
-        elif data_types[row] == "float64":
-            q = f"ALTER TABLE {table_name} ADD COLUMN '{column}' REAL;"
-        else:
-            q = f"ALTER TABLE {table_name} ADD COLUMN '{column}' CHAR(30);"
-
-        execute_simple_query(connection, q)
-        row += 1
-
-
 def insert_dict_into_table(connection, table_name, _dict):
     # Make sure not an empty  line
     if _dict:
@@ -207,12 +174,8 @@ def create_sections(
 
     # Add each section to the database
     if not mgstat_df.empty:
-        # Example Dave L can do IRIS function here
-        if True:
-            mgstat_df.to_sql("mgstat", connection, if_exists="append", index=True, index_label="id_key")
-            connection.commit()
-        else:
-            pass
+        mgstat_df.to_sql("mgstat", connection, if_exists="append", index=True, index_label="id_key")
+        connection.commit()
 
         if csv_out:
             mgstat_output_csv = f"{output_filepath_prefix}mgstat.csv"
@@ -390,16 +353,10 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
-    plt.tight_layout()
-
     palette = plt.get_cmap(colormap_name)
-
     color = palette(1)
 
-    fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
-    # plt.gcf().set_dpi(300)
+    fig, ax = plt.subplots(figsize=(16, 6))
 
     # For plotting, use datetime_parsed if it exists, otherwise use datetime
     datetime_column = "datetime_parsed" if "datetime_parsed" in png_data.columns else "datetime"
@@ -655,14 +612,10 @@ def _create_peak_60_chart(
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
-    plt.tight_layout()
-
     palette = plt.get_cmap(colormap_name)
     color = palette(1)
 
-    fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
+    fig, ax = plt.subplots(figsize=(16, 6))
 
     # Choose plot style based on line_chart option
     if line_chart:
@@ -816,14 +769,10 @@ def _create_glorefs_peak_chart(
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
-    plt.tight_layout()
-
     palette = plt.get_cmap(colormap_name)
     color = palette(2)  # Different color to distinguish from regular peak chart
 
-    fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
+    fig, ax = plt.subplots(figsize=(16, 6))
 
     # Choose plot style based on line_chart option
     if line_chart:
@@ -932,14 +881,11 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
-    plt.figure(num=None, figsize=(16, 6))
-    palette = plt.get_cmap(colormap_name)
 
+    palette = plt.get_cmap(colormap_name)
     color = palette(1)
 
-    fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
-    # plt.gcf().set_dpi(300)
+    fig, ax = plt.subplots(figsize=(16, 6))
 
     ax.plot(
         png_data["id_key"], png_data["metric"], label=column_name, color=color, marker=".", linestyle="-", alpha=0.7
@@ -1085,16 +1031,10 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
-    plt.tight_layout()
-
     palette = plt.get_cmap(colormap_name)
-
     color = palette(1)
 
-    fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
-    # plt.gcf().set_dpi(300)
+    fig, ax = plt.subplots(figsize=(16, 6))
 
     ax.stackplot(png_data.index, png_data["sy"], png_data["wa"], png_data["us"], labels=["sy", "wa", "us"], alpha=0.7)
 
@@ -1150,15 +1090,10 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
-    plt.tight_layout()
-
     palette = plt.get_cmap(colormap_name)
-
     color = palette(1)
 
-    fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
+    fig, ax = plt.subplots(figsize=(16, 6))
 
     ax.stackplot(
         png_data.index,
@@ -1720,8 +1655,6 @@ def chart_iostat(
                     pass
                 else:
                     title = f"{device} : {column_name} - {customer}"
-                    save_name = [s for s in column_name if s.isalnum() or s.isspace()]
-                    save_name = "".join(save_name)
 
                     to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
@@ -1802,8 +1735,6 @@ def chart_iostat(
             for column_name in columns_to_chart:
                 if not column_name == "Device":
                     title = f"{device} : {column_name} - {customer}"
-                    save_name = [s for s in column_name if s.isalnum() or s.isspace()]
-                    save_name = "".join(save_name)
 
                     to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
@@ -1866,8 +1797,6 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
         for column_name in columns_to_chart:
             if not column_name == "Device":
                 title = f"{device} : {column_name} - {customer}"
-                save_name = [s for s in column_name if s.isalnum() or s.isspace()]
-                save_name = "".join(save_name)
 
                 to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
@@ -1948,8 +1877,6 @@ def chart_aix_sar_d(
                 pass
             else:
                 title = f"{device} : {column_name} - {customer}"
-                save_name = [s for s in column_name if s.isalnum() or s.isspace()]
-                save_name = "".join(save_name)
 
                 to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
@@ -1986,9 +1913,6 @@ def chart_aix_sar_d(
                     linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
                 else:
                     linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
-
-                    if False:
-                        interactive_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
 
 
 def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True, line_chart=True):

@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib import ticker
 import pandas as pd
-import re
 
 
 def chart_common(site_survey_input, base_file_path, charts_path, sub_folder):
@@ -268,37 +267,3 @@ def iostat_metrics(df, site_survey_input, disk_list, title, **kwargs):
             text_file.close()
 
 
-def detect_date_format(date_str):
-    mm_dd_yyyy = r"(0[1-9]|1[012])[- /.](0[1-9]|[12][0-9]|3[01])[- /.](19|20)\d\d"
-    dd_mm_yyyy = r"(0[1-9]|[12][0-9]|3[01])[- /.](0[1-9]|1[012])[- /.](19|20)\d\d"
-
-    if re.match(mm_dd_yyyy, date_str):
-        return "mm/dd/yyyy"
-    elif re.match(dd_mm_yyyy, date_str):
-        return "dd/mm/yyyy"
-    else:
-        return "Unknown format"
-
-
-# this one better for mixed bag of dates
-def infer_date_format(date_series):
-    mm_dd_count = 0
-    dd_mm_count = 0
-
-    for date_str in date_series:
-        try:
-            day, month, year = map(int, date_str.split("/"))
-
-            if 1 <= month <= 12 and 1 <= day <= 31:
-                mm_dd_count += 1
-            if 1 <= day <= 12 and 1 <= month <= 31:
-                dd_mm_count += 1
-        except ValueError:
-            continue
-
-    if mm_dd_count > dd_mm_count:
-        return "mm/dd/yyyy"
-    elif dd_mm_count > mm_dd_count:
-        return "dd/mm/yyyy"
-    else:
-        return "ambiguous"
