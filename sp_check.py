@@ -205,6 +205,14 @@ def system_check(input_file):
                     sp_dict["LockThreshold"] = (line.split("=")[1]).strip()
                 if line.startswith("RTPC="):
                     sp_dict["RTPC"] = (line.split("=")[1]).strip()
+                if line.startswith("FastDistinct="):
+                    sp_dict["FastDistinct"] = (line.split("=")[1]).strip()
+                if line.startswith("SystemMode="):
+                    sp_dict["SystemMode"] = (line.split("=")[1]).strip()
+                if line.startswith("DBSizesAllowed="):
+                    sp_dict["DBSizesAllowed"] = (line.split("=")[1]).strip()
+                if line.startswith("bbsiz="):
+                    sp_dict["bbsiz"] = (line.split("=")[1]).strip()
 
             # Chad's metrics
             if "CACHESYS=" in line:
@@ -287,6 +295,16 @@ def system_check(input_file):
             # Linux kernel
             if "vm.overcommit_memory" in line:
                 sp_dict["overcommit_memory"] = (line.split("=")[1]).strip()
+
+            if re.search(r"\bkernel\.numa_balancing\s*=", line):
+                sp_dict["kernel.numa_balancing"] = (line.split("=")[1]).strip()
+
+            if "vm.max_map_count" in line:
+                sp_dict["vm.max_map_count"] = (line.split("=")[1]).strip()
+
+            if "open files" in line and "(-n)" in line:
+                # Format: "open files                      (-n)   1024"
+                sp_dict["ulimit open files"] = line.split("(-n)")[1].strip()
 
             if "swappiness" in line:
                 sp_dict["swappiness"] = (line.split("=")[1]).strip()
@@ -735,6 +753,51 @@ def build_log(sp_dict):
                     "appropriate for the application's locking behaviour."
                 )
 
+    # FastDistinct: OFF is correct for TrakCare/IntelliCare
+    if "FastDistinct" in sp_dict:
+        try:
+            fast_distinct = int(sp_dict["FastDistinct"])
+        except ValueError:
+            fast_distinct = None
+
+        if fast_distinct in (0, 1):
+            if fast_distinct == 1:
+                app_warn_count += 1
+                sp_dict[f"app warning {app_warn_count}"] = "FastDistinct is ON (FastDistinct=1). For TrakCare/IntelliCare this can cause ALPHAUP index values to be returned instead of actual data, breaking some reports."
+                sp_dict[f"app warning {app_warn_count} explanation"] = (
+                    "FastDistinct=1 enables an optimisation that can return raw index key values (e.g. "
+                    "ALPHAUP-collated strings) instead of the underlying stored data. For TrakCare and "
+                    "IntelliCare this produces incorrect report output. The recommended value is 0."
+                )
+            else:
+                app_pass_count += 1
+                sp_dict[f"app pass {app_pass_count}"] = "FastDistinct is OFF (FastDistinct=0). This is the recommended setting for TrakCare/IntelliCare (example — verify against site documentation)."
+                sp_dict[f"app pass {app_pass_count} explanation"] = (
+                    "FastDistinct=0 ensures that SQL DISTINCT queries return actual stored values rather "
+                    "than index key values. This is required for correct report output in TrakCare and "
+                    "IntelliCare applications."
+                )
+
+    # DBSizesAllowed: 8192,65536 is required for TrakCare Analytics (example check)
+    if "DBSizesAllowed" in sp_dict:
+        dbs = sp_dict["DBSizesAllowed"].strip()
+        if "65536" in dbs:
+            app_pass_count += 1
+            sp_dict[f"app pass {app_pass_count}"] = f"DBSizesAllowed includes 64KB block size ({dbs}). Required for TrakCare Analytics databases (example — verify against site documentation)."
+            sp_dict[f"app pass {app_pass_count} explanation"] = (
+                "TrakCare Analytics uses databases with a 64KB (65536-byte) block size. Including 65536 "
+                "in DBSizesAllowed permits IRIS to create and mount these databases. Without it, "
+                "Analytics databases cannot be attached and Analytics will not start."
+            )
+        else:
+            app_warn_count += 1
+            sp_dict[f"app warning {app_warn_count}"] = f"DBSizesAllowed does not include 64KB block size ({dbs}). TrakCare Analytics requires 65536 (example — verify against site documentation)."
+            sp_dict[f"app warning {app_warn_count} explanation"] = (
+                "TrakCare Analytics uses 64KB (65536-byte) block-size databases. If 65536 is not in "
+                "DBSizesAllowed, IRIS will refuse to mount Analytics databases, preventing Analytics "
+                "from starting. Recommended value: DBSizesAllowed=8192,65536."
+            )
+
     # RTPC: ON/OFF, always report as a pass (no warning defined)
     if "RTPC" in sp_dict:
         try:
@@ -751,6 +814,59 @@ def build_log(sp_dict):
                 "RTPC (Real-Time Process Control) enables priority-based scheduling of IRIS processes. "
                 f"It is currently {rtpc_status}. When ON, IRIS can deprioritise background tasks "
                 "relative to interactive queries, which can improve response time consistency under load."
+            )
+
+    # bbsiz: -1 is recommended from IRIS 2022.2+
+    if "bbsiz" in sp_dict:
+        try:
+            bbsiz_val = int(sp_dict["bbsiz"])
+        except ValueError:
+            bbsiz_val = None
+
+        if bbsiz_val is not None:
+            version_year = sp_dict.get("version year", 0)
+            if bbsiz_val == -1:
+                pass_count += 1
+                sp_dict[f"pass {pass_count}"] = f"bbsiz is -1 (unlimited per-process memory, recommended for IRIS 2022.2+)."
+                sp_dict[f"pass {pass_count} explanation"] = (
+                    "bbsiz=-1 removes the per-process memory limit, which is the recommended setting "
+                    "from IRIS 2022.2 onwards. Earlier versions used a fixed default (typically 524288 KB) "
+                    "that can be too small for processes that handle large globals or complex queries."
+                )
+            elif isinstance(version_year, int) and version_year >= 2022 and bbsiz_val != -1:
+                warn_count += 1
+                sp_dict[f"warning {warn_count}"] = (
+                    f"bbsiz is {bbsiz_val:,} KB. From IRIS 2022.2 onwards, set bbsiz=-1 to remove "
+                    f"the per-process memory limit."
+                )
+                sp_dict[f"warning {warn_count} explanation"] = (
+                    "bbsiz sets the maximum per-process private memory that IRIS will allocate. The old "
+                    "default (~512 MB) was adequate for Caché but can be exhausted by large globals, "
+                    "object caches, or complex queries in IRIS. Setting bbsiz=-1 removes this cap "
+                    "and is the recommended configuration from IRIS 2022.2 onwards."
+                )
+
+    # wduseasyncio / asyncwij: informational
+    if "wduseasyncio" in sp_dict or "asyncwij" in sp_dict:
+        wduseasyncio = int(sp_dict.get("wduseasyncio", 0))
+        asyncwij = int(sp_dict.get("asyncwij", 0))
+        if wduseasyncio == 1:
+            pass_count += 1
+            sp_dict[f"pass {pass_count}"] = f"AsyncIO is enabled (wduseasyncio=1, Asyncwij={asyncwij}). Recommended for all-flash/NVMe storage."
+            sp_dict[f"pass {pass_count} explanation"] = (
+                "wduseasyncio=1 enables IRIS direct async I/O, bypassing the OS filesystem cache for "
+                "database writes. This reduces write latency on all-flash and NVMe storage. Note: "
+                "direct I/O makes OS-level file operations (copies, online backup) slower because they "
+                "also bypass the cache. The Asyncwij parameter controls in-flight WIJ writes."
+            )
+        else:
+            pass_count += 1
+            sp_dict[f"pass {pass_count}"] = f"AsyncIO is not enabled (wduseasyncio={wduseasyncio}). Consider enabling for all-flash/NVMe storage."
+            sp_dict[f"pass {pass_count} explanation"] = (
+                "wduseasyncio=0 means IRIS uses standard synchronous I/O through the OS filesystem "
+                "cache. For spinning disk or hybrid storage this is typically fine. For all-flash or "
+                "NVMe storage, enabling wduseasyncio=1 and setting Asyncwij=8 can reduce write latency "
+                "by allowing the write daemon to issue multiple I/Os concurrently."
             )
 
     # Linux kernel
@@ -776,6 +892,90 @@ def build_log(sp_dict):
                 "whether allocations are safe before allowing them, reducing the risk of the OOM "
                 "killer terminating IRIS processes unexpectedly."
             )
+
+    if "kernel.numa_balancing" in sp_dict:
+        try:
+            numa_balancing = int(sp_dict["kernel.numa_balancing"])
+        except ValueError:
+            numa_balancing = None
+
+        if numa_balancing == 1:
+            warn_count += 1
+            sp_dict[f"warning {warn_count}"] = (
+                f"kernel.numa_balancing is enabled (1). On NUMA systems with HugePages, automatic NUMA "
+                f"balancing can cause page migration latency. Recommended: kernel.numa_balancing=0."
+            )
+            sp_dict[f"warning {warn_count} explanation"] = (
+                "NUMA automatic balancing periodically migrates memory pages between NUMA nodes to "
+                "place them closer to the CPU using them. HugePages cannot be migrated, so on systems "
+                "with HugePages enabled this process adds overhead without benefit and can introduce "
+                "latency spikes. Disabling it with kernel.numa_balancing=0 removes this overhead."
+            )
+        elif numa_balancing == 0:
+            pass_count += 1
+            sp_dict[f"pass {pass_count}"] = "kernel.numa_balancing is disabled (0). Correct for NUMA systems running IRIS with HugePages."
+            sp_dict[f"pass {pass_count} explanation"] = (
+                "With NUMA balancing disabled, the kernel will not attempt to migrate HugePages between "
+                "NUMA nodes. This avoids unnecessary latency on systems where IRIS shared memory is "
+                "allocated on HugePages."
+            )
+
+    if "vm.max_map_count" in sp_dict:
+        try:
+            max_map_count = int(sp_dict["vm.max_map_count"])
+        except ValueError:
+            max_map_count = None
+
+        recommended_max_map_count = 131060
+        if max_map_count is not None:
+            if max_map_count < recommended_max_map_count:
+                warn_count += 1
+                sp_dict[f"warning {warn_count}"] = (
+                    f"vm.max_map_count is {max_map_count:,}. Recommended minimum is {recommended_max_map_count:,} for IRIS."
+                )
+                sp_dict[f"warning {warn_count} explanation"] = (
+                    "vm.max_map_count limits the number of virtual memory areas (VMAs) a process can "
+                    "have. IRIS uses many memory-mapped files and shared memory regions. If this limit "
+                    "is too low, IRIS processes can fail with ENOMEM errors during startup or at runtime "
+                    "when mapping databases. Set vm.max_map_count=131060 (or higher) in sysctl.conf."
+                )
+            else:
+                pass_count += 1
+                sp_dict[f"pass {pass_count}"] = f"vm.max_map_count is {max_map_count:,} (recommended minimum is {recommended_max_map_count:,})."
+                sp_dict[f"pass {pass_count} explanation"] = (
+                    "vm.max_map_count is at or above the recommended minimum, so IRIS should not "
+                    "encounter virtual memory area limits when mapping databases and shared memory regions."
+                )
+
+    if "ulimit open files" in sp_dict:
+        try:
+            open_files = int(sp_dict["ulimit open files"])
+        except ValueError:
+            open_files = None
+
+        recommended_open_files = 8192
+        if open_files is not None:
+            if open_files < recommended_open_files:
+                warn_count += 1
+                sp_dict[f"warning {warn_count}"] = (
+                    f"ulimit open files (nofile) is {open_files:,}. Recommended minimum for IRIS is "
+                    f"{recommended_open_files:,} (ideally 65535)."
+                )
+                sp_dict[f"warning {warn_count} explanation"] = (
+                    "Each open database, journal file, network connection, and internal IRIS pipe "
+                    "consumes a file descriptor. The default Linux limit of 1024 is too low for a "
+                    "production IRIS instance with many databases and concurrent users. Exhausting "
+                    "file descriptors causes 'too many open files' errors, connection failures, and "
+                    "potentially IRIS process crashes. Set 'nofile' to at least 8192 (preferably "
+                    "65535) for the IRIS service account in /etc/security/limits.conf."
+                )
+            else:
+                pass_count += 1
+                sp_dict[f"pass {pass_count}"] = f"ulimit open files (nofile) is {open_files:,}."
+                sp_dict[f"pass {pass_count} explanation"] = (
+                    "The open files limit is sufficient for IRIS to open its databases, journals, "
+                    "network connections, and internal pipes without hitting descriptor limits."
+                )
 
     if "swappiness" in sp_dict:
         # Is memory more or less than 64GB
@@ -987,6 +1187,18 @@ def build_log(sp_dict):
             # Huge pages is specified, validate
             else:
                 sp_dict["hugepages MB"] = round(int(sp_dict["vm.nr_hugepages"]) * huge_page_size_kb / 1024)
+                recommend_count += 1
+                sp_dict[f"recommend {recommend_count}"] = (
+                    "Verify Transparent Huge Pages (THP) are disabled: check /sys/kernel/mm/transparent_hugepage/enabled "
+                    "shows 'never'. Add transparent_hugepage=never to GRUB_CMDLINE_LINUX in /etc/default/grub and "
+                    "rebuild with grub2-mkconfig. THP can interfere with HugePages and cause unpredictable latency."
+                )
+                sp_dict[f"recommend {recommend_count} explanation"] = (
+                    "Transparent Huge Pages is a Linux feature that automatically promotes regular 4 KB pages to "
+                    "2 MB pages at runtime. When HugePages are also configured, THP can conflict with the pre-allocated "
+                    "HugePage pool, causing memory allocation failures or compaction stalls. InterSystems recommends "
+                    "disabling THP permanently on all IRIS production servers."
+                )
 
                 if sp_dict["hugepages MB"] < sp_dict["shared memory MB"]:
                     warn_count += 1
@@ -1163,6 +1375,8 @@ def build_log(sp_dict):
     log += f"Shared memory    : {sp_dict['shared memory calc']} = {int(sp_dict['shared memory MB']):,} MB\n"
     log += f"Version          : {sp_dict['version string']}\n"
     log += f"Date collected   : {sp_dict['profile run']}\n"
+    if "SystemMode" in sp_dict:
+        log += f"System mode      : {sp_dict['SystemMode']}\n"
 
     first_pass = True
     for key in sp_dict:
@@ -1327,6 +1541,18 @@ def build_log(sp_dict):
     if explanation_lines:
         log += "\n\n--------------------------------------------------------------------------------------------------\n"
         log += "What this means:\n"
+        log += "--------------------------------------------------------------------------------------------------\n"
+        log += "\n"
+        log += "**Important:** The findings and recommendations contained in this review are provided as examples\n"
+        log += "only and are based solely on the information available at the time of assessment. These\n"
+        log += "recommendations are not universally applicable and may not be suitable for all environments,\n"
+        log += "workloads, business requirements, or operational constraints.\n"
+        log += "\n"
+        log += "No changes should be recommended to, or implemented for, a customer without first validating\n"
+        log += "their suitability for the specific environment. Before proposing or making any configuration,\n"
+        log += "architecture, performance, or capacity changes, consult with an experienced systems engineer,\n"
+        log += "solutions architect, or the relevant vendor support team to confirm compatibility, risks, and\n"
+        log += "expected outcomes.\n"
         log += "--------------------------------------------------------------------------------------------------\n"
         for item_text, explanation in explanation_lines:
             log += f"\n- {item_text}\n"
