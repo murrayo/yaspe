@@ -228,6 +228,75 @@ def _write_overlay_html(datasets: list, column_name: str, metric_type: str, outp
     print(f"  Written: {out_path}")
 
 
+def _detect_datetime_column(df: pd.DataFrame) -> str:
+    """Return the name of the datetime column in df, or empty string if not found.
+    Checks common names used by yaspe: 'DateTime', 'RunDate', 'Date/Time'."""
+    for candidate in ("DateTime", "RunDate", "Date/Time", "datetime"):
+        if candidate in df.columns:
+            return candidate
+    for col in df.select_dtypes(include="object").columns:
+        try:
+            pd.to_datetime(df[col].iloc[0])
+            return col
+        except Exception:
+            continue
+    return ""
+
+
 def run(directory: str) -> None:
-    """Entry point called by yaspe.py when --compare-dir is given."""
-    pass  # implemented in later tasks
+    """Entry point called by yaspe.py when --compare-dir is given.
+
+    1. Find all *.html files in directory.
+    2. For each: extract to per-file SQLite (skip if already done).
+    3. Load vmstat and mgstat DataFrames.
+    4. Build overlay charts into compare_overlay/mgstat/ and compare_overlay/vmstat/.
+    """
+    directory = os.path.abspath(directory)
+    html_files = sorted(Path(directory).glob("*.html"))
+
+    if not html_files:
+        print(f"No HTML files found in {directory}")
+        return
+
+    print(f"Found {len(html_files)} HTML file(s) in {directory}")
+
+    mgstat_datasets = []
+    vmstat_datasets = []
+
+    for html_path in html_files:
+        html_path_str = str(html_path)
+        print(f"Processing: {html_path.name}")
+
+        sql_path = _extract_to_sqlite(html_path_str)
+
+        mgstat_df, vmstat_df = _load_dataframes(sql_path)
+
+        instance_name = _extract_instance_name(html_path_str)
+
+        if not mgstat_df.empty:
+            dt_col = _detect_datetime_column(mgstat_df)
+            if dt_col:
+                first_ts = pd.to_datetime(mgstat_df[dt_col]).min()
+                date_str = first_ts.strftime("%d-%b-%Y")
+                label = f"{instance_name} {date_str}"
+                mgstat_datasets.append({"label": label, "df": mgstat_df, "datetime_col": dt_col})
+
+        if not vmstat_df.empty:
+            dt_col = _detect_datetime_column(vmstat_df)
+            if dt_col:
+                first_ts = pd.to_datetime(vmstat_df[dt_col]).min()
+                date_str = first_ts.strftime("%d-%b-%Y")
+                label = f"{instance_name} {date_str}"
+                vmstat_datasets.append({"label": label, "df": vmstat_df, "datetime_col": dt_col})
+
+    overlay_base = os.path.join(directory, "compare_overlay")
+
+    if mgstat_datasets:
+        print(f"\nBuilding mgstat overlay charts ({len(mgstat_datasets)} traces)...")
+        _build_overlay_charts(mgstat_datasets, "mgstat", os.path.join(overlay_base, "mgstat"))
+
+    if vmstat_datasets:
+        print(f"\nBuilding vmstat overlay charts ({len(vmstat_datasets)} traces)...")
+        _build_overlay_charts(vmstat_datasets, "vmstat", os.path.join(overlay_base, "vmstat"))
+
+    print(f"\nDone. Charts written to: {overlay_base}")
