@@ -79,3 +79,21 @@ for i in *.html; do ./yaspe.py -i "$i" -a -s -x -o yaspe; done
 ```
 
 The resulting SQLite file is named `{prefix}_SystemPerformance.sqlite`.
+
+## Version numbering
+
+This project uses `bump2version` (`.bumpversion.cfg`). After committing and merging to `main`, always bump the version before pushing:
+
+```bash
+bump2version patch   # bug fixes
+bump2version minor   # new features
+bump2version major   # breaking changes
+```
+
+`bump2version` updates `current_version` in `.bumpversion.cfg` and `yaspe.py`, then creates its own commit automatically. Push that commit along with the rest:
+
+```bash
+git push origin main
+```
+
+Do not amend or squash the bump2version commit.
