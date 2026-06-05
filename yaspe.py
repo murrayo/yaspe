@@ -331,6 +331,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     line_chart = kwargs.get("line_chart", True)  # Use line charts by default
     threshold = kwargs.get("threshold")  # Optional (value, label) tuple for a reference line
     business_hours_chart = kwargs.get("business_hours_chart", False)  # Generate business-hours peak chart
+    html_out = kwargs.get("html_out", False)  # Whether HTML output is requested alongside PNG
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -369,14 +370,22 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         time_diffs = sorted_for_smooth.index.to_series().diff().dropna()
         if len(time_diffs) > 0:
             interval_secs = time_diffs.median().total_seconds()
-            window = max(2, int(30 * 60 / interval_secs))
+            window = max(2, int(30 * 60 / interval_secs)) if interval_secs > 0 else 60
         else:
+            interval_secs = 0
             window = 60
+        # Format the original sample interval for the legend label
+        if interval_secs >= 60:
+            sample_label = f"{int(round(interval_secs / 60))}m samples"
+        elif interval_secs > 0:
+            sample_label = f"{int(round(interval_secs))}s samples"
+        else:
+            sample_label = "samples"
         smoothed = sorted_for_smooth.rolling(window=window, center=True, min_periods=1).mean()
         ax.plot(sorted_for_smooth.index, sorted_for_smooth.values,
                 color=color, alpha=0.15, linewidth=0.5, label="_raw")
         ax.plot(smoothed.index, smoothed.values,
-                color=color, alpha=0.85, linewidth=1.5, label=f"{column_name} (30 min avg)")
+                color=color, alpha=0.85, linewidth=1.5, label=f"{column_name} ({sample_label}, 30 min avg)")
     # Choose plot style based on line_chart option
     elif line_chart:
         ax.plot(
@@ -546,17 +555,19 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         )
 
     # Business hours peak chart for selected key metrics (Total CPU, Glorefs)
-    if business_hours_chart and peak_chart and min_max and is_medium_period and not is_long_period:
+    if business_hours_chart and peak_chart and is_medium_period and not is_long_period:
         _create_business_hours_peak_chart(
             png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart
         )
 
     # Long-period (>25h) supplementary charts
     if is_long_period and min_max:
+        _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
         _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
         _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix, file_prefix, datetime_column)
         _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
-        _create_day_overlay_html(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
+        if html_out:
+            _create_day_overlay_html(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
         _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
 
     # Return peak times (useful for Glorefs to pass to other charts)
@@ -943,6 +954,78 @@ def _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix,
     output_name = column_name.replace("/", "_")
     plt.tight_layout()
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_heatmap.png", format="png", dpi=150, bbox_inches="tight")
+    plt.close("all")
+
+
+def _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, avg_minutes=5):
+    """Long-period chart smoothed to a rolling N-minute average (default 5 min). Same layout as the 30-min chart."""
+    from datetime import timedelta
+
+    sorted_data = png_data.set_index(datetime_column)["metric"].sort_index()
+    time_diffs = sorted_data.index.to_series().diff().dropna()
+    if len(time_diffs) > 0:
+        interval_secs = time_diffs.median().total_seconds()
+        window = max(2, int(avg_minutes * 60 / interval_secs)) if interval_secs > 0 else max(2, avg_minutes)
+    else:
+        interval_secs = 0
+        window = max(2, avg_minutes)
+
+    smoothed = sorted_data.rolling(window=window, center=True, min_periods=1).mean()
+
+    if interval_secs >= 60:
+        sample_label = f"{int(round(interval_secs / 60))}m samples"
+    elif interval_secs > 0:
+        sample_label = f"{int(round(interval_secs))}s samples"
+    else:
+        sample_label = "samples"
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    palette = plt.get_cmap("Set1")
+    color = palette(1)
+    fig, ax = plt.subplots(figsize=(16, 6))
+
+    ax.plot(sorted_data.index, sorted_data.values, color=color, alpha=0.15, linewidth=0.5, label="_raw")
+    ax.plot(smoothed.index, smoothed.values, color=color, alpha=0.85, linewidth=1.5,
+            label=f"{column_name} ({sample_label}, {avg_minutes} min avg)")
+
+    ax.set_ylim(bottom=0)
+    if max_y != 0:
+        ax.set_ylim(top=max_y)
+
+    cpu_names = ["wa", "sy", "us"]
+    if png_data["metric"].max() > 5 or "%" in column_name or column_name in cpu_names or png_data["metric"].max() == 0:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    elif png_data["metric"].max() < 0.002:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.4f}"))
+    else:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
+
+    start_date = png_data[datetime_column].min()
+    end_date = png_data[datetime_column].max()
+    start_str = start_date.strftime("%d-%b-%y")
+    end_str = end_date.strftime("%d-%b-%y")
+    ax.set_title(f"{title} - {start_str} to {end_str} ({avg_minutes} min avg)", fontsize=16)
+
+    data_end_hour = end_date.hour
+    if data_end_hour <= 2:
+        date_range = pd.date_range(start=start_date.date(), end=end_date.date() - timedelta(days=1), freq="D")
+    else:
+        date_range = pd.date_range(start=start_date.date(), end=end_date.date(), freq="D")
+    tick_positions = [pd.Timestamp(date) + timedelta(hours=12) for date in date_range]
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels([tick.strftime("%a 12:00") for tick in tick_positions])
+    plt.setp(ax.get_xticklabels(), rotation=0, ha="center")
+
+    ax.set_ylabel(column_name, fontsize=14)
+    ax.tick_params(labelsize=14)
+    ax.grid(which="major", axis="both", linestyle="--")
+    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
+    plt.subplots_adjust(bottom=0.15)
+
+    output_name = column_name.replace("/", "_")
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_{avg_minutes}min_avg.png",
+                format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
 
@@ -1444,13 +1527,6 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         full_html=True,
     )
 
-    # For long-period data, also generate the interactive day-overlay chart
-    if min_max:
-        time_range = data[x_column].max() - data[x_column].min()
-        if time_range.total_seconds() > (25 * 60 * 60):
-            _create_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, x_column)
-
-
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
     """Interactive HTML chart for index-based data: drag overview (bottom) to zoom main chart (top)."""
     file_prefix = kwargs.get("file_prefix", "")
@@ -1518,6 +1594,9 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
             data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
         )
         png_data.set_index("datetime", inplace=True)
+
+    if png_data.empty:
+        return
 
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
@@ -1804,6 +1883,7 @@ def chart_vmstat(
                     line_chart=line_chart,
                     threshold=threshold,
                     business_hours_chart=min_max,
+                    html_out=png_html_out,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, filepath, output_prefix,
@@ -1908,6 +1988,7 @@ def chart_mgstat(
                     peak_chart=peak_chart,
                     line_chart=line_chart,
                     business_hours_chart=min_max,
+                    html_out=png_html_out,
                 )
                 # Capture Glorefs peak window
                 if column_name == "Glorefs" and peak_start is not None:
@@ -2011,7 +2092,7 @@ def chart_perfmon(
                 simple_chart(
                     data, column_name, title, max_y, filepath, output_prefix,
                     min_max=min_max, peak_chart=peak_chart, glorefs_peak_window=glorefs_peak_window,
-                    line_chart=line_chart, business_hours_chart=min_max,
+                    line_chart=line_chart, business_hours_chart=min_max, html_out=png_html_out,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
@@ -2169,6 +2250,7 @@ def chart_iostat(
                             line_chart=line_chart,
                             threshold=threshold,
                             business_hours_chart=min_max,
+                            html_out=png_html_out,
                         )
                         if png_html_out:
                             linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
@@ -2342,6 +2424,8 @@ def chart_aix_sar_d(
             # print(f"Only devices: {disk_list}")
             devices = disk_list
 
+    min_max = False
+
     # Chart each disk
     for device in devices:
         device_df = aix_sar_d_df.loc[aix_sar_d_df["device"] == device]
@@ -2375,7 +2459,7 @@ def chart_aix_sar_d(
                 if png_out or png_html_out:
                     simple_chart(data, column_name, title, max_y, fp, output_prefix,
                                  file_prefix=pfx, peak_chart=peak_chart, line_chart=line_chart,
-                                 min_max=min_max, business_hours_chart=min_max)
+                                 min_max=min_max, business_hours_chart=min_max, html_out=png_html_out)
                     if png_html_out:
                         linked_chart(data, column_name, title, max_y, fp, output_prefix,
                                      file_prefix=pfx, min_max=min_max)
@@ -2434,7 +2518,7 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
                 simple_chart(
                     data, column_name, title, max_y, filepath, output_prefix,
                     min_max=min_max, peak_chart=peak_chart, line_chart=line_chart,
-                    business_hours_chart=min_max,
+                    business_hours_chart=min_max, html_out=png_html_out,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
