@@ -46,3 +46,39 @@ def test_normalise_preserves_seconds():
     ts = pd.Timestamp("2026-03-31 00:01:30")
     result = yco._normalise_to_timeofday(ts)
     assert result == pd.Timestamp("2000-01-01 00:01:30")
+
+
+def test_load_dataframes_returns_empty_for_missing_tables():
+    import tempfile, sqlite3 as sql
+    with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as f:
+        db_path = f.name
+    try:
+        conn = sql.connect(db_path)
+        conn.close()
+        mgstat_df, vmstat_df = yco._load_dataframes(db_path)
+        assert mgstat_df.empty
+        assert vmstat_df.empty
+    finally:
+        os.unlink(db_path)
+
+
+def test_load_dataframes_reads_tables():
+    import tempfile, sqlite3 as sql
+    with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as f:
+        db_path = f.name
+    try:
+        conn = sql.connect(db_path)
+        conn.execute(
+            "CREATE TABLE mgstat (id INTEGER PRIMARY KEY, DateTime TEXT, metric REAL)"
+        )
+        conn.execute(
+            "INSERT INTO mgstat VALUES (1, '2026-02-12 10:00:00', 42.0)"
+        )
+        conn.commit()
+        conn.close()
+
+        mgstat_df, vmstat_df = yco._load_dataframes(db_path)
+        assert len(mgstat_df) == 1
+        assert vmstat_df.empty
+    finally:
+        os.unlink(db_path)

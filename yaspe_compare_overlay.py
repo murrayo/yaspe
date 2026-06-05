@@ -101,6 +101,24 @@ def _extract_to_sqlite(html_path: str) -> str:
     return sql_path
 
 
+def _load_dataframes(sql_path: str):
+    """Return (mgstat_df, vmstat_df) from the SQLite at sql_path.
+    Returns empty DataFrames if the table doesn't exist."""
+    conn = sqlite3.connect(sql_path)
+    mgstat_df = pd.DataFrame()
+    vmstat_df = pd.DataFrame()
+    try:
+        mgstat_df = pd.read_sql("SELECT * FROM mgstat", conn)
+    except Exception:
+        pass
+    try:
+        vmstat_df = pd.read_sql("SELECT * FROM vmstat", conn)
+    except Exception:
+        pass
+    conn.close()
+    return mgstat_df, vmstat_df
+
+
 def run(directory: str) -> None:
     """Entry point called by yaspe.py when --compare-dir is given."""
     pass  # implemented in later tasks
