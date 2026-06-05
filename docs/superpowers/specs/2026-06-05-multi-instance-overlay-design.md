@@ -54,7 +54,7 @@ def _extract_instance_name(html_path: str) -> str:
 ### Chart design
 
 - One trace per file/dataset.
-- X-axis: actual datetime values (not normalised). Plotly formats as `HH:MM` when the range is intraday. If files span different calendar days (e.g. Feb, Mar, Apr), each trace appears at its own absolute datetime position — traces will be non-overlapping in time but Plotly's zoom/pan lets the user compare shapes visually. This is the intended behaviour for cross-instance comparison.
+- X-axis: **normalised to a shared reference date** (`2000-01-01`) so all traces overlap on the same `HH:MM` axis regardless of their actual calendar date. Each timestamp `ts` is mapped via `pd.Timestamp("2000-01-01") + (ts - ts.normalize())` (same technique as `_create_day_overlay_html()`). Hover shows the actual date + time + value via `customdata`.
 - Y-axis: starts at 0, auto-scales to data.
 - Overview/zoom panel (same 75%/25% two-row subplot as `_create_day_overlay_html()`).
 - Legend: `"{instance_name} {date}"`, positioned outside the chart area, click-to-hide per trace.
@@ -83,7 +83,6 @@ def _extract_instance_name(html_path: str) -> str:
 
 - PNG output.
 - iostat, nfsiostat, AIX sar, perfmon — only vmstat and mgstat.
-- Normalising x-axis to a shared 00:00–24:00 reference date (that is what the existing `_create_day_overlay_*` functions do; this feature uses real datetimes).
 - Interactivity beyond what Plotly provides by default (zoom, hover, click-to-hide).
 - Modifying any existing chart functions or the mainline path.
 
