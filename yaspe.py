@@ -1443,6 +1443,12 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         full_html=True,
     )
 
+    # For long-period data, also generate the interactive day-overlay chart
+    if min_max:
+        time_range = data[x_column].max() - data[x_column].min()
+        if time_range.total_seconds() > (25 * 60 * 60):
+            _create_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, x_column)
+
 
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
     """Interactive HTML chart for index-based data: drag overview (bottom) to zoom main chart (top)."""
