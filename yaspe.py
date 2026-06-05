@@ -363,8 +363,22 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     is_long_period = time_range.total_seconds() > (25 * 60 * 60)  # More than 25 hours
     is_medium_period = time_range.total_seconds() > (8 * 60 * 60)  # More than 8 hours
 
+    # For long periods, smooth with a 30-min rolling mean and show raw data faintly behind it
+    if is_long_period:
+        sorted_for_smooth = png_data.set_index(datetime_column)["metric"].sort_index()
+        time_diffs = sorted_for_smooth.index.to_series().diff().dropna()
+        if len(time_diffs) > 0:
+            interval_secs = time_diffs.median().total_seconds()
+            window = max(2, int(30 * 60 / interval_secs))
+        else:
+            window = 60
+        smoothed = sorted_for_smooth.rolling(window=window, center=True, min_periods=1).mean()
+        ax.plot(sorted_for_smooth.index, sorted_for_smooth.values,
+                color=color, alpha=0.15, linewidth=0.5, label="_raw")
+        ax.plot(smoothed.index, smoothed.values,
+                color=color, alpha=0.85, linewidth=1.5, label=f"{column_name} (30 min avg)")
     # Choose plot style based on line_chart option
-    if line_chart:
+    elif line_chart:
         ax.plot(
             png_data[datetime_column],
             png_data["metric"],
@@ -536,6 +550,13 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         _create_business_hours_peak_chart(
             png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart
         )
+
+    # Long-period (>25h) supplementary charts
+    if is_long_period and min_max:
+        _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
+        _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix, file_prefix, datetime_column)
+        _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
+        _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
 
     # Return peak times (useful for Glorefs to pass to other charts)
     return peak_start_time, peak_end_time
@@ -740,7 +761,7 @@ def _create_business_hours_peak_chart(
     time_diffs = bh_data.index.to_series().diff().dropna()
     if len(time_diffs) > 0:
         median_interval_secs = time_diffs.median().total_seconds()
-        min_periods = max(10, int(50 * 60 / median_interval_secs))
+        min_periods = max(10, int(50 * 60 / median_interval_secs)) if median_interval_secs > 0 else 30
     else:
         min_periods = 30
 
@@ -844,6 +865,165 @@ def _create_business_hours_peak_chart(
     plt.close("all")
 
     return peak_start_time, peak_end_time
+
+
+def _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column):
+    """Bar chart: 99th percentile value per calendar day. Highlights the busiest day in red."""
+    sorted_data = png_data.set_index(datetime_column)["metric"].sort_index()
+    daily = sorted_data.groupby(sorted_data.index.date).quantile(0.99)
+
+    if len(daily) < 2:
+        return
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    fig, ax = plt.subplots(figsize=(16, 6))
+
+    colors = ["steelblue"] * len(daily)
+    colors[int(daily.values.argmax())] = "tomato"
+
+    bars = ax.bar([str(d) for d in daily.index], daily.values, color=colors, alpha=0.85, edgecolor="white")
+    for bar, val in zip(bars, daily.values):
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.01,
+                f"{val:,.0f}", ha="center", va="bottom", fontsize=10)
+
+    ax.set_ylim(bottom=0)
+    if max_y > 0:
+        ax.set_ylim(top=max_y)
+
+    cpu_names = ["wa", "sy", "us"]
+    if daily.max() > 5 or "%" in column_name or column_name in cpu_names:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    else:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
+
+    start_str = sorted_data.index.min().strftime("%d-%b-%y")
+    end_str = sorted_data.index.max().strftime("%d-%b-%y")
+    ax.set_title(f"{title} - Daily 99th pct ({start_str} to {end_str})", fontsize=16)
+    ax.set_ylabel(column_name, fontsize=14)
+    ax.set_xlabel("Date", fontsize=12)
+    ax.tick_params(labelsize=12)
+    plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
+
+    output_name = column_name.replace("/", "_")
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_daily_summary.png", format="png", dpi=150, bbox_inches="tight")
+    plt.close("all")
+
+
+def _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix, file_prefix, datetime_column):
+    """Heatmap: hour-of-day (x) × date (y), colour = 99th pct. Shows consistent peak hours across days."""
+    sorted_data = png_data.set_index(datetime_column)["metric"].sort_index()
+    df = sorted_data.to_frame("metric")
+    df["date"] = df.index.date
+    df["hour"] = df.index.hour
+
+    pivot = df.groupby(["date", "hour"])["metric"].quantile(0.99).unstack(fill_value=0)
+
+    if pivot.shape[0] < 2:
+        return
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    fig, ax = plt.subplots(figsize=(16, max(4, pivot.shape[0] * 0.7)))
+
+    im = ax.imshow(pivot.values, aspect="auto", cmap="YlOrRd", interpolation="nearest")
+    ax.set_xticks(range(24))
+    ax.set_xticklabels([f"{h:02d}:00" for h in range(24)], rotation=45, ha="right", fontsize=9)
+    ax.set_yticks(range(len(pivot.index)))
+    ax.set_yticklabels([pd.Timestamp(d).strftime("%a %d-%b") for d in pivot.index], fontsize=11)
+
+    cbar = plt.colorbar(im, ax=ax, fraction=0.02, pad=0.02)
+    cbar.set_label(f"{column_name} (99th pct)", fontsize=11)
+
+    start_str = sorted_data.index.min().strftime("%d-%b-%y")
+    end_str = sorted_data.index.max().strftime("%d-%b-%y")
+    ax.set_title(f"{title} - Hourly 99th pct Heatmap ({start_str} to {end_str})", fontsize=16)
+    ax.set_xlabel("Hour of day", fontsize=12)
+
+    output_name = column_name.replace("/", "_")
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_heatmap.png", format="png", dpi=150, bbox_inches="tight")
+    plt.close("all")
+
+
+def _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True):
+    """All days overlaid on a 00:00–24:00 x-axis, one colour per day. Shows consistency of the daily profile."""
+    from datetime import timedelta
+
+    sorted_data = png_data.copy().set_index(datetime_column).sort_index()
+    dates = sorted(set(sorted_data.index.date))
+
+    if len(dates) < 2:
+        return
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    cmap = plt.get_cmap("tab10")
+    fig, ax = plt.subplots(figsize=(16, 6))
+
+    for i, date in enumerate(dates):
+        day_data = sorted_data[sorted_data.index.date == date]["metric"]
+        if day_data.empty:
+            continue
+
+        # Smooth per day with ~30-min window
+        win = max(2, min(len(day_data), 60))
+        day_smooth = day_data.rolling(window=win, center=True, min_periods=1).mean()
+
+        # Map to a reference date so all days share the same x-axis
+        x_ref = [pd.Timestamp("2000-01-01") + timedelta(seconds=(ts - pd.Timestamp(date)).total_seconds())
+                 for ts in day_data.index]
+        ax.plot(x_ref, day_smooth.values, color=cmap(i % 10), alpha=0.8, linewidth=1.2,
+                label=pd.Timestamp(date).strftime("%a %d-%b"))
+
+    ax.set_ylim(bottom=0)
+    if max_y > 0:
+        ax.set_ylim(top=max_y)
+
+    cpu_names = ["wa", "sy", "us"]
+    if png_data["metric"].max() > 5 or "%" in column_name or column_name in cpu_names or png_data["metric"].max() == 0:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    elif png_data["metric"].max() < 0.002:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.4f}"))
+    else:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
+
+    locator = plt_dates.AutoDateLocator()
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(plt_dates.DateFormatter("%H:%M"))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    start_str = sorted_data.index.min().strftime("%d-%b-%y")
+    end_str = sorted_data.index.max().strftime("%d-%b-%y")
+    ax.set_title(f"{title} - Day Overlay ({start_str} to {end_str})", fontsize=16)
+    ax.set_ylabel(column_name, fontsize=14)
+    ax.set_xlabel("Time of day", fontsize=12)
+    ax.tick_params(labelsize=13)
+    ax.grid(which="major", axis="both", linestyle="--")
+    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
+
+    output_name = column_name.replace("/", "_")
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_day_overlay.png", format="png", dpi=150, bbox_inches="tight")
+    plt.close("all")
+
+
+def _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True, bh_start=8, bh_end=18):
+    """For each calendar day in a long-period dataset, create a business-hours peak 60-min chart."""
+    sorted_data = png_data.copy().set_index(datetime_column).sort_index()
+    dates = sorted(set(sorted_data.index.date))
+
+    for date in dates:
+        day_data = sorted_data[sorted_data.index.date == date].reset_index()
+        if len(day_data) < 10:
+            continue
+
+        date_str = pd.Timestamp(date).strftime("%a %d-%b-%y")
+        day_title = f"{title} - {date_str}"
+        day_file_prefix = f"{file_prefix}{pd.Timestamp(date).strftime('%Y%m%d')}_"
+
+        _create_business_hours_peak_chart(
+            day_data, column_name, day_title, max_y, filepath, output_prefix,
+            day_file_prefix, datetime_column, line_chart, bh_start, bh_end,
+        )
 
 
 def _create_glorefs_peak_chart(
