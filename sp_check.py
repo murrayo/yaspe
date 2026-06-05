@@ -753,7 +753,7 @@ def build_log(sp_dict):
                     "appropriate for the application's locking behaviour."
                 )
 
-    # FastDistinct: OFF is correct for TrakCare/IntelliCare
+    # FastDistinct: OFF is correct for some applications
     if "FastDistinct" in sp_dict:
         try:
             fast_distinct = int(sp_dict["FastDistinct"])
@@ -763,37 +763,36 @@ def build_log(sp_dict):
         if fast_distinct in (0, 1):
             if fast_distinct == 1:
                 app_warn_count += 1
-                sp_dict[f"app warning {app_warn_count}"] = "FastDistinct is ON (FastDistinct=1). For TrakCare/IntelliCare this can cause ALPHAUP index values to be returned instead of actual data, breaking some reports."
+                sp_dict[f"app warning {app_warn_count}"] = "FastDistinct is ON (FastDistinct=1). For some applications this can cause ALPHAUP index values to be returned instead of actual data, breaking some reports."
                 sp_dict[f"app warning {app_warn_count} explanation"] = (
                     "FastDistinct=1 enables an optimisation that can return raw index key values (e.g. "
-                    "ALPHAUP-collated strings) instead of the underlying stored data. For TrakCare and "
-                    "IntelliCare this produces incorrect report output. The recommended value is 0."
+                    "ALPHAUP-collated strings) instead of the underlying stored data. For some applications "
+                    "this produces incorrect report output. The recommended value is 0."
                 )
             else:
                 app_pass_count += 1
-                sp_dict[f"app pass {app_pass_count}"] = "FastDistinct is OFF (FastDistinct=0). This is the recommended setting for TrakCare/IntelliCare (example — verify against site documentation)."
+                sp_dict[f"app pass {app_pass_count}"] = "FastDistinct is OFF (FastDistinct=0). This is the recommended setting for some applications (example — verify against site documentation)."
                 sp_dict[f"app pass {app_pass_count} explanation"] = (
                     "FastDistinct=0 ensures that SQL DISTINCT queries return actual stored values rather "
-                    "than index key values. This is required for correct report output in TrakCare and "
-                    "IntelliCare applications."
+                    "than index key values. This is required for correct report output in some applications."
                 )
 
-    # DBSizesAllowed: 8192,65536 is required for TrakCare Analytics (example check)
+    # DBSizesAllowed: 8192,65536 is required for some applications (example check)
     if "DBSizesAllowed" in sp_dict:
         dbs = sp_dict["DBSizesAllowed"].strip()
         if "65536" in dbs:
             app_pass_count += 1
-            sp_dict[f"app pass {app_pass_count}"] = f"DBSizesAllowed includes 64KB block size ({dbs}). Required for TrakCare Analytics databases (example — verify against site documentation)."
+            sp_dict[f"app pass {app_pass_count}"] = f"DBSizesAllowed includes 64KB block size ({dbs}). Required for some applications databases (example — verify against site documentation)."
             sp_dict[f"app pass {app_pass_count} explanation"] = (
-                "TrakCare Analytics uses databases with a 64KB (65536-byte) block size. Including 65536 "
+                "some applications uses databases with a 64KB (65536-byte) block size. Including 65536 "
                 "in DBSizesAllowed permits IRIS to create and mount these databases. Without it, "
                 "Analytics databases cannot be attached and Analytics will not start."
             )
         else:
             app_warn_count += 1
-            sp_dict[f"app warning {app_warn_count}"] = f"DBSizesAllowed does not include 64KB block size ({dbs}). TrakCare Analytics requires 65536 (example — verify against site documentation)."
+            sp_dict[f"app warning {app_warn_count}"] = f"DBSizesAllowed does not include 64KB block size ({dbs}). some applications requires 65536 (example — verify against site documentation)."
             sp_dict[f"app warning {app_warn_count} explanation"] = (
-                "TrakCare Analytics uses 64KB (65536-byte) block-size databases. If 65536 is not in "
+                "some applications uses 64KB (65536-byte) block-size databases. If 65536 is not in "
                 "DBSizesAllowed, IRIS will refuse to mount Analytics databases, preventing Analytics "
                 "from starting. Recommended value: DBSizesAllowed=8192,65536."
             )
