@@ -21,9 +21,9 @@ from sqlite3 import Error
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.dates as plt_dates
-import seaborn as sns
 
-import altair as alt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import pandas as pd
 from pandas.io.sql import DatabaseError
 import warnings
@@ -31,11 +31,6 @@ import warnings
 from extract_sections import extract_sections
 from extract_mgstat import extract_mgstat
 import system_review
-
-# Altair
-# Max is 5,000 rows by default
-
-alt.data_transformers.disable_max_rows()
 
 # Suppress FutureWarning messages
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -99,39 +94,6 @@ def execute_single_read_query(connection, query):
         return result
     except Error as e:
         print(f"The error '{e}' occurred")
-
-
-def data_types_map(df):
-    row = 0
-    data_types = {}
-    for _, val in df.dtypes.iteritems():
-        data_types[row] = val
-        row += 1
-    return data_types
-
-
-def create_generic_table(connection, table_name, df):
-    # Build the table, headings can vary depending on OS or CachÃ© or IRIS version or other reasons.
-    create_table = f"CREATE TABLE IF NOT EXISTS {table_name} (id_key INTEGER PRIMARY KEY AUTOINCREMENT);"
-    execute_simple_query(connection, create_table)
-
-    # Loop through and create the rest of the columns based on data type
-    # Create a map of the data types
-    data_types = data_types_map(df)
-
-    columns = list(df)
-    row = 0
-
-    for column in columns:
-        if data_types[row] == "int64":
-            q = f"ALTER TABLE {table_name} ADD COLUMN '{column}' INTEGER;"
-        elif data_types[row] == "float64":
-            q = f"ALTER TABLE {table_name} ADD COLUMN '{column}' REAL;"
-        else:
-            q = f"ALTER TABLE {table_name} ADD COLUMN '{column}' CHAR(30);"
-
-        execute_simple_query(connection, q)
-        row += 1
 
 
 def insert_dict_into_table(connection, table_name, _dict):
@@ -207,12 +169,8 @@ def create_sections(
 
     # Add each section to the database
     if not mgstat_df.empty:
-        # Example Dave L can do IRIS function here
-        if True:
-            mgstat_df.to_sql("mgstat", connection, if_exists="append", index=True, index_label="id_key")
-            connection.commit()
-        else:
-            pass
+        mgstat_df.to_sql("mgstat", connection, if_exists="append", index=True, index_label="id_key")
+        connection.commit()
 
         if csv_out:
             mgstat_output_csv = f"{output_filepath_prefix}mgstat.csv"
@@ -371,6 +329,9 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     peak_chart = kwargs.get("peak_chart", True)
     glorefs_peak_window = kwargs.get("glorefs_peak_window")  # Can be None or (start, end) tuple
     line_chart = kwargs.get("line_chart", True)  # Use line charts by default
+    threshold = kwargs.get("threshold")  # Optional (value, label) tuple for a reference line
+    business_hours_chart = kwargs.get("business_hours_chart", False)  # Generate business-hours peak chart
+    html_out = kwargs.get("html_out", False)  # Whether HTML output is requested alongside PNG
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -390,16 +351,10 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
-    plt.tight_layout()
-
     palette = plt.get_cmap(colormap_name)
-
     color = palette(1)
 
-    fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
-    # plt.gcf().set_dpi(300)
+    fig, ax = plt.subplots(figsize=(16, 6))
 
     # For plotting, use datetime_parsed if it exists, otherwise use datetime
     datetime_column = "datetime_parsed" if "datetime_parsed" in png_data.columns else "datetime"
@@ -409,8 +364,30 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     is_long_period = time_range.total_seconds() > (25 * 60 * 60)  # More than 25 hours
     is_medium_period = time_range.total_seconds() > (8 * 60 * 60)  # More than 8 hours
 
+    # For long periods, smooth with a 30-min rolling mean and show raw data faintly behind it
+    if is_long_period:
+        sorted_for_smooth = png_data.set_index(datetime_column)["metric"].sort_index()
+        time_diffs = sorted_for_smooth.index.to_series().diff().dropna()
+        if len(time_diffs) > 0:
+            interval_secs = time_diffs.median().total_seconds()
+            window = max(2, int(30 * 60 / interval_secs)) if interval_secs > 0 else 60
+        else:
+            interval_secs = 0
+            window = 60
+        # Format the original sample interval for the legend label
+        if interval_secs >= 60:
+            sample_label = f"{int(round(interval_secs / 60))}m samples"
+        elif interval_secs > 0:
+            sample_label = f"{int(round(interval_secs))}s samples"
+        else:
+            sample_label = "samples"
+        smoothed = sorted_for_smooth.rolling(window=window, center=True, min_periods=1).mean()
+        ax.plot(sorted_for_smooth.index, sorted_for_smooth.values,
+                color=color, alpha=0.15, linewidth=0.5, label="_raw")
+        ax.plot(smoothed.index, smoothed.values,
+                color=color, alpha=0.85, linewidth=1.5, label=f"{column_name} ({sample_label}, 30 min avg)")
     # Choose plot style based on line_chart option
-    if line_chart:
+    elif line_chart:
         ax.plot(
             png_data[datetime_column],
             png_data["metric"],
@@ -451,34 +428,26 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         has_outliers = len(filtered_data) < len(png_data)
 
         if has_outliers and len(filtered_data) > 0:
-            # Use filtered data for adjusted min/max
             adj_min = filtered_data["metric"].min()
             adj_max = filtered_data["metric"].max()
 
-            # Add lines and labels for both absolute and adjusted values
-            ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Absolute Min: {abs_min:,.0f}")
-            ax.axhline(
-                y=adj_min,
-                color="red",
-                linestyle="--",
-                alpha=0.7,
-                label=f"98th Percentile Min: {adj_min:,.0f} (no outliers)",
-            )
-            ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Absolute Max: {abs_max:,.0f}")
-            ax.axhline(
-                y=adj_max,
-                color="green",
-                linestyle="--",
-                alpha=0.7,
-                label=f"99th Percentile Max: {adj_max:,.0f} (no outliers)",
-            )
+            # Suppress lines that sit on zero — they just clutter the x-axis
+            if abs_min > 0:
+                ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Abs Min: {abs_min:,.0f}")
+            if adj_min > 0:
+                ax.axhline(y=adj_min, color="red", linestyle="--", alpha=0.7,
+                           label=f"98th pct Min (outliers removed): {adj_min:,.0f}")
+            if abs_max > 0:
+                ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Abs Max: {abs_max:,.0f}")
+            if adj_max > 0:
+                ax.axhline(y=adj_max, color="green", linestyle="--", alpha=0.7,
+                           label=f"99th pct Max (outliers removed): {adj_max:,.0f}")
         else:
-            # No outliers detected, use absolute values
-            ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Minimum: {abs_min:,.0f}")
-            ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Maximum: {abs_max:,.0f}")
+            if abs_min > 0:
+                ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Min: {abs_min:,.0f}")
+            ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Max: {abs_max:,.0f}")
 
-        # Show the legend
-        ax.legend(loc="best")
+        ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
 
     ax.grid(which="major", axis="both", linestyle="--")
 
@@ -540,10 +509,15 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     else:
         ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
 
-    # plt.tight_layout()
+    if threshold is not None:
+        thresh_val, thresh_label = threshold
+        color = "red" if png_data["metric"].max() > thresh_val else "orange"
+        ax.axhline(y=thresh_val, color=color, linestyle="-.", linewidth=1.5, alpha=0.8, label=thresh_label)
+        ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
 
     output_name = column_name.replace("/", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=100)
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
     # Track peak times for Glorefs
@@ -580,6 +554,22 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
             line_chart,
         )
 
+    # Business hours peak chart for selected key metrics (Total CPU, Glorefs)
+    if business_hours_chart and peak_chart and is_medium_period and not is_long_period:
+        _create_business_hours_peak_chart(
+            png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart
+        )
+
+    # Long-period (>25h) supplementary charts
+    if is_long_period and min_max:
+        _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
+        _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
+        _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix, file_prefix, datetime_column)
+        _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
+        if html_out:
+            _create_day_overlay_html(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
+        _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
+
     # Return peak times (useful for Glorefs to pass to other charts)
     return peak_start_time, peak_end_time
 
@@ -597,10 +587,17 @@ def _find_peak_60_window(png_data, datetime_column):
     # Set the datetime column as index for rolling operations
     sorted_data = sorted_data.set_index(datetime_column)
 
-    # Use a 60-minute rolling window to find the window with highest mean
-    # min_periods=30 ensures we have enough data points before considering a window valid
-    # (avoids false peaks at data boundaries where only a few points exist)
-    rolling_mean = sorted_data["metric"].rolling(window="60min", min_periods=30).mean()
+    # Compute min_periods from the actual sampling interval so that a window
+    # must contain at least 50 minutes of data before it can be considered the peak.
+    # This prevents a short early spike (e.g. 15 min of data) from beating a genuine
+    # sustained 60-minute period later in the day.
+    time_diffs = sorted_data.index.to_series().diff().dropna()
+    if len(time_diffs) > 0:
+        median_interval_secs = time_diffs.median().total_seconds()
+        min_periods = max(10, int(50 * 60 / median_interval_secs))
+    else:
+        min_periods = 30
+    rolling_mean = sorted_data["metric"].rolling(window="60min", min_periods=min_periods).mean()
 
     # Find the end time of the peak 60-minute window
     peak_end_time = rolling_mean.idxmax()
@@ -655,14 +652,10 @@ def _create_peak_60_chart(
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
-    plt.tight_layout()
-
     palette = plt.get_cmap(colormap_name)
     color = palette(1)
 
-    fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
+    fig, ax = plt.subplots(figsize=(16, 6))
 
     # Choose plot style based on line_chart option
     if line_chart:
@@ -702,27 +695,22 @@ def _create_peak_60_chart(
         adj_min = filtered_data["metric"].min()
         adj_max = filtered_data["metric"].max()
 
-        ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Absolute Min: {abs_min:,.0f}")
-        ax.axhline(
-            y=adj_min,
-            color="red",
-            linestyle="--",
-            alpha=0.7,
-            label=f"98th Percentile Min: {adj_min:,.0f} (no outliers)",
-        )
-        ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Absolute Max: {abs_max:,.0f}")
-        ax.axhline(
-            y=adj_max,
-            color="green",
-            linestyle="--",
-            alpha=0.7,
-            label=f"99th Percentile Max: {adj_max:,.0f} (no outliers)",
-        )
+        if abs_min > 0:
+            ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Abs Min: {abs_min:,.0f}")
+        if adj_min > 0:
+            ax.axhline(y=adj_min, color="red", linestyle="--", alpha=0.7,
+                       label=f"98th pct Min (outliers removed): {adj_min:,.0f}")
+        if abs_max > 0:
+            ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Abs Max: {abs_max:,.0f}")
+        if adj_max > 0:
+            ax.axhline(y=adj_max, color="green", linestyle="--", alpha=0.7,
+                       label=f"99th pct Max (outliers removed): {adj_max:,.0f}")
     else:
-        ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Minimum: {abs_min:,.0f}")
-        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Maximum: {abs_max:,.0f}")
+        if abs_min > 0:
+            ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Min: {abs_min:,.0f}")
+        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Max: {abs_max:,.0f}")
 
-    ax.legend(loc="best")
+    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
     ax.grid(which="major", axis="both", linestyle="--")
 
     # Format title with peak period time range (using adjusted chart times)
@@ -757,10 +745,454 @@ def _create_peak_60_chart(
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     output_name = column_name.replace("/", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_peak60.png", format="png", dpi=100)
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_peak60.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
     return peak_start_time, peak_end_time
+
+
+def _create_business_hours_peak_chart(
+    png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True,
+    bh_start=8, bh_end=18
+):
+    """Create a peak 60-min chart restricted to business hours (default 08:00-18:00).
+    Returns (peak_start_time, peak_end_time) or (None, None)."""
+    from datetime import timedelta
+
+    sorted_data = png_data.sort_values(by=datetime_column).copy()
+    sorted_data = sorted_data.set_index(datetime_column)
+
+    # Filter to business hours only for peak detection
+    bh_data = sorted_data.between_time(f"{bh_start:02d}:00", f"{bh_end:02d}:00")
+
+    if len(bh_data) < 10:
+        return None, None
+
+    # Compute min_periods from actual sampling interval
+    time_diffs = bh_data.index.to_series().diff().dropna()
+    if len(time_diffs) > 0:
+        median_interval_secs = time_diffs.median().total_seconds()
+        min_periods = max(10, int(50 * 60 / median_interval_secs)) if median_interval_secs > 0 else 30
+    else:
+        min_periods = 30
+
+    rolling_mean = bh_data["metric"].rolling(window="60min", min_periods=min_periods).mean()
+
+    if rolling_mean.isna().all():
+        return None, None
+
+    peak_end_time = rolling_mean.idxmax()
+    peak_start_time = peak_end_time - timedelta(minutes=60)
+
+    # Clamp to actual data boundaries
+    min_data_time = sorted_data.index.min()
+    max_data_time = sorted_data.index.max()
+    if peak_start_time < min_data_time:
+        peak_start_time = min_data_time
+        peak_end_time = min(min_data_time + timedelta(minutes=60), max_data_time)
+    elif peak_end_time > max_data_time:
+        peak_end_time = max_data_time
+        peak_start_time = max(max_data_time - timedelta(minutes=60), min_data_time)
+
+    peak_data = sorted_data.loc[peak_start_time:peak_end_time].copy().reset_index()
+
+    if len(peak_data) < 2:
+        return None, None
+
+    colormap_name = "Set1"
+    plt.style.use("seaborn-v0_8-whitegrid")
+
+    palette = plt.get_cmap(colormap_name)
+    color = palette(3)  # Distinct colour from peak60 (palette(1)) and glorefs (palette(2))
+
+    fig, ax = plt.subplots(figsize=(16, 6))
+
+    if line_chart:
+        ax.plot(peak_data[datetime_column], peak_data["metric"],
+                label=column_name, color=color, marker="", linestyle="-", alpha=0.7, linewidth=1)
+    else:
+        ax.plot(peak_data[datetime_column], peak_data["metric"],
+                label=column_name, color=color, marker=".", linestyle="none", alpha=0.7)
+
+    abs_min = peak_data["metric"].min()
+    abs_max = peak_data["metric"].max()
+    p2 = peak_data["metric"].quantile(0.02)
+    p99 = peak_data["metric"].quantile(0.99)
+    filtered_data = peak_data[(peak_data["metric"] >= p2) & (peak_data["metric"] <= p99)]
+    has_outliers = len(filtered_data) < len(peak_data)
+
+    if has_outliers and len(filtered_data) > 0:
+        adj_min = filtered_data["metric"].min()
+        adj_max = filtered_data["metric"].max()
+        if abs_min > 0:
+            ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Abs Min: {abs_min:,.0f}")
+        if adj_min > 0:
+            ax.axhline(y=adj_min, color="red", linestyle="--", alpha=0.7,
+                       label=f"98th pct Min (outliers removed): {adj_min:,.0f}")
+        if abs_max > 0:
+            ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Abs Max: {abs_max:,.0f}")
+        if adj_max > 0:
+            ax.axhline(y=adj_max, color="green", linestyle="--", alpha=0.7,
+                       label=f"99th pct Max (outliers removed): {adj_max:,.0f}")
+    else:
+        if abs_min > 0:
+            ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Min: {abs_min:,.0f}")
+        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Max: {abs_max:,.0f}")
+
+    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
+    ax.grid(which="major", axis="both", linestyle="--")
+
+    chart_start_str = peak_start_time.strftime("%H:%M")
+    chart_end_str = peak_end_time.strftime("%H:%M")
+    date_str = peak_start_time.strftime("%a %d-%b-%y")
+    ax.set_title(
+        f"{title} - BH Peak {chart_start_str}-{chart_end_str} - {date_str}",
+        fontsize=16,
+    )
+
+    ax.set_ylabel(column_name, fontsize=14)
+    ax.tick_params(labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
+    ax.set_ylim(bottom=0)
+    if max_y != 0:
+        ax.set_ylim(top=max_y)
+
+    cpu_names = ["wa", "sy", "us"]
+    if peak_data["metric"].max() > 5 or "%" in column_name or column_name in cpu_names or peak_data["metric"].max() == 0:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    elif peak_data["metric"].max() < 0.002:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.4f}"))
+    else:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
+
+    locator = plt_dates.AutoDateLocator()
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(plt_dates.DateFormatter("%H:%M"))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    output_name = column_name.replace("/", "_")
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_bh_peak.png", format="png", dpi=150, bbox_inches="tight")
+    plt.close("all")
+
+    return peak_start_time, peak_end_time
+
+
+def _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column):
+    """Bar chart: 99th percentile value per calendar day. Highlights the busiest day in red."""
+    sorted_data = png_data.set_index(datetime_column)["metric"].sort_index()
+    daily = sorted_data.groupby(sorted_data.index.date).quantile(0.99)
+
+    if len(daily) < 2:
+        return
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    fig, ax = plt.subplots(figsize=(16, 6))
+
+    colors = ["steelblue"] * len(daily)
+    colors[int(daily.values.argmax())] = "tomato"
+
+    bars = ax.bar([str(d) for d in daily.index], daily.values, color=colors, alpha=0.85, edgecolor="white")
+    for bar, val in zip(bars, daily.values):
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.01,
+                f"{val:,.0f}", ha="center", va="bottom", fontsize=10)
+
+    ax.set_ylim(bottom=0)
+    if max_y > 0:
+        ax.set_ylim(top=max_y)
+
+    cpu_names = ["wa", "sy", "us"]
+    if daily.max() > 5 or "%" in column_name or column_name in cpu_names:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    else:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
+
+    start_str = sorted_data.index.min().strftime("%d-%b-%y")
+    end_str = sorted_data.index.max().strftime("%d-%b-%y")
+    ax.set_title(f"{title} - Daily 99th pct ({start_str} to {end_str})", fontsize=16)
+    ax.set_ylabel(column_name, fontsize=14)
+    ax.set_xlabel("Date", fontsize=12)
+    ax.tick_params(labelsize=12)
+    plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
+
+    output_name = column_name.replace("/", "_")
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_daily_summary.png", format="png", dpi=150, bbox_inches="tight")
+    plt.close("all")
+
+
+def _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix, file_prefix, datetime_column):
+    """Heatmap: hour-of-day (x) × date (y), colour = 99th pct. Shows consistent peak hours across days."""
+    sorted_data = png_data.set_index(datetime_column)["metric"].sort_index()
+    df = sorted_data.to_frame("metric")
+    df["date"] = df.index.date
+    df["hour"] = df.index.hour
+
+    pivot = df.groupby(["date", "hour"])["metric"].quantile(0.99).unstack(fill_value=0)
+
+    if pivot.shape[0] < 2:
+        return
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    fig, ax = plt.subplots(figsize=(16, max(4, pivot.shape[0] * 0.7)))
+
+    im = ax.imshow(pivot.values, aspect="auto", cmap="YlOrRd", interpolation="nearest")
+    ax.set_xticks(range(24))
+    ax.set_xticklabels([f"{h:02d}:00" for h in range(24)], rotation=45, ha="right", fontsize=9)
+    ax.set_yticks(range(len(pivot.index)))
+    ax.set_yticklabels([pd.Timestamp(d).strftime("%a %d-%b") for d in pivot.index], fontsize=11)
+
+    cbar = plt.colorbar(im, ax=ax, fraction=0.02, pad=0.02)
+    cbar.set_label(f"{column_name} (99th pct)", fontsize=11)
+
+    start_str = sorted_data.index.min().strftime("%d-%b-%y")
+    end_str = sorted_data.index.max().strftime("%d-%b-%y")
+    ax.set_title(f"{title} - Hourly 99th pct Heatmap ({start_str} to {end_str})", fontsize=16)
+    ax.set_xlabel("Hour of day", fontsize=12)
+
+    output_name = column_name.replace("/", "_")
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_heatmap.png", format="png", dpi=150, bbox_inches="tight")
+    plt.close("all")
+
+
+def _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, avg_minutes=5):
+    """Long-period chart smoothed to a rolling N-minute average (default 5 min). Same layout as the 30-min chart."""
+    from datetime import timedelta
+
+    sorted_data = png_data.set_index(datetime_column)["metric"].sort_index()
+    time_diffs = sorted_data.index.to_series().diff().dropna()
+    if len(time_diffs) > 0:
+        interval_secs = time_diffs.median().total_seconds()
+        window = max(2, int(avg_minutes * 60 / interval_secs)) if interval_secs > 0 else max(2, avg_minutes)
+    else:
+        interval_secs = 0
+        window = max(2, avg_minutes)
+
+    smoothed = sorted_data.rolling(window=window, center=True, min_periods=1).mean()
+
+    if interval_secs >= 60:
+        sample_label = f"{int(round(interval_secs / 60))}m samples"
+    elif interval_secs > 0:
+        sample_label = f"{int(round(interval_secs))}s samples"
+    else:
+        sample_label = "samples"
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    palette = plt.get_cmap("Set1")
+    color = palette(1)
+    fig, ax = plt.subplots(figsize=(16, 6))
+
+    ax.plot(sorted_data.index, sorted_data.values, color=color, alpha=0.15, linewidth=0.5, label="_raw")
+    ax.plot(smoothed.index, smoothed.values, color=color, alpha=0.85, linewidth=1.5,
+            label=f"{column_name} ({sample_label}, {avg_minutes} min avg)")
+
+    ax.set_ylim(bottom=0)
+    if max_y != 0:
+        ax.set_ylim(top=max_y)
+
+    cpu_names = ["wa", "sy", "us"]
+    if png_data["metric"].max() > 5 or "%" in column_name or column_name in cpu_names or png_data["metric"].max() == 0:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    elif png_data["metric"].max() < 0.002:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.4f}"))
+    else:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
+
+    start_date = png_data[datetime_column].min()
+    end_date = png_data[datetime_column].max()
+    start_str = start_date.strftime("%d-%b-%y")
+    end_str = end_date.strftime("%d-%b-%y")
+    ax.set_title(f"{title} - {start_str} to {end_str} ({avg_minutes} min avg)", fontsize=16)
+
+    data_end_hour = end_date.hour
+    if data_end_hour <= 2:
+        date_range = pd.date_range(start=start_date.date(), end=end_date.date() - timedelta(days=1), freq="D")
+    else:
+        date_range = pd.date_range(start=start_date.date(), end=end_date.date(), freq="D")
+    tick_positions = [pd.Timestamp(date) + timedelta(hours=12) for date in date_range]
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels([tick.strftime("%a 12:00") for tick in tick_positions])
+    plt.setp(ax.get_xticklabels(), rotation=0, ha="center")
+
+    ax.set_ylabel(column_name, fontsize=14)
+    ax.tick_params(labelsize=14)
+    ax.grid(which="major", axis="both", linestyle="--")
+    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
+    plt.subplots_adjust(bottom=0.15)
+
+    output_name = column_name.replace("/", "_")
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_{avg_minutes}min_avg.png",
+                format="png", dpi=150, bbox_inches="tight")
+    plt.close("all")
+
+
+def _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True):
+    """All days overlaid on a 00:00–24:00 x-axis, one colour per day. Shows consistency of the daily profile."""
+    from datetime import timedelta
+
+    sorted_data = png_data.copy().set_index(datetime_column).sort_index()
+    dates = sorted(set(sorted_data.index.date))
+
+    if len(dates) < 2:
+        return
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    cmap = plt.get_cmap("tab10")
+    fig, ax = plt.subplots(figsize=(16, 6))
+
+    for i, date in enumerate(dates):
+        day_data = sorted_data[sorted_data.index.date == date]["metric"]
+        if day_data.empty:
+            continue
+
+        # Smooth per day with ~30-min window
+        win = max(2, min(len(day_data), 60))
+        day_smooth = day_data.rolling(window=win, center=True, min_periods=1).mean()
+
+        # Map to a reference date so all days share the same x-axis
+        x_ref = [pd.Timestamp("2000-01-01") + timedelta(seconds=(ts - pd.Timestamp(date)).total_seconds())
+                 for ts in day_data.index]
+        ax.plot(x_ref, day_smooth.values, color=cmap(i % 10), alpha=0.8, linewidth=1.2,
+                label=pd.Timestamp(date).strftime("%a %d-%b"))
+
+    ax.set_ylim(bottom=0)
+    if max_y > 0:
+        ax.set_ylim(top=max_y)
+
+    cpu_names = ["wa", "sy", "us"]
+    if png_data["metric"].max() > 5 or "%" in column_name or column_name in cpu_names or png_data["metric"].max() == 0:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    elif png_data["metric"].max() < 0.002:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.4f}"))
+    else:
+        ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
+
+    locator = plt_dates.AutoDateLocator()
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(plt_dates.DateFormatter("%H:%M"))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    start_str = sorted_data.index.min().strftime("%d-%b-%y")
+    end_str = sorted_data.index.max().strftime("%d-%b-%y")
+    ax.set_title(f"{title} - Day Overlay ({start_str} to {end_str})", fontsize=16)
+    ax.set_ylabel(column_name, fontsize=14)
+    ax.set_xlabel("Time of day", fontsize=12)
+    ax.tick_params(labelsize=13)
+    ax.grid(which="major", axis="both", linestyle="--")
+    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
+
+    output_name = column_name.replace("/", "_")
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_day_overlay.png", format="png", dpi=150, bbox_inches="tight")
+    plt.close("all")
+
+
+def _create_day_overlay_html(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column):
+    """Interactive Plotly day-overlay chart: one trace per calendar day on a shared 00:00-24:00 x-axis.
+    Hover shows actual date + time + value. Includes the overview/zoom panel."""
+    from datetime import timedelta
+
+    sorted_data = png_data.copy().set_index(datetime_column).sort_index()
+    dates = sorted(set(sorted_data.index.date))
+
+    if len(dates) < 2:
+        return
+
+    colors = [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+        "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+    ]
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=False,
+        row_heights=[0.75, 0.25],
+        vertical_spacing=0.05,
+    )
+
+    for i, date in enumerate(dates):
+        day_data = sorted_data[sorted_data.index.date == date]["metric"]
+        if day_data.empty:
+            continue
+
+        # Smooth with ~30-min window
+        win = max(2, min(len(day_data), 60))
+        day_smooth = day_data.rolling(window=win, center=True, min_periods=1).mean()
+
+        # Map to a reference date for shared x-axis, store actual datetime in customdata
+        x_ref = [pd.Timestamp("2000-01-01") + timedelta(seconds=(ts - pd.Timestamp(date)).total_seconds())
+                 for ts in day_data.index]
+        actual_times = [ts.strftime("%a %d-%b %H:%M:%S") for ts in day_data.index]
+
+        color = colors[i % len(colors)]
+        label = pd.Timestamp(date).strftime("%a %d-%b")
+
+        fig.add_trace(go.Scatter(
+            x=x_ref, y=day_smooth.values,
+            mode="lines", name=label,
+            line=dict(width=1.5, color=color),
+            customdata=actual_times,
+            hovertemplate="%{customdata}<br>" + column_name + ": %{y:,.0f}<extra></extra>",
+        ), row=1, col=1)
+
+        fig.add_trace(go.Scatter(
+            x=x_ref, y=day_smooth.values,
+            mode="lines", name=label,
+            line=dict(width=0.8, color=color),
+            showlegend=False,
+            hoverinfo="skip",
+        ), row=2, col=1)
+
+    yaxis_range = [0, max_y] if max_y > 0 else [0, None]
+    start_str = sorted_data.index.min().strftime("%d-%b-%y")
+    end_str = sorted_data.index.max().strftime("%d-%b-%y")
+
+    fig.update_layout(
+        title=dict(text=f"{title} - Day Overlay ({start_str} to {end_str})", font=dict(size=16)),
+        xaxis=dict(title="Time of day", tickfont=dict(size=13),
+                   tickformat="%H:%M"),
+        xaxis2=dict(title="Drag box here to zoom ↑   (double-click top chart to reset)",
+                    tickfont=dict(size=11), tickformat="%H:%M"),
+        yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
+        yaxis2=dict(rangemode="tozero", showticklabels=False),
+        legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1,
+                    font=dict(size=12), orientation="v",
+                    title=dict(text="Click to show/hide day", font=dict(size=11, color="grey"))),
+        height=650,
+        hovermode="x",
+        template="plotly_white",
+    )
+
+    output_name = column_name.replace("/", "_")
+    fig.write_html(
+        f"{filepath}{output_prefix}{file_prefix}{output_name}_day_overlay.html",
+        include_plotlyjs="cdn",
+        post_script=_OVERVIEW_ZOOM_JS,
+        full_html=True,
+    )
+
+
+def _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True, bh_start=8, bh_end=18):
+    """For each calendar day in a long-period dataset, create a business-hours peak 60-min chart."""
+    sorted_data = png_data.copy().set_index(datetime_column).sort_index()
+    dates = sorted(set(sorted_data.index.date))
+
+    for date in dates:
+        day_data = sorted_data[sorted_data.index.date == date].reset_index()
+        if len(day_data) < 10:
+            continue
+
+        date_str = pd.Timestamp(date).strftime("%a %d-%b-%y")
+        day_title = f"{title} - {date_str}"
+        day_file_prefix = f"{file_prefix}{pd.Timestamp(date).strftime('%Y%m%d')}_"
+
+        _create_business_hours_peak_chart(
+            day_data, column_name, day_title, max_y, filepath, output_prefix,
+            day_file_prefix, datetime_column, line_chart, bh_start, bh_end,
+        )
 
 
 def _create_glorefs_peak_chart(
@@ -816,14 +1248,10 @@ def _create_glorefs_peak_chart(
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
-    plt.tight_layout()
-
     palette = plt.get_cmap(colormap_name)
     color = palette(2)  # Different color to distinguish from regular peak chart
 
-    fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
+    fig, ax = plt.subplots(figsize=(16, 6))
 
     # Choose plot style based on line_chart option
     if line_chart:
@@ -863,27 +1291,22 @@ def _create_glorefs_peak_chart(
         adj_min = filtered_data["metric"].min()
         adj_max = filtered_data["metric"].max()
 
-        ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Absolute Min: {abs_min:,.0f}")
-        ax.axhline(
-            y=adj_min,
-            color="red",
-            linestyle="--",
-            alpha=0.7,
-            label=f"98th Percentile Min: {adj_min:,.0f} (no outliers)",
-        )
-        ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Absolute Max: {abs_max:,.0f}")
-        ax.axhline(
-            y=adj_max,
-            color="green",
-            linestyle="--",
-            alpha=0.7,
-            label=f"99th Percentile Max: {adj_max:,.0f} (no outliers)",
-        )
+        if abs_min > 0:
+            ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Abs Min: {abs_min:,.0f}")
+        if adj_min > 0:
+            ax.axhline(y=adj_min, color="red", linestyle="--", alpha=0.7,
+                       label=f"98th pct Min (outliers removed): {adj_min:,.0f}")
+        if abs_max > 0:
+            ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Abs Max: {abs_max:,.0f}")
+        if adj_max > 0:
+            ax.axhline(y=adj_max, color="green", linestyle="--", alpha=0.7,
+                       label=f"99th pct Max (outliers removed): {adj_max:,.0f}")
     else:
-        ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Minimum: {abs_min:,.0f}")
-        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Maximum: {abs_max:,.0f}")
+        if abs_min > 0:
+            ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Min: {abs_min:,.0f}")
+        ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Max: {abs_max:,.0f}")
 
-    ax.legend(loc="best")
+    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
     ax.grid(which="major", axis="both", linestyle="--")
 
     # Format title with Glorefs peak period time range (using adjusted times)
@@ -918,7 +1341,8 @@ def _create_glorefs_peak_chart(
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     output_name = column_name.replace("/", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_glorefs_peak.png", format="png", dpi=100)
+    plt.tight_layout()
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_glorefs_peak.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
 
@@ -932,14 +1356,11 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
-    plt.figure(num=None, figsize=(16, 6))
-    palette = plt.get_cmap(colormap_name)
 
+    palette = plt.get_cmap(colormap_name)
     color = palette(1)
 
-    fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
-    # plt.gcf().set_dpi(300)
+    fig, ax = plt.subplots(figsize=(16, 6))
 
     ax.plot(
         png_data["id_key"], png_data["metric"], label=column_name, color=color, marker=".", linestyle="-", alpha=0.7
@@ -966,102 +1387,194 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     plt.tight_layout()
 
     output_name = column_name.replace("/", "_per_").replace(" ", "_")
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=100)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150)
     plt.close("all")
 
 
+_OVERVIEW_ZOOM_JS = """
+var gd = document.querySelector('.plotly-graph-div');
+var syncing = false;
+gd.on('plotly_relayout', function(eventdata) {
+    if (syncing) return;
+    var r0 = eventdata['xaxis2.range[0]'];
+    var r1 = eventdata['xaxis2.range[1]'];
+    if (r0 !== undefined && r1 !== undefined) {
+        // User zoomed/dragged on overview — apply that range to main chart
+        // then snap overview back to full range
+        syncing = true;
+        Plotly.relayout(gd, {
+            'xaxis.range[0]': r0,
+            'xaxis.range[1]': r1,
+            'xaxis.autorange': false,
+            'xaxis2.autorange': true
+        }).then(function() { syncing = false; });
+    } else if (eventdata['xaxis2.autorange'] === true) {
+        // Overview was double-clicked/reset — also reset main chart
+        syncing = true;
+        Plotly.relayout(gd, {'xaxis.autorange': true})
+            .then(function() { syncing = false; });
+    }
+});
+"""
+
+
 def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
+    """Interactive HTML chart: drag a box on the overview (bottom) to zoom the main chart (top).
+    The overview resets to full range after each zoom. Double-click overview to reset both."""
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
+    min_max = kwargs.get("min_max", False)
+    threshold = kwargs.get("threshold")  # Optional (value, label) tuple
 
-    # First we'll create an interval selection using the selection_interval() function (in this case for x axis only)
-    brush = alt.selection_interval(encodings=["x"])
-
-    # Determine which datetime column to use - prefer the parsed version if available
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
-    # Create the chart using the appropriate datetime column
-    base = (
-        alt.Chart(data)
-        .mark_line()
-        .encode(
-            alt.X(f"{x_column}:T", title="Time"),
-            alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
-            alt.Color("Type", title="Metric"),
-            tooltip=["metric"],
-        )
-        .properties(height=500, width=1333, title=title)
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=False,
+        row_heights=[0.75, 0.25],
+        vertical_spacing=0.05,
     )
 
-    # Upper is zoomed area X axis
-    upper = base.encode(alt.X(f"{x_column}:T", title="Time Zoom", scale=alt.Scale(domain=brush)))
+    # Pick hover format based on magnitude
+    metric_max = data["metric"].max()
+    if metric_max > 5 or metric_max == 0:
+        hover_fmt = "%{y:,.0f}"
+    elif metric_max < 0.002:
+        hover_fmt = "%{y:,.4f}"
+    else:
+        hover_fmt = "%{y:,.3f}"
 
-    # Lower chart bind the brush in our chart by setting the selection property
-    lower = base.properties(height=150, title="").add_params(brush)
+    fig.add_trace(go.Scatter(
+        x=data[x_column], y=data["metric"],
+        mode="lines", name=column_name,
+        line=dict(width=1),
+        hovertemplate=f"%{{x|%H:%M:%S}}<br>{column_name}: {hover_fmt}<extra></extra>",
+    ), row=1, col=1)
 
-    alt.hconcat(upper & lower).configure_title(fontSize=16, color="black").configure_legend(
-        strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
-    ).configure_axis(
-        labelFontSize=20  # Customize label fontsize
+    fig.add_trace(go.Scatter(
+        x=data[x_column], y=data["metric"],
+        mode="lines", fill="tozeroy",
+        name=column_name,
+        line=dict(width=0.5, color="steelblue"),
+        fillcolor="rgba(70,130,180,0.25)",
+        showlegend=False,
+        hoverinfo="skip",
+    ), row=2, col=1)
+
+    # Min/max and percentile reference lines on the main chart
+    if min_max:
+        metric = data["metric"]
+        abs_min = metric.min()
+        abs_max = metric.max()
+        p2 = metric.quantile(0.02)
+        p99 = metric.quantile(0.99)
+        filtered = metric[(metric >= p2) & (metric <= p99)]
+        has_outliers = len(filtered) < len(metric)
+
+        ann = dict(bgcolor="rgba(255,255,255,0.85)", bordercolor="lightgrey", borderwidth=1)
+
+        if has_outliers and len(filtered) > 0:
+            adj_min = filtered.min()
+            adj_max = filtered.max()
+            fig.add_hline(y=abs_min, line=dict(color="darkred", dash="dot", width=1),
+                          annotation_text=f"Abs Min: {abs_min:,.0f}", annotation_position="top left",
+                          annotation=ann, row=1, col=1)
+            fig.add_hline(y=adj_min, line=dict(color="red", dash="dash", width=1),
+                          annotation_text=f"98th pct Min: {adj_min:,.0f}", annotation_position="top right",
+                          annotation=ann, row=1, col=1)
+            fig.add_hline(y=abs_max, line=dict(color="darkgreen", dash="dot", width=1),
+                          annotation_text=f"Abs Max: {abs_max:,.0f}", annotation_position="top left",
+                          annotation=ann, row=1, col=1)
+            fig.add_hline(y=adj_max, line=dict(color="green", dash="dash", width=1),
+                          annotation_text=f"99th pct Max: {adj_max:,.0f}", annotation_position="top right",
+                          annotation=ann, row=1, col=1)
+        else:
+            fig.add_hline(y=abs_min, line=dict(color="red", dash="dash", width=1),
+                          annotation_text=f"Min: {abs_min:,.0f}", annotation_position="top right",
+                          annotation=ann, row=1, col=1)
+            fig.add_hline(y=abs_max, line=dict(color="green", dash="dash", width=1),
+                          annotation_text=f"Max: {abs_max:,.0f}", annotation_position="top right",
+                          annotation=ann, row=1, col=1)
+
+    # Threshold reference line (e.g. 80% CPU, 1ms latency)
+    if threshold is not None:
+        thresh_val, thresh_label = threshold
+        thresh_color = "red" if data["metric"].max() > thresh_val else "orange"
+        fig.add_hline(y=thresh_val, line=dict(color=thresh_color, dash="dashdot", width=1.5),
+                      annotation_text=thresh_label, annotation_position="top left",
+                      annotation=dict(bgcolor="rgba(255,255,255,0.85)", bordercolor="lightgrey", borderwidth=1),
+                      row=1, col=1)
+
+    yaxis_range = [0, max_y] if max_y > 0 else [0, None]
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=16)),
+        xaxis=dict(title="", tickfont=dict(size=13)),
+        xaxis2=dict(title="Drag box here to zoom ↑   (double-click top chart to reset)", tickfont=dict(size=11)),
+        yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
+        yaxis2=dict(rangemode="tozero", showticklabels=False),
+        legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
+        height=650,
+        hovermode="x",
+        template="plotly_white",
     )
 
     output_name = column_name.replace("/", "_")
-
-    (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html", scale_factor=2.0)
-
-
-def interactive_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
-    file_prefix = kwargs.get("file_prefix", "")
-    if file_prefix != "":
-        file_prefix = f"{file_prefix}_"
-
-    output_name = column_name.replace(" ", "_").replace("/", "_per_")
-
-    # Create the chart
-    alt.Chart(data).mark_line().encode(
-        alt.X("datetime:T", title="Time"),
-        alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
-        alt.Color("Type", title="Metric"),
-        tooltip=["metric"],
-    ).properties(height=500, width=1333, title=title).interactive().save(
-        f"{filepath}{output_prefix}{file_prefix}int_{output_name}.html", scale_factor=2.0
+    fig.write_html(
+        f"{filepath}{output_prefix}{file_prefix}{output_name}.html",
+        include_plotlyjs="cdn",
+        post_script=_OVERVIEW_ZOOM_JS,
+        full_html=True,
     )
-
 
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
+    """Interactive HTML chart for index-based data: drag overview (bottom) to zoom main chart (top)."""
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
-    brush = alt.selection_interval(encodings=["x"])
-
-    # Create the chart
-    base = (
-        alt.Chart(data)
-        .mark_line()
-        .encode(
-            alt.X("id_key:Q", title="Count"),
-            alt.Y("metric", title=column_name, scale=alt.Scale(domain=(0, max_y))),
-            alt.Color("Type", title="Metric"),
-            tooltip=["metric:N"],
-        )
-        .properties(height=500, width=1333, title=title)
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=False,
+        row_heights=[0.75, 0.25],
+        vertical_spacing=0.05,
     )
 
-    # Upper is zoomed area X axis
-    upper = base.encode(alt.X("id_key:Q", title="Count Zoom", scale=alt.Scale(domain=brush)))
+    fig.add_trace(go.Scatter(
+        x=data["id_key"], y=data["metric"],
+        mode="lines", name=column_name,
+        line=dict(width=1),
+        hovertemplate="Sample %{x}<br>%{y:,.2f}<extra></extra>",
+    ), row=1, col=1)
 
-    # Lower chart bind the brush in our chart by setting the selection property
-    lower = base.properties(height=150, title="").add_params(brush)
+    fig.add_trace(go.Scatter(
+        x=data["id_key"], y=data["metric"],
+        mode="lines", name=column_name,
+        line=dict(width=1, color="lightsteelblue"),
+        showlegend=False,
+        hoverinfo="skip",
+    ), row=2, col=1)
 
-    alt.hconcat(upper & lower).configure_title(fontSize=16, color="black").configure_legend(
-        strokeColor="gray", fillColor="#EEEEEE", padding=10, cornerRadius=10, orient="right"
+    yaxis_range = [0, max_y] if max_y > 0 else [0, None]
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=16)),
+        xaxis=dict(title="", tickfont=dict(size=13)),
+        xaxis2=dict(title="Drag box here to zoom ↑   (double-click top chart to reset)", tickfont=dict(size=11)),
+        yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
+        yaxis2=dict(rangemode="tozero", showticklabels=False),
+        legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
+        height=650,
+        hovermode="x",
+        template="plotly_white",
     )
 
     output_name = column_name.replace(" ", "_").replace("/", "_per_")
-
-    (upper & lower).save(f"{filepath}{output_prefix}{file_prefix}{output_name}.html", scale_factor=2.0)
+    fig.write_html(
+        f"{filepath}{output_prefix}{file_prefix}{output_name}.html",
+        include_plotlyjs="cdn",
+        post_script=_OVERVIEW_ZOOM_JS,
+        full_html=True,
+    )
 
 
 def simple_chart_stacked(data, column_names, title, max_y, filepath, output_prefix, **kwargs):
@@ -1082,24 +1595,22 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
         )
         png_data.set_index("datetime", inplace=True)
 
+    if png_data.empty:
+        return
+
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
-    plt.tight_layout()
-
     palette = plt.get_cmap(colormap_name)
-
     color = palette(1)
 
-    fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
-    # plt.gcf().set_dpi(300)
+    fig, ax = plt.subplots(figsize=(16, 6))
 
     ax.stackplot(png_data.index, png_data["sy"], png_data["wa"], png_data["us"], labels=["sy", "wa", "us"], alpha=0.7)
 
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(title, fontsize=16)
+    date_str = png_data.index[0].strftime("%a %d-%b-%y")
+    ax.set_title(f"{title} - {date_str}", fontsize=16)
     ax.set_ylabel("CPU Utilisation %", fontsize=14)
     ax.legend(loc="upper left", reverse=True, fontsize=14)
     ax.tick_params(labelsize=14)
@@ -1119,7 +1630,7 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     # plt.tight_layout()
 
     output_name = "Stacked CPU"
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=100)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150)
     plt.close("all")
 
 
@@ -1150,15 +1661,10 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
     colormap_name = "Set1"
     plt.style.use("seaborn-v0_8-whitegrid")
 
-    plt.figure(num=None, figsize=(16, 6))
-    plt.tight_layout()
-
     palette = plt.get_cmap(colormap_name)
-
     color = palette(1)
 
-    fig, ax = plt.subplots()
-    plt.gcf().set_size_inches(16, 6)
+    fig, ax = plt.subplots(figsize=(16, 6))
 
     ax.stackplot(
         png_data.index,
@@ -1169,7 +1675,8 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
     )
 
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(title, fontsize=16)
+    date_str = png_data.index[0].strftime("%a %d-%b-%y")
+    ax.set_title(f"{title} - {date_str}", fontsize=16)
     ax.set_ylabel("Total IOPS", fontsize=14)
     ax.legend(loc="upper left", reverse=True)
     ax.tick_params(labelsize=14)
@@ -1189,7 +1696,7 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
     # plt.tight_layout()
 
     output_name = "Stacked IOPS"
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=100)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=150)
     plt.close("all")
 
 
@@ -1243,7 +1750,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     # plt.tight_layout()
 
     output_name = f"Read Latency Histogram"
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=100)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=150)
     plt.close("all")
 
     # Writes
@@ -1266,7 +1773,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     # plt.tight_layout()
 
     output_name = f"Write Latency Histogram"
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=100)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}_{device}_z_{output_name}.png", format="png", dpi=150)
     plt.close("all")
 
 
@@ -1301,6 +1808,7 @@ def chart_vmstat(
             # For other types of Error, handle them accordingly
             raise e
     df.dropna(inplace=True)
+    df.drop_duplicates(subset=["RunDate", "RunTime"], keep="last", inplace=True)
 
     # Add a new total CPU column, add a datetime column
     df["Total CPU"] = 100 - df["id"]
@@ -1354,7 +1862,14 @@ def chart_vmstat(
 
             data = to_chart_df
 
-            if png_out:
+            # Reference threshold lines for key CPU metrics
+            threshold = None
+            if column_name in ("Total CPU", "us"):
+                threshold = (80, "80% CPU threshold")
+            elif column_name == "wa":
+                threshold = (10, "10% iowait threshold")
+
+            if png_out or png_html_out:
                 simple_chart(
                     data,
                     column_name,
@@ -1366,23 +1881,16 @@ def chart_vmstat(
                     peak_chart=peak_chart,
                     glorefs_peak_window=glorefs_peak_window,
                     line_chart=line_chart,
+                    threshold=threshold,
+                    business_hours_chart=min_max,
+                    html_out=png_html_out,
                 )
-            elif png_html_out:
-                simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    glorefs_peak_window=glorefs_peak_window,
-                    line_chart=line_chart,
-                )
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                if png_html_out:
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                                 min_max=min_max, threshold=threshold)
             else:
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                             min_max=min_max, threshold=threshold)
 
 
 def chart_mgstat(
@@ -1412,6 +1920,7 @@ def chart_mgstat(
             # For other types of Error, handle them accordingly
             raise e
     df.dropna(inplace=True)
+    df.drop_duplicates(subset=["RunDate", "RunTime"], keep="last", inplace=True)
 
     # Add a datetime column
     df["datetime"] = df["RunDate"] + " " + df["RunTime"]
@@ -1467,7 +1976,7 @@ def chart_mgstat(
             ):
                 min_max = True
 
-            if png_out:
+            if png_out or png_html_out:
                 peak_start, peak_end = simple_chart(
                     data,
                     column_name,
@@ -1478,28 +1987,18 @@ def chart_mgstat(
                     min_max=min_max,
                     peak_chart=peak_chart,
                     line_chart=line_chart,
+                    business_hours_chart=min_max,
+                    html_out=png_html_out,
                 )
                 # Capture Glorefs peak window
                 if column_name == "Glorefs" and peak_start is not None:
                     glorefs_peak_window = (peak_start, peak_end)
-            elif png_html_out:
-                peak_start, peak_end = simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    line_chart=line_chart,
-                )
-                # Capture Glorefs peak window
-                if column_name == "Glorefs" and peak_start is not None:
-                    glorefs_peak_window = (peak_start, peak_end)
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                if png_html_out:
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                                 min_max=min_max)
             else:
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                             min_max=min_max)
 
     return glorefs_peak_window
 
@@ -1530,6 +2029,7 @@ def chart_perfmon(
             # For other types of Error, handle them accordingly
             raise e
     df.dropna(inplace=True)
+    df.drop_duplicates(subset=["datetime"], keep="last", inplace=True)
 
     # *** NEW CODE: Pre-process datetime conversion once ***
     # Assume perfmon already has a "datetime" column, otherwise create it
@@ -1588,35 +2088,16 @@ def chart_perfmon(
 
             data = to_chart_df
 
-            if png_out:
+            if png_out or png_html_out:
                 simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    glorefs_peak_window=glorefs_peak_window,
-                    line_chart=line_chart,
+                    data, column_name, title, max_y, filepath, output_prefix,
+                    min_max=min_max, peak_chart=peak_chart, glorefs_peak_window=glorefs_peak_window,
+                    line_chart=line_chart, business_hours_chart=min_max, html_out=png_html_out,
                 )
-            elif png_html_out:
-                simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    glorefs_peak_window=glorefs_peak_window,
-                    line_chart=line_chart,
-                )
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                if png_html_out:
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
             else:
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
 
 
 def chart_iostat(
@@ -1647,6 +2128,8 @@ def chart_iostat(
             # For other types of Error, handle them accordingly
             raise e
     df.dropna(inplace=True)
+    if "RunDate" in df.columns and "RunTime" in df.columns and "Device" in df.columns:
+        df.drop_duplicates(subset=["RunDate", "RunTime", "Device"], keep="last", inplace=True)
 
     if "r/s" in df.columns and "w/s" in df.columns:
         df["Total IOPS"] = df["r/s"] + df["w/s"]
@@ -1734,8 +2217,6 @@ def chart_iostat(
                     pass
                 else:
                     title = f"{device} : {column_name} - {customer}"
-                    save_name = [s for s in column_name if s.isalnum() or s.isspace()]
-                    save_name = "".join(save_name)
 
                     to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
@@ -1749,7 +2230,12 @@ def chart_iostat(
                     if column_name in ("r/s", "w/s", "r_await", "w_await"):
                         min_max = True
 
-                    if png_out:
+                    # Reference threshold: storage latency target for IRIS
+                    threshold = None
+                    if column_name in ("r_await", "w_await"):
+                        threshold = (1, "1 ms latency target")
+
+                    if png_out or png_html_out:
                         simple_chart(
                             data,
                             column_name,
@@ -1762,24 +2248,16 @@ def chart_iostat(
                             peak_chart=peak_chart,
                             glorefs_peak_window=glorefs_peak_window,
                             line_chart=line_chart,
+                            threshold=threshold,
+                            business_hours_chart=min_max,
+                            html_out=png_html_out,
                         )
-                    elif png_html_out:
-                        simple_chart(
-                            data,
-                            column_name,
-                            title,
-                            max_y,
-                            device_filepath,
-                            output_prefix,
-                            file_prefix=device,
-                            min_max=min_max,
-                            peak_chart=peak_chart,
-                            glorefs_peak_window=glorefs_peak_window,
-                            line_chart=line_chart,
-                        )
-                        linked_chart(data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device)
+                        if png_html_out:
+                            linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
+                                         file_prefix=device, min_max=min_max, threshold=threshold)
                     else:
-                        linked_chart(data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device)
+                        linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
+                                     file_prefix=device, min_max=min_max, threshold=threshold)
 
     else:
         # No date or time, chart all columns, index is x axis
@@ -1816,8 +2294,6 @@ def chart_iostat(
             for column_name in columns_to_chart:
                 if not column_name == "Device":
                     title = f"{device} : {column_name} - {customer}"
-                    save_name = [s for s in column_name if s.isalnum() or s.isspace()]
-                    save_name = "".join(save_name)
 
                     to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
@@ -1844,7 +2320,7 @@ def chart_iostat(
                         )
 
 
-def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out, peak_chart=True):
+def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out, peak_chart=True, line_chart=True, iostat_subfolders=False):
     # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -1873,6 +2349,11 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
     for device in devices:
         device_df = nfsiostat_df.loc[nfsiostat_df["Device"] == device]
 
+        if iostat_subfolders:
+            device_filepath = _make_chart_dir(filepath.rstrip("/"), device.replace("/", "_"))
+        else:
+            device_filepath = filepath
+
         # unpivot the dataframe; first column is index, column name is next, then the value in that column
         device_df = device_df.melt("id_key", var_name="Type", value_name="metric")
 
@@ -1880,8 +2361,6 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
         for column_name in columns_to_chart:
             if not column_name == "Device":
                 title = f"{device} : {column_name} - {customer}"
-                save_name = [s for s in column_name if s.isalnum() or s.isspace()]
-                save_name = "".join(save_name)
 
                 to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
@@ -1891,21 +2370,15 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
 
                 data = to_chart_df
 
-                if png_out:
-                    simple_chart_no_time(
-                        data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
-                    )
-                elif png_html_out:
-                    simple_chart_no_time(
-                        data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
-                    )
-                    linked_chart_no_time(
-                        data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
-                    )
+                fp = device_filepath
+                pfx = "" if iostat_subfolders else device.replace("/", "_")
+
+                if png_out or png_html_out:
+                    simple_chart_no_time(data, column_name, title, max_y, fp, output_prefix, file_prefix=pfx)
+                    if png_html_out:
+                        linked_chart_no_time(data, column_name, title, max_y, fp, output_prefix, file_prefix=pfx)
                 else:
-                    linked_chart_no_time(
-                        data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
-                    )
+                    linked_chart_no_time(data, column_name, title, max_y, fp, output_prefix, file_prefix=pfx)
 
 
 def chart_aix_sar_d(
@@ -1918,6 +2391,7 @@ def chart_aix_sar_d(
     disk_list,
     peak_chart=True,
     line_chart=True,
+    iostat_subfolders=False,
 ):
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
@@ -1932,6 +2406,7 @@ def chart_aix_sar_d(
             # For other types of Error, handle them accordingly
             raise e
     df.dropna(inplace=True)
+    df.drop_duplicates(subset=["RunDate", "RunTime", "device"], keep="last", inplace=True)
 
     # df["datetime"] = df["RunDate"] + " " + df["RunTime"]
 
@@ -1949,9 +2424,16 @@ def chart_aix_sar_d(
             # print(f"Only devices: {disk_list}")
             devices = disk_list
 
+    min_max = False
+
     # Chart each disk
     for device in devices:
         device_df = aix_sar_d_df.loc[aix_sar_d_df["device"] == device]
+
+        if iostat_subfolders:
+            device_filepath = _make_chart_dir(filepath.rstrip("/"), device)
+        else:
+            device_filepath = filepath
 
         # unpivot the dataframe; first column is index, column name is next, then the value in that column
         device_df = device_df.melt("datetime", var_name="Type", value_name="metric")
@@ -1962,8 +2444,6 @@ def chart_aix_sar_d(
                 pass
             else:
                 title = f"{device} : {column_name} - {customer}"
-                save_name = [s for s in column_name if s.isalnum() or s.isspace()]
-                save_name = "".join(save_name)
 
                 to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
@@ -1973,36 +2453,19 @@ def chart_aix_sar_d(
 
                 data = to_chart_df
 
-                if png_out:
-                    simple_chart(
-                        data,
-                        column_name,
-                        title,
-                        max_y,
-                        filepath,
-                        output_prefix,
-                        file_prefix=device,
-                        peak_chart=peak_chart,
-                        line_chart=line_chart,
-                    )
-                elif png_html_out:
-                    simple_chart(
-                        data,
-                        column_name,
-                        title,
-                        max_y,
-                        filepath,
-                        output_prefix,
-                        file_prefix=device,
-                        peak_chart=peak_chart,
-                        line_chart=line_chart,
-                    )
-                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
-                else:
-                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                fp = device_filepath
+                pfx = "" if iostat_subfolders else device
 
-                    if False:
-                        interactive_chart(data, column_name, title, max_y, filepath, output_prefix, file_prefix=device)
+                if png_out or png_html_out:
+                    simple_chart(data, column_name, title, max_y, fp, output_prefix,
+                                 file_prefix=pfx, peak_chart=peak_chart, line_chart=line_chart,
+                                 min_max=min_max, business_hours_chart=min_max, html_out=png_html_out)
+                    if png_html_out:
+                        linked_chart(data, column_name, title, max_y, fp, output_prefix,
+                                     file_prefix=pfx, min_max=min_max)
+                else:
+                    linked_chart(data, column_name, title, max_y, fp, output_prefix,
+                                 file_prefix=pfx, min_max=min_max)
 
 
 def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True, line_chart=True):
@@ -2019,6 +2482,7 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
             # For other types of Error, handle them accordingly
             raise e
     df.dropna(inplace=True)
+    df.drop_duplicates(subset=["RunDate", "RunTime"], keep="last", inplace=True)
 
     # Add a datetime column
     df["datetime"] = df["RunDate"] + " " + df["RunTime"]
@@ -2050,33 +2514,24 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
             # Add min/max lines for key memory metrics
             min_max = column_name in ("used", "free", "available")
 
-            if png_out:
+            if png_out or png_html_out:
                 simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    line_chart=line_chart,
+                    data, column_name, title, max_y, filepath, output_prefix,
+                    min_max=min_max, peak_chart=peak_chart, line_chart=line_chart,
+                    business_hours_chart=min_max, html_out=png_html_out,
                 )
-            elif png_html_out:
-                simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    line_chart=line_chart,
-                )
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                if png_html_out:
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
             else:
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                             min_max=min_max)
+
+
+def _make_chart_dir(base, name):
+    path = f"{base}/{name}/"
+    if not os.path.isdir(path):
+        os.mkdir(path)
+    return path
 
 
 def mainline(
@@ -2124,16 +2579,10 @@ def mainline(
         filepath = "."
 
     # This is a hidden option for now. Only activated if the yml file exists
-    extended_charts = False
-    if os.path.isfile(f"{filepath}/site_survey_input.yml"):
-        extended_charts = True
-        # print("Extended charts included...")
-    else:
-        # print(f"Extended charts not included...")
-        pass
+    extended_charts = os.path.isfile(f"{filepath}/site_survey_input.yml")
 
     # get the prefix
-    html_filename = filename.split(".")[0]
+    html_filename = os.path.splitext(filename)[0]
 
     if output_prefix is None:
         output_prefix = f"{html_filename}_"
@@ -2231,31 +2680,25 @@ def mainline(
                 )
 
         connection.close()
+        connection = None
 
     # Charting is separate
     if "Chart" in database_action and not input_error:
-        # print("Charting...")
-
         output_file_path_base = f"{output_filepath_prefix}metrics"
-
         if not os.path.isdir(output_file_path_base):
             os.mkdir(output_file_path_base)
 
-        connection = create_connection(sql_filename)
+        if connection is None:
+            connection = create_connection(sql_filename)
 
         if not mgstat_file:
             operating_system = execute_single_read_query(
                 connection, "SELECT * FROM overview WHERE field = 'operating system';"
             )[2]
 
-        # mgstat - capture Glorefs peak window for use in other charts
-        output_file_path = f"{output_file_path_base}/mgstat/"
-
-        if not os.path.isdir(output_file_path):
-            os.mkdir(output_file_path)
-
         glorefs_peak_window = chart_mgstat(
-            connection, output_file_path, output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart
+            connection, _make_chart_dir(output_file_path_base, "mgstat"),
+            output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart,
         )
 
         # No need to go further for .mgst file
@@ -2263,97 +2706,49 @@ def mainline(
             connection.close()
             return
 
-        # vmstat and iostat
-        if operating_system == "Linux" or operating_system == "Ubuntu" or operating_system == "AIX":
-            # Detailed system charts for performance reports
+        is_unix = operating_system in ("Linux", "Ubuntu", "AIX")
+        is_linux = operating_system in ("Linux", "Ubuntu")
+
+        if is_unix:
             if extended_charts:
                 system_review.system_charts(filepath)
 
-            output_file_path = f"{output_file_path_base}/vmstat/"
-            if not os.path.isdir(output_file_path):
-                os.mkdir(output_file_path)
             chart_vmstat(
-                connection,
-                output_file_path,
-                output_prefix,
-                png_out,
-                png_html_out,
-                peak_chart,
-                glorefs_peak_window,
-                line_chart,
+                connection, _make_chart_dir(output_file_path_base, "vmstat"),
+                output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart,
             )
 
-            # free memory (Linux/Ubuntu only)
-            if operating_system == "Linux" or operating_system == "Ubuntu":
-                output_file_path = f"{output_file_path_base}/free_memory/"
-                if not os.path.isdir(output_file_path):
-                    os.mkdir(output_file_path)
+            if is_linux:
                 chart_free_memory(
-                    connection, output_file_path, output_prefix, png_out, png_html_out, peak_chart, line_chart
+                    connection, _make_chart_dir(output_file_path_base, "free_memory"),
+                    output_prefix, png_out, png_html_out, peak_chart, line_chart,
                 )
 
             if include_iostat:
-                output_file_path = f"{output_file_path_base}/iostat/"
-                if not os.path.isdir(output_file_path):
-                    os.mkdir(output_file_path)
                 chart_iostat(
-                    connection,
-                    output_file_path,
-                    output_prefix,
-                    operating_system,
-                    png_out,
-                    png_html_out,
-                    disk_list,
-                    peak_chart,
-                    glorefs_peak_window,
-                    line_chart,
-                    iostat_subfolders,
+                    connection, _make_chart_dir(output_file_path_base, "iostat"),
+                    output_prefix, operating_system, png_out, png_html_out,
+                    disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders,
                 )
 
                 if operating_system == "AIX":
-                    output_file_path = f"{output_file_path_base}/sar_d/"
-                    if not os.path.isdir(output_file_path):
-                        os.mkdir(output_file_path)
                     chart_aix_sar_d(
-                        connection,
-                        output_file_path,
-                        output_prefix,
-                        operating_system,
-                        png_out,
-                        png_html_out,
-                        disk_list,
-                        peak_chart,
-                        line_chart,
+                        connection, _make_chart_dir(output_file_path_base, "sar_d"),
+                        output_prefix, operating_system, png_out, png_html_out,
+                        disk_list, peak_chart, line_chart, iostat_subfolders,
                     )
 
             if include_nfsiostat:
-                output_file_path = f"{output_file_path_base}/nfsiostat/"
-                if not os.path.isdir(output_file_path):
-                    os.mkdir(output_file_path)
                 chart_nfsiostat(
-                    connection,
-                    output_file_path,
-                    output_prefix,
-                    operating_system,
-                    png_out,
-                    png_html_out,
-                    peak_chart,
-                    line_chart,
+                    connection, _make_chart_dir(output_file_path_base, "nfsiostat"),
+                    output_prefix, operating_system, png_out, png_html_out, peak_chart, line_chart,
+                    iostat_subfolders,
                 )
 
         if operating_system == "Windows":
-            output_file_path = f"{output_file_path_base}/perfmon/"
-            if not os.path.isdir(output_file_path):
-                os.mkdir(output_file_path)
             chart_perfmon(
-                connection,
-                output_file_path,
-                output_prefix,
-                png_out,
-                png_html_out,
-                peak_chart,
-                glorefs_peak_window,
-                line_chart,
+                connection, _make_chart_dir(output_file_path_base, "perfmon"),
+                output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart,
             )
 
         connection.close()

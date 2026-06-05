@@ -68,7 +68,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
     Note: The method uses some additional helper functions and variables that are not provided in the given code snippet. These functions are assumed to be defined elsewhere in the codebase.
     """
 
-    once = True
+    run_start_date = None
 
     vmstat_processing = False
     vmstat_header = ""
@@ -159,7 +159,10 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                             # Standardise date format first time or if date changes
                             if free_memory_row_dict["Date"] != free_memory_date:
                                 # Get date in yyyy/mm/dd format
-                                new_date = format_date(run_start_date, free_memory_row_dict["Date"])
+                                if run_start_date is not None:
+                                    new_date = format_date(run_start_date, free_memory_row_dict["Date"])
+                                else:
+                                    new_date = free_memory_row_dict["Date"]
 
                             free_memory_date = free_memory_row_dict["Date"]
                             free_memory_row_dict.update({"Date": new_date})
@@ -199,7 +202,10 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                     # Standardise date format first time or if date changes
                     if mgstat_row_dict["Date"] != mgstat_date:
                         # Get date in yyyy/mm/dd format
-                        new_date = format_date(run_start_date, mgstat_row_dict["Date"])
+                        if run_start_date is not None:
+                            new_date = format_date(run_start_date, mgstat_row_dict["Date"])
+                        else:
+                            new_date = mgstat_row_dict["Date"]
                         # print(new_date)
 
                     mgstat_date = mgstat_row_dict["Date"]
@@ -235,7 +241,10 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         # Standardise date format first time or if date changes
                         if vmstat_row_dict["Date"] != vmstat_date:
                             # Get date in yyyy/mm/dd format
-                            new_date = format_date(run_start_date, vmstat_row_dict["Date"])
+                            if run_start_date is not None:
+                                new_date = format_date(run_start_date, vmstat_row_dict["Date"])
+                            else:
+                                new_date = vmstat_row_dict["Date"]
                             # print(new_date)
 
                         vmstat_date = vmstat_row_dict["Date"]
@@ -270,9 +279,13 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         this_time = values[-1]
                         values.insert(0, this_time)
 
-                        # Have no date, only time. Make sure we haven't rolled over midnight
-                        # Comparing time as strings is a bit hacky, but we only care about the hour
-                        if this_time < previous_time:
+                        # Have no date, only time. Make sure we haven't rolled over midnight.
+                        # Zero-pad each H:M:S component individually so lexicographic comparison is correct
+                        # for any mix of zero-padded and non-padded fields (e.g. "9:5:01" vs "10:00:00").
+                        def _pad_time(t):
+                            parts = t.split(":")
+                            return ":".join(p.zfill(2) for p in parts)
+                        if _pad_time(this_time) < _pad_time(previous_time):
                             next_day = dateutil.parser.parse(aix_vmstat_line_date) + relativedelta(days=+1)
                             aix_vmstat_line_date = next_day.strftime("%m/%d/%Y")
                         previous_time = this_time
@@ -285,7 +298,10 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         # Standardise date format first time or if date changes
                         if vmstat_row_dict["Date"] != vmstat_date:
                             # Get date in yyyy/mm/dd format
-                            new_date = format_date(run_start_date, vmstat_row_dict["Date"])
+                            if run_start_date is not None:
+                                new_date = format_date(run_start_date, vmstat_row_dict["Date"])
+                            else:
+                                new_date = vmstat_row_dict["Date"]
                             # print(new_date)
 
                         vmstat_date = vmstat_row_dict["Date"]
@@ -330,9 +346,13 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         else:
                             this_time = values[0]
 
-                        # Have no date, only time. Make sure we haven't rolled over midnight
-                        # Comparing time as strings is a bit hacky, but we only care about the hour
-                        if this_time < aix_sar_d_previous_time:
+                        # Have no date, only time. Make sure we haven't rolled over midnight.
+                        # Zero-pad each H:M:S component individually so lexicographic comparison is correct
+                        # for any mix of zero-padded and non-padded fields (e.g. "9:5:01" vs "10:00:00").
+                        def _pad_time_sar(t):
+                            parts = t.split(":")
+                            return ":".join(p.zfill(2) for p in parts)
+                        if _pad_time_sar(this_time) < _pad_time_sar(aix_sar_d_previous_time):
                             next_day = dateutil.parser.parse(aix_sar_d_line_date) + relativedelta(days=+1)
                             aix_sar_d_line_date = next_day.strftime("%m/%d/%Y")
                         aix_sar_d_previous_time = this_time
@@ -345,7 +365,10 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         # Standardise date format first time or if date changes
                         if aix_sar_d_row_dict["Date"] != aix_sar_d_date:
                             # Get date in yyyy/mm/dd format
-                            new_date = format_date(run_start_date, aix_sar_d_row_dict["Date"])
+                            if run_start_date is not None:
+                                new_date = format_date(run_start_date, aix_sar_d_row_dict["Date"])
+                            else:
+                                new_date = aix_sar_d_row_dict["Date"]
                             # print(new_date)
 
                         aix_sar_d_date = aix_sar_d_row_dict["Date"]
@@ -457,7 +480,10 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                                     # Standardise date format first time or if date changes
                                     if iostat_row_dict["Date"] != iostat_date:
                                         # Get date in yyyy/mm/dd format
-                                        new_date = format_date(run_start_date, iostat_row_dict["Date"])
+                                        if run_start_date is not None:
+                                            new_date = format_date(run_start_date, iostat_row_dict["Date"])
+                                        else:
+                                            new_date = iostat_row_dict["Date"]
                                         # print(new_date)
 
                                     iostat_date = iostat_row_dict["Date"]
@@ -532,7 +558,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                             )
                             nfsiostat_header += f",html name"
                             nfsiostat_columns = nfsiostat_header.split(",")
-                            mgstat_columns = [i.strip() for i in nfsiostat_columns]  # strip off carriage return etc
+                            nfsiostat_columns = [i.strip() for i in nfsiostat_columns]  # strip off carriage return etc
                     if "write:" in line:
                         nfsiostat_read = False
                         nfsiostat_write = True

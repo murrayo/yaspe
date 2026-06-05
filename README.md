@@ -1,4 +1,4 @@
-# yaspe
+E.md # yaspe
 
 Parse and chart InterSystems Caché pButtons and InterSystems IRIS SystemPerformance files.
 
@@ -158,10 +158,12 @@ To run _yaspe_ over multiple input files, for example a few days or a week, use 
 - Use the `-a` (append) option to put all the metrics in the database (also `-x` if you want iostat)
 - Use the `-e` (existing database option) to chart the appended database (also `-x` if you want iostat)
 
-__Note:__ This works by appending data to database that contains extracted SystemPerformance data.
-If the SystemPerformance files have a short sample period this can result in long run times and large output files with many data points. 
+__Note:__ This works by appending data to a database that contains extracted SystemPerformance data.
+If the SystemPerformance files have a short sample period this can result in long run times and large output files with many data points.
 It may be a bit clunky to work with in the browser.
 I suggest you run over a week without iostat (`-x`), then use the method above to deep dive on a day or couple of days.
+
+When the combined database spans more than 25 hours, yaspe automatically generates additional supplementary charts for key metrics (see [Long-period charts](#long-period-charts-25-hours-of-data) above): 5-minute and 30-minute smoothed views, a daily 99th percentile bar chart, an hourly heatmap, and day-overlay charts (PNG and interactive HTML).
 
 By default, output folders and files are prefixed with the html file name. 
 To keep all the metric data in a single database use the `-o` argument to override the output file prefix.
@@ -185,10 +187,39 @@ docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/three_d
 
 ## Output files
 
-- HTML charts for all columns in mgstat and vmstat or windows perfmon and output to folders under `./prefix_metrics`
-- It is optional to create charts for iostat as this can take a long time if there is a big disk list
+- **HTML charts** (default): interactive Plotly charts for all columns in mgstat, vmstat/perfmon, and optionally iostat, written to `./prefix_metrics`. Each chart has a main zoom panel and an overview panel — drag the overview to zoom, double-click to reset.
+- **PNG charts** (`-p`): static matplotlib charts. Use for quick review or when sharing files that will not be opened in a browser.
+- **PNG + HTML** (`-P`): produce both formats.
+- It is optional to create charts for iostat (`-x`) as this can take a long time if there is a large disk list.
 - If you do not want the default prefix (html file name), override with `-o your_choice` or `-o ''` for no prefix.
 - If you want a csv file for further processing use the `-c` argument. If you use `-c` with `-o` csv files (for example for multiple days) will append.
+
+### Interactive HTML chart features
+
+- **Overview / zoom panel**: drag the lower overview chart to select a time window; the main chart zooms to that range. Double-click the overview to reset.
+- **Min / max annotation lines**: for key metrics, horizontal dashed lines show the absolute min/max and outlier-filtered 2nd/99th percentile bounds.
+- **Threshold lines**: storage latency charts include a 1 ms reference line; CPU charts include an 80% reference line.
+
+### Long-period charts (>25 hours of data)
+
+When data spans more than 25 hours (e.g. a week of appended SystemPerformance files), yaspe generates a set of supplementary PNG charts in addition to the main chart. These are produced for metrics that have min/max enabled (key metrics such as Total CPU, Glorefs, WIJwri, etc.):
+
+| Chart | Filename suffix | Description |
+|-------|----------------|-------------|
+| 5-minute average | `z_{metric}_5min_avg.png` | Raw samples shown faintly behind a 5-minute rolling mean. Legend shows original sample interval and smoothing window (e.g. `Total CPU (5m samples, 5 min avg)`). |
+| 30-minute average | `z_{metric}.png` | Same layout smoothed to a 30-minute rolling mean — the main long-period PNG. |
+| Daily 99th pct bar chart | `z_{metric}_daily_summary.png` | One bar per calendar day, coloured red for the busiest day. |
+| Hourly heatmap | `z_{metric}_heatmap.png` | Hour-of-day × date grid, colour-coded by 99th percentile value. Shows consistent peak hours across days. |
+| Day-overlay PNG | `z_{metric}_day_overlay.png` | All days overlaid on a shared 00:00–24:00 x-axis, one colour per day. |
+| Day-overlay HTML | `z_{metric}_day_overlay.html` | Interactive version of the day-overlay chart (produced with `-P` or HTML-only mode). |
+| Per-day business hours peak | `z_{metric}_bh_peak_{date}.png` | Business hours (08:00–18:00) peak 60-minute window for each day. |
+
+### Business hours and peak charts (8–25 hours of data)
+
+For single-day or short multi-day runs (8–25 hours), yaspe produces:
+
+- **Peak 60-minute chart** (`z_{metric}_peak.png`): zooms to the busiest 60-minute window of the day for key metrics.
+- **Business hours peak chart** (`z_{metric}_bh_peak.png`): same as above but restricted to business hours (08:00–18:00).
 
 *Example output*
 

@@ -2,3 +2,4 @@
 __pycache__
 /geckodriver.log
 .DS_Store
+test_samples/

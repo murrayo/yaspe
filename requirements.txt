@@ -1,7 +1,6 @@
-altair
+plotly
 pandas
 matplotlib
-seaborn
 python-dateutil
 pyyaml
 tk

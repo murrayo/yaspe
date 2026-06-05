@@ -51,6 +51,8 @@ def get_aix_wacky_numbers(s):
 def format_date(known_datetime, date_str):
     """
     :param known_datetime: The known datetime object to use as a reference for formatting.
+                           If None (i.e. "Profile run" line was absent from the input file),
+                           raises ValueError with a clear message rather than an opaque AttributeError.
     :param date_str: The date string to format.
     :return: The formatted date string.
 
@@ -69,6 +71,11 @@ def format_date(known_datetime, date_str):
 
     If no valid date is found, it defaults to returning the string "2000/12/01".
     """
+    if known_datetime is None:
+        raise ValueError(
+            f'Cannot parse date "{date_str}": no "Profile run" line was found in the input file. '
+            "The file may be truncated, corrupted, or in an unsupported format."
+        )
     # Convert known_datetime to date
     known_date = known_datetime.date()
 
@@ -101,4 +108,5 @@ def format_date(known_datetime, date_str):
             return perm_date.strftime("%Y/%m/%d")
 
     # Default to 1 Dec 2000 if no valid date found - at least you will get a chart
+    print(f"Warning: could not resolve date '{date_str}' relative to {known_datetime.date()}; using 2000/12/01 as fallback.")
     return "2000/12/01"
