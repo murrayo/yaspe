@@ -12,6 +12,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+import sp_check
+
 
 _COLORS = [
     "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
@@ -56,6 +58,47 @@ def _extract_instance_name(html_path: str) -> str:
 def _normalise_to_timeofday(ts: pd.Timestamp) -> pd.Timestamp:
     """Map any timestamp to 2000-01-01 HH:MM:SS so all traces share one x-axis."""
     return pd.Timestamp("2000-01-01") + (ts - ts.normalize())
+
+
+def _extract_to_sqlite(html_path: str) -> str:
+    """Extract vmstat and mgstat from html_path into a per-file SQLite.
+
+    Returns the path to the SQLite file.
+    Re-uses yaspe's sp_check, create_overview, create_connection, and
+    create_sections so all parsing logic stays in one place.
+    """
+    from yaspe import create_connection, create_overview, create_sections
+
+    html_path = os.path.abspath(html_path)
+    directory = os.path.dirname(html_path)
+    html_basename = os.path.splitext(os.path.basename(html_path))[0]
+    sql_path = os.path.join(directory, f"{html_basename}_SystemPerformance.sqlite")
+
+    conn = create_connection(sql_path)
+
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT count(name) FROM sqlite_master WHERE type='table' AND name='overview'"
+    )
+    overview_exists = cursor.fetchone()[0] == 1
+
+    if not overview_exists:
+        sp_dict = sp_check.system_check(html_path)
+        create_overview(conn, sp_dict)
+        create_sections(
+            conn,
+            html_path,
+            False,
+            False,
+            html_basename,
+            False,
+            os.path.join(directory, f"{html_basename}_"),
+            [],
+            False,
+        )
+
+    conn.close()
+    return sql_path
 
 
 def run(directory: str) -> None:
