@@ -1166,7 +1166,7 @@ def build_log(sp_dict):
 
     first_pass = True
     for key in sp_dict:
-        if "pass" in key and "app pass" not in key:
+        if "pass" in key and "app pass" not in key and not key.endswith(" explanation"):
             if first_pass:
                 log += "\nPasses:\n"
                 first_pass = False
@@ -1174,7 +1174,7 @@ def build_log(sp_dict):
 
     first_warning = True
     for key in sp_dict:
-        if "warn" in key and "app warn" not in key:
+        if "warn" in key and "app warn" not in key and not key.endswith(" explanation"):
             if first_warning:
                 log += "\nWarnings:\n"
                 first_warning = False
@@ -1182,7 +1182,7 @@ def build_log(sp_dict):
 
     first_app_note = True
     for key in sp_dict:
-        if "app pass" in key or "app warn" in key:
+        if ("app pass" in key or "app warn" in key) and not key.endswith(" explanation"):
             if first_app_note:
                 log += "\nApplication specific notes:\n"
                 first_app_note = False
@@ -1195,7 +1195,7 @@ def build_log(sp_dict):
         log += f"- Review and fix warnings above\n"
 
     for key in sp_dict:
-        if "recommend" in key:
+        if "recommend" in key and not key.endswith(" explanation"):
             recommendations_count = True
             log += f"- {sp_dict[key]}\n"
 
