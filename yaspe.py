@@ -1981,7 +1981,7 @@ def chart_iostat(
                         )
 
 
-def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out, peak_chart=True, line_chart=True):
+def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out, peak_chart=True, line_chart=True, iostat_subfolders=False):
     # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -2010,6 +2010,11 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
     for device in devices:
         device_df = nfsiostat_df.loc[nfsiostat_df["Device"] == device]
 
+        if iostat_subfolders:
+            device_filepath = _make_chart_dir(filepath.rstrip("/"), device.replace("/", "_"))
+        else:
+            device_filepath = filepath
+
         # unpivot the dataframe; first column is index, column name is next, then the value in that column
         device_df = device_df.melt("id_key", var_name="Type", value_name="metric")
 
@@ -2026,21 +2031,15 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
 
                 data = to_chart_df
 
-                if png_out:
-                    simple_chart_no_time(
-                        data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
-                    )
-                elif png_html_out:
-                    simple_chart_no_time(
-                        data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
-                    )
-                    linked_chart_no_time(
-                        data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
-                    )
+                fp = device_filepath
+                pfx = "" if iostat_subfolders else device.replace("/", "_")
+
+                if png_out or png_html_out:
+                    simple_chart_no_time(data, column_name, title, max_y, fp, output_prefix, file_prefix=pfx)
+                    if png_html_out:
+                        linked_chart_no_time(data, column_name, title, max_y, fp, output_prefix, file_prefix=pfx)
                 else:
-                    linked_chart_no_time(
-                        data, column_name, title, max_y, filepath, output_prefix, file_prefix=device.replace("/", "_")
-                    )
+                    linked_chart_no_time(data, column_name, title, max_y, fp, output_prefix, file_prefix=pfx)
 
 
 def chart_aix_sar_d(
@@ -2053,6 +2052,7 @@ def chart_aix_sar_d(
     disk_list,
     peak_chart=True,
     line_chart=True,
+    iostat_subfolders=False,
 ):
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
@@ -2088,6 +2088,11 @@ def chart_aix_sar_d(
     for device in devices:
         device_df = aix_sar_d_df.loc[aix_sar_d_df["device"] == device]
 
+        if iostat_subfolders:
+            device_filepath = _make_chart_dir(filepath.rstrip("/"), device)
+        else:
+            device_filepath = filepath
+
         # unpivot the dataframe; first column is index, column name is next, then the value in that column
         device_df = device_df.melt("datetime", var_name="Type", value_name="metric")
 
@@ -2106,35 +2111,18 @@ def chart_aix_sar_d(
 
                 data = to_chart_df
 
-                if png_out:
-                    simple_chart(
-                        data,
-                        column_name,
-                        title,
-                        max_y,
-                        filepath,
-                        output_prefix,
-                        file_prefix=device,
-                        peak_chart=peak_chart,
-                        line_chart=line_chart,
-                    )
-                elif png_html_out:
-                    simple_chart(
-                        data,
-                        column_name,
-                        title,
-                        max_y,
-                        filepath,
-                        output_prefix,
-                        file_prefix=device,
-                        peak_chart=peak_chart,
-                        line_chart=line_chart,
-                    )
-                    linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                                 file_prefix=device, min_max=min_max)
+                fp = device_filepath
+                pfx = "" if iostat_subfolders else device
+
+                if png_out or png_html_out:
+                    simple_chart(data, column_name, title, max_y, fp, output_prefix,
+                                 file_prefix=pfx, peak_chart=peak_chart, line_chart=line_chart)
+                    if png_html_out:
+                        linked_chart(data, column_name, title, max_y, fp, output_prefix,
+                                     file_prefix=pfx, min_max=min_max)
                 else:
-                    linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                                 file_prefix=device, min_max=min_max)
+                    linked_chart(data, column_name, title, max_y, fp, output_prefix,
+                                 file_prefix=pfx, min_max=min_max)
 
 
 def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True, line_chart=True):
@@ -2421,13 +2409,14 @@ def mainline(
                     chart_aix_sar_d(
                         connection, _make_chart_dir(output_file_path_base, "sar_d"),
                         output_prefix, operating_system, png_out, png_html_out,
-                        disk_list, peak_chart, line_chart,
+                        disk_list, peak_chart, line_chart, iostat_subfolders,
                     )
 
             if include_nfsiostat:
                 chart_nfsiostat(
                     connection, _make_chart_dir(output_file_path_base, "nfsiostat"),
                     output_prefix, operating_system, png_out, png_html_out, peak_chart, line_chart,
+                    iostat_subfolders,
                 )
 
         if operating_system == "Windows":
