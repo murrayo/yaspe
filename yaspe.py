@@ -1637,6 +1637,7 @@ def chart_vmstat(
             # For other types of Error, handle them accordingly
             raise e
     df.dropna(inplace=True)
+    df.drop_duplicates(subset=["RunDate", "RunTime"], keep="last", inplace=True)
 
     # Add a new total CPU column, add a datetime column
     df["Total CPU"] = 100 - df["id"]
@@ -1747,6 +1748,7 @@ def chart_mgstat(
             # For other types of Error, handle them accordingly
             raise e
     df.dropna(inplace=True)
+    df.drop_duplicates(subset=["RunDate", "RunTime"], keep="last", inplace=True)
 
     # Add a datetime column
     df["datetime"] = df["RunDate"] + " " + df["RunTime"]
@@ -1854,6 +1856,7 @@ def chart_perfmon(
             # For other types of Error, handle them accordingly
             raise e
     df.dropna(inplace=True)
+    df.drop_duplicates(subset=["datetime"], keep="last", inplace=True)
 
     # *** NEW CODE: Pre-process datetime conversion once ***
     # Assume perfmon already has a "datetime" column, otherwise create it
@@ -1952,6 +1955,8 @@ def chart_iostat(
             # For other types of Error, handle them accordingly
             raise e
     df.dropna(inplace=True)
+    if "RunDate" in df.columns and "RunTime" in df.columns and "Device" in df.columns:
+        df.drop_duplicates(subset=["RunDate", "RunTime", "Device"], keep="last", inplace=True)
 
     if "r/s" in df.columns and "w/s" in df.columns:
         df["Total IOPS"] = df["r/s"] + df["w/s"]
@@ -2227,6 +2232,7 @@ def chart_aix_sar_d(
             # For other types of Error, handle them accordingly
             raise e
     df.dropna(inplace=True)
+    df.drop_duplicates(subset=["RunDate", "RunTime", "device"], keep="last", inplace=True)
 
     # df["datetime"] = df["RunDate"] + " " + df["RunTime"]
 
@@ -2300,6 +2306,7 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
             # For other types of Error, handle them accordingly
             raise e
     df.dropna(inplace=True)
+    df.drop_duplicates(subset=["RunDate", "RunTime"], keep="last", inplace=True)
 
     # Add a datetime column
     df["datetime"] = df["RunDate"] + " " + df["RunTime"]
