@@ -1530,7 +1530,7 @@ def chart_vmstat(
                     glorefs_peak_window=glorefs_peak_window,
                     line_chart=line_chart,
                     threshold=threshold,
-                    business_hours_chart=(column_name == "Total CPU"),
+                    business_hours_chart=min_max,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, filepath, output_prefix,
@@ -1633,7 +1633,7 @@ def chart_mgstat(
                     min_max=min_max,
                     peak_chart=peak_chart,
                     line_chart=line_chart,
-                    business_hours_chart=(column_name == "Glorefs"),
+                    business_hours_chart=min_max,
                 )
                 # Capture Glorefs peak window
                 if column_name == "Glorefs" and peak_start is not None:
@@ -1732,37 +1732,16 @@ def chart_perfmon(
 
             data = to_chart_df
 
-            if png_out:
+            if png_out or png_html_out:
                 simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    glorefs_peak_window=glorefs_peak_window,
-                    line_chart=line_chart,
+                    data, column_name, title, max_y, filepath, output_prefix,
+                    min_max=min_max, peak_chart=peak_chart, glorefs_peak_window=glorefs_peak_window,
+                    line_chart=line_chart, business_hours_chart=min_max,
                 )
-            elif png_html_out:
-                simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    glorefs_peak_window=glorefs_peak_window,
-                    line_chart=line_chart,
-                )
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                             min_max=min_max)
+                if png_html_out:
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
             else:
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                             min_max=min_max)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
 
 
 def chart_iostat(
@@ -1912,6 +1891,7 @@ def chart_iostat(
                             glorefs_peak_window=glorefs_peak_window,
                             line_chart=line_chart,
                             threshold=threshold,
+                            business_hours_chart=min_max,
                         )
                         if png_html_out:
                             linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
@@ -2116,7 +2096,8 @@ def chart_aix_sar_d(
 
                 if png_out or png_html_out:
                     simple_chart(data, column_name, title, max_y, fp, output_prefix,
-                                 file_prefix=pfx, peak_chart=peak_chart, line_chart=line_chart)
+                                 file_prefix=pfx, peak_chart=peak_chart, line_chart=line_chart,
+                                 min_max=min_max, business_hours_chart=min_max)
                     if png_html_out:
                         linked_chart(data, column_name, title, max_y, fp, output_prefix,
                                      file_prefix=pfx, min_max=min_max)
@@ -2170,32 +2151,14 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
             # Add min/max lines for key memory metrics
             min_max = column_name in ("used", "free", "available")
 
-            if png_out:
+            if png_out or png_html_out:
                 simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    line_chart=line_chart,
+                    data, column_name, title, max_y, filepath, output_prefix,
+                    min_max=min_max, peak_chart=peak_chart, line_chart=line_chart,
+                    business_hours_chart=min_max,
                 )
-            elif png_html_out:
-                simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    line_chart=line_chart,
-                )
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                             min_max=min_max)
+                if png_html_out:
+                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
                              min_max=min_max)
