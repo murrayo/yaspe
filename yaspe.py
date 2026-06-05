@@ -31,6 +31,7 @@ import warnings
 from extract_sections import extract_sections
 from extract_mgstat import extract_mgstat
 import system_review
+import yaspe_compare_overlay
 
 # Suppress FutureWarning messages
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -2916,7 +2917,20 @@ if __name__ == "__main__":
         action="store_false",
     )
 
+    parser.add_argument(
+        "-C",
+        "--compare-dir",
+        dest="compare_dir",
+        help="Compare all HTML files in a directory: produce vmstat and mgstat overlay charts.",
+        action="store",
+        metavar='"/path/to/directory"',
+    )
+
     args = parser.parse_args()
+
+    if args.compare_dir is not None:
+        yaspe_compare_overlay.run(args.compare_dir)
+        sys.exit(0)
 
     # Validate input file
     if args.input_file is not None:
