@@ -893,7 +893,10 @@ def _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, o
     colors = ["steelblue"] * len(daily)
     colors[int(daily.values.argmax())] = "tomato"
 
-    bars = ax.bar([str(d) for d in daily.index], daily.values, color=colors, alpha=0.85, edgecolor="white")
+    x_pos = range(len(daily))
+    bars = ax.bar(x_pos, daily.values, color=colors, alpha=0.85, edgecolor="white")
+    ax.set_xticks(list(x_pos))
+    ax.set_xticklabels([str(d) for d in daily.index])
     for bar, val in zip(bars, daily.values):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.01,
                 f"{val:,.0f}", ha="center", va="bottom", fontsize=10)
