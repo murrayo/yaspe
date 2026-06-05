@@ -53,6 +53,11 @@ def _extract_instance_name(html_path: str) -> str:
     return Path(html_path).stem
 
 
+def _normalise_to_timeofday(ts: pd.Timestamp) -> pd.Timestamp:
+    """Map any timestamp to 2000-01-01 HH:MM:SS so all traces share one x-axis."""
+    return pd.Timestamp("2000-01-01") + (ts - ts.normalize())
+
+
 def run(directory: str) -> None:
     """Entry point called by yaspe.py when --compare-dir is given."""
     pass  # implemented in later tasks

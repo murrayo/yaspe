@@ -4,6 +4,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import pandas as pd
 import yaspe_compare_overlay as yco
 
 
@@ -33,3 +34,15 @@ def test_extract_instance_name_fallback():
         assert result == os.path.splitext(os.path.basename(path))[0]
     finally:
         os.unlink(path)
+
+
+def test_normalise_to_timeofday():
+    ts = pd.Timestamp("2026-02-12 14:30:00")
+    result = yco._normalise_to_timeofday(ts)
+    assert result == pd.Timestamp("2000-01-01 14:30:00")
+
+
+def test_normalise_preserves_seconds():
+    ts = pd.Timestamp("2026-03-31 00:01:30")
+    result = yco._normalise_to_timeofday(ts)
+    assert result == pd.Timestamp("2000-01-01 00:01:30")
