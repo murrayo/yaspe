@@ -556,6 +556,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
         _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix, file_prefix, datetime_column)
         _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
+        _create_day_overlay_html(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
         _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
 
     # Return peak times (useful for Glorefs to pass to other charts)
@@ -1004,6 +1005,90 @@ def _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, out
     plt.tight_layout()
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_day_overlay.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
+
+
+def _create_day_overlay_html(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column):
+    """Interactive Plotly day-overlay chart: one trace per calendar day on a shared 00:00-24:00 x-axis.
+    Hover shows actual date + time + value. Includes the overview/zoom panel."""
+    from datetime import timedelta
+
+    sorted_data = png_data.copy().set_index(datetime_column).sort_index()
+    dates = sorted(set(sorted_data.index.date))
+
+    if len(dates) < 2:
+        return
+
+    colors = [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+        "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+    ]
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=False,
+        row_heights=[0.75, 0.25],
+        vertical_spacing=0.05,
+    )
+
+    for i, date in enumerate(dates):
+        day_data = sorted_data[sorted_data.index.date == date]["metric"]
+        if day_data.empty:
+            continue
+
+        # Smooth with ~30-min window
+        win = max(2, min(len(day_data), 60))
+        day_smooth = day_data.rolling(window=win, center=True, min_periods=1).mean()
+
+        # Map to a reference date for shared x-axis, store actual datetime in customdata
+        x_ref = [pd.Timestamp("2000-01-01") + timedelta(seconds=(ts - pd.Timestamp(date)).total_seconds())
+                 for ts in day_data.index]
+        actual_times = [ts.strftime("%a %d-%b %H:%M:%S") for ts in day_data.index]
+
+        color = colors[i % len(colors)]
+        label = pd.Timestamp(date).strftime("%a %d-%b")
+
+        fig.add_trace(go.Scatter(
+            x=x_ref, y=day_smooth.values,
+            mode="lines", name=label,
+            line=dict(width=1.5, color=color),
+            customdata=actual_times,
+            hovertemplate="%{customdata}<br>" + column_name + ": %{y:,.0f}<extra></extra>",
+        ), row=1, col=1)
+
+        fig.add_trace(go.Scatter(
+            x=x_ref, y=day_smooth.values,
+            mode="lines", name=label,
+            line=dict(width=0.8, color=color),
+            showlegend=False,
+            hoverinfo="skip",
+        ), row=2, col=1)
+
+    yaxis_range = [0, max_y] if max_y > 0 else [0, None]
+    start_str = sorted_data.index.min().strftime("%d-%b-%y")
+    end_str = sorted_data.index.max().strftime("%d-%b-%y")
+
+    fig.update_layout(
+        title=dict(text=f"{title} - Day Overlay ({start_str} to {end_str})", font=dict(size=16)),
+        xaxis=dict(title="Time of day", tickfont=dict(size=13),
+                   tickformat="%H:%M"),
+        xaxis2=dict(title="Drag box here to zoom ↑   (double-click top chart to reset)",
+                    tickfont=dict(size=11), tickformat="%H:%M"),
+        yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
+        yaxis2=dict(rangemode="tozero", showticklabels=False),
+        legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1,
+                    font=dict(size=12), orientation="v"),
+        height=650,
+        hovermode="x",
+        template="plotly_white",
+    )
+
+    output_name = column_name.replace("/", "_")
+    fig.write_html(
+        f"{filepath}{output_prefix}{file_prefix}{output_name}_day_overlay.html",
+        include_plotlyjs="cdn",
+        post_script=_OVERVIEW_ZOOM_JS,
+        full_html=True,
+    )
 
 
 def _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True, bh_start=8, bh_end=18):
