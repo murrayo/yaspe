@@ -3,3 +3,5 @@ __pycache__
 /geckodriver.log
 .DS_Store
 test_samples/
+test_samples/differnet_servers/*_SystemPerformance.sqlite
+test_samples/differnet_servers/compare_overlay/
