@@ -113,6 +113,8 @@ def _load_dataframes(sql_path: str):
         pass
     try:
         vmstat_df = pd.read_sql("SELECT * FROM vmstat", conn)
+        if "id" in vmstat_df.columns:
+            vmstat_df["Total CPU"] = 100 - vmstat_df["id"]
     except Exception:
         pass
     conn.close()
@@ -231,7 +233,7 @@ def _write_overlay_html(datasets: list, column_name: str, metric_type: str, outp
 def _detect_datetime_column(df: pd.DataFrame) -> str:
     """Return the name of the datetime column in df, or empty string if not found.
     Checks common names used by yaspe: 'DateTime', 'RunDate', 'Date/Time'."""
-    for candidate in ("DateTime", "RunDate", "Date/Time", "datetime"):
+    for candidate in ("datetime", "DateTime", "Date/Time", "RunDate"):
         if candidate in df.columns:
             return candidate
     for col in df.select_dtypes(include="object").columns:
