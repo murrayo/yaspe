@@ -48,73 +48,85 @@ _YSCALE_JS = """
 (function() {
     var gd = document.querySelector('.plotly-graph-div');
     var rescaling = false;
+    var pendingRange = null;
 
-    function getXRange() {
-        var xaxis = gd.layout.xaxis;
-        if (xaxis && xaxis.range && !xaxis.autorange) {
-            return [new Date(xaxis.range[0]).getTime(), new Date(xaxis.range[1]).getTime()];
-        }
-        // autorange: compute full extent from data
-        var xmin = Infinity, xmax = -Infinity;
-        gd.data.forEach(function(trace) {
-            if (!trace.x || trace.xaxis === 'x2') return;
-            trace.x.forEach(function(v) {
-                var t = new Date(v).getTime();
-                if (t < xmin) xmin = t;
-                if (t > xmax) xmax = t;
-            });
-        });
-        return [xmin, xmax];
+    // Plotly can emit dates as "YYYY-MM-DD HH:MM:SS" (space) — normalise to ISO.
+    function toMs(s) {
+        if (typeof s === 'string' && s.indexOf('T') === -1) s = s.replace(' ', 'T');
+        return new Date(s).getTime();
     }
 
     function rescaleOverlayAxes() {
         if (rescaling) return;
-        var range = getXRange();
-        var x0 = range[0], x1 = range[1];
-        var axisMaxes = {};
-
-        gd.data.forEach(function(trace) {
-            if (trace.visible === 'legendonly' || trace.visible === false) return;
-            if (!trace.x || trace.xaxis === 'x2') return;
-            var yax = trace.yaxis || 'y';
-            if (yax === 'y' || yax === 'y8') return; // CPU fixed 0-100, overview skip
-
-            for (var i = 0; i < trace.x.length; i++) {
-                var t = new Date(trace.x[i]).getTime();
-                if (t >= x0 && t <= x1) {
-                    var v = trace.y[i];
-                    if (v != null && !isNaN(v)) {
-                        if (!(yax in axisMaxes) || v > axisMaxes[yax]) axisMaxes[yax] = v;
-                    }
-                }
-            }
-        });
+        var range = pendingRange;
+        pendingRange = null;
+        if (!range) return;
 
         var update = {};
-        Object.keys(axisMaxes).forEach(function(yax) {
-            var key = 'yaxis' + yax.slice(1);
-            update[key + '.range'] = [0, (axisMaxes[yax] || 1) * 1.1];
-            update[key + '.autorange'] = false;
-        });
 
-        if (Object.keys(update).length > 0) {
-            rescaling = true;
-            Plotly.relayout(gd, update).then(function() { rescaling = false; });
+        if (range === 'reset') {
+            ['yaxis2','yaxis3','yaxis4','yaxis5','yaxis6','yaxis7'].forEach(function(ax) {
+                if (gd.layout[ax] && gd.layout[ax].visible !== false) {
+                    update[ax + '.autorange'] = true;
+                }
+            });
+        } else {
+            var t0 = toMs(range[0]);
+            var t1 = toMs(range[1]);
+            var axisMaxes = {};
+
+            gd.data.forEach(function(trace) {
+                if (trace.visible === 'legendonly' || trace.visible === false) return;
+                if (!trace.x || trace.xaxis === 'x2') return;
+                var yax = trace.yaxis || 'y';
+                if (yax === 'y' || yax === 'y8') return;
+
+                for (var i = 0; i < trace.x.length; i++) {
+                    var t = toMs(trace.x[i]);
+                    if (t >= t0 && t <= t1) {
+                        var v = trace.y[i];
+                        if (v != null && !isNaN(v)) {
+                            if (!(yax in axisMaxes) || v > axisMaxes[yax]) axisMaxes[yax] = v;
+                        }
+                    }
+                }
+            });
+
+            Object.keys(axisMaxes).forEach(function(yax) {
+                var key = 'yaxis' + yax.slice(1);
+                update[key + '.range'] = [0, (axisMaxes[yax] || 1) * 1.1];
+                update[key + '.autorange'] = false;
+            });
         }
+
+        if (Object.keys(update).length === 0) return;
+        rescaling = true;
+        Plotly.relayout(gd, update).then(function() { rescaling = false; });
     }
 
-    // x range changed (zoom or reset) — rescale overlay y-axes
     gd.on('plotly_relayout', function(eventdata) {
         if (rescaling) return;
-        if (eventdata['xaxis.range[0]'] !== undefined || eventdata['xaxis.autorange'] === true) {
+        if (eventdata['xaxis.autorange'] === true) {
+            pendingRange = 'reset';
             setTimeout(rescaleOverlayAxes, 0);
+        } else if (eventdata['xaxis.range[0]'] !== undefined) {
+            pendingRange = [eventdata['xaxis.range[0]'], eventdata['xaxis.range[1]']];
+            setTimeout(rescaleOverlayAxes, 0);
+        } else if (eventdata['xaxis2.range[0]'] !== undefined) {
+            // Overview drag — _OVERVIEW_ZOOM_JS will relayout xaxis, pick it up from there
+            pendingRange = [eventdata['xaxis2.range[0]'], eventdata['xaxis2.range[1]']];
+            setTimeout(rescaleOverlayAxes, 50);
         }
     });
 
-    // legend toggle — rescale to visible traces only
+    // Trace made visible while already zoomed — rescale to current window
     gd.on('plotly_restyle', function() {
         if (rescaling) return;
-        setTimeout(rescaleOverlayAxes, 0);
+        var ax = gd.layout && gd.layout.xaxis;
+        if (ax && ax.autorange !== true && ax.range && ax.range.length === 2) {
+            pendingRange = [ax.range[0], ax.range[1]];
+            setTimeout(rescaleOverlayAxes, 0);
+        }
     });
 })();
 """
