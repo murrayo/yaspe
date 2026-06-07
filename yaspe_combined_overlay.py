@@ -96,14 +96,15 @@ def _build_combined_chart(
     vm_dt_col: str,
     output_path: str,
 ) -> None:
-    """Build and write the combined Plotly HTML chart."""
-    fig = make_subplots(
-        rows=2, cols=1,
-        shared_xaxes=False,
-        row_heights=[0.75, 0.25],
-        vertical_spacing=0.05,
-        specs=[[{"secondary_y": False}], [{"secondary_y": False}]],
-    )
+    """Build and write the combined Plotly HTML chart.
+
+    Axis layout (manual domains — no make_subplots, which would claim yaxis2):
+      xaxis / yaxis        — main row left: CPU % stacked areas, domain y [0.30, 1.0]
+      xaxis / yaxis2       — main row right: IO shared axis (overlaying y)
+      xaxis / yaxis3..7    — main row right: one per routing metric (overlaying y, shifted)
+      xaxis2 / yaxis8      — overview row: CPU stacked areas, domain y [0.0, 0.22]
+    """
+    fig = go.Figure()
 
     # Parse and sort datetimes
     vmstat_df = vmstat_df.copy()
@@ -113,7 +114,7 @@ def _build_combined_chart(
     mgstat_df[mg_dt_col] = pd.to_datetime(mgstat_df[mg_dt_col])
     mgstat_df = mgstat_df.sort_values(mg_dt_col)
 
-    # --- CPU stacked areas on yaxis (left) ---
+    # --- CPU stacked areas on yaxis (left, main row) ---
     for col in _CPU_COLS:
         if col not in vmstat_df.columns:
             print(f"  Skipping missing column: {col}")
@@ -125,23 +126,25 @@ def _build_combined_chart(
             y=series,
             mode="lines",
             name=col,
+            xaxis="x", yaxis="y",
             stackgroup="cpu",
             line=dict(width=0.5, color=color),
             hovertemplate="%{x}<br>" + col + ": %{y:,.3g}<extra></extra>",
-        ), row=1, col=1)
-        # Overview panel: mirror full CPU stacked area (all three traces)
+        ))
+        # Overview panel: mirror CPU stacked area
         fig.add_trace(go.Scatter(
             x=vmstat_df[vm_dt_col],
             y=series,
             mode="lines",
             name=col,
+            xaxis="x2", yaxis="y8",
             stackgroup="cpu_overview",
             showlegend=False,
             line=dict(width=0.8, color=color),
             hoverinfo="skip",
-        ), row=2, col=1)
+        ))
 
-    # --- IO metrics on yaxis2 (right, shared) ---
+    # --- IO metrics on yaxis2 (right, shared, main row) ---
     for col in _IO_COLS:
         if col not in mgstat_df.columns:
             print(f"  Skipping missing column: {col}")
@@ -152,12 +155,12 @@ def _build_combined_chart(
             y=series,
             mode="lines",
             name=col,
-            yaxis="y2",
+            xaxis="x", yaxis="y2",
             line=dict(width=1.5, color=_IO_COLORS[col]),
             hovertemplate="%{x}<br>" + col + ": %{y:,.3g}<extra></extra>",
-        ), row=1, col=1)
+        ))
 
-    # --- Routing metrics: one independent y-axis each (y3..y7) ---
+    # --- Routing metrics: one independent y-axis each (y3..y7, main row) ---
     for col in _ROU_COLS:
         if col not in mgstat_df.columns:
             print(f"  Skipping missing column: {col}")
@@ -168,12 +171,12 @@ def _build_combined_chart(
             y=series,
             mode="lines",
             name=col,
-            yaxis=_ROU_YAXIS[col],
+            xaxis="x", yaxis=_ROU_YAXIS[col],
             line=dict(width=1.5, color=_ROU_COLORS[col], dash="dash"),
             hovertemplate="%{x}<br>" + col + ": %{y:,.3g}<extra></extra>",
-        ), row=1, col=1)
+        ))
 
-    # Build routing axis definitions dynamically (y3..y7, stacked 80px apart)
+    # Build routing axis definitions dynamically (y3..y7, 80px apart starting at 80px out)
     routing_axes = {
         f"yaxis{i + 3}": dict(
             title=col,
@@ -193,25 +196,34 @@ def _build_combined_chart(
             text="vmstat CPU + mgstat IO/Routing — Combined Overlay",
             font=dict(size=16),
         ),
-        xaxis=dict(title="Time", tickfont=dict(size=13)),
-        xaxis2=dict(
-            title="Drag box here to zoom ↑   (double-click top chart to reset)",
-            tickfont=dict(size=11),
-        ),
+        # Main row axes
+        xaxis=dict(tickfont=dict(size=11), anchor="y"),
         yaxis=dict(
             title="CPU %",
             tickfont=dict(size=12),
+            domain=[0.30, 1.0],
             rangemode="tozero",
+            side="left",
         ),
         yaxis2=dict(
             title="mgstat IO",
             tickfont=dict(size=12),
-            anchor="x",
             overlaying="y",
             side="right",
             rangemode="tozero",
         ),
         **routing_axes,
+        # Overview row axes
+        xaxis2=dict(
+            title="Drag box here to zoom ↑   (double-click top chart to reset)",
+            tickfont=dict(size=11),
+            anchor="y8",
+        ),
+        yaxis8=dict(
+            domain=[0.0, 0.22],
+            showticklabels=False,
+            rangemode="tozero",
+        ),
         legend=dict(
             bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1,
             font=dict(size=12), orientation="v",
