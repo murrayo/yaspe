@@ -286,7 +286,7 @@ def _build_combined_chart(
 
     fig.update_layout(
         title=dict(
-            text=f"vmstat CPU + mgstat IO/Routing — Combined Overlay"
+            text=f"vmstat CPU + mgstat IO — Combined Overlay"
                  + (f" ({smooth_minutes:.0f} min avg)" if smooth_minutes > 0 else ""),
             font=dict(size=16),
             x=0.5,
