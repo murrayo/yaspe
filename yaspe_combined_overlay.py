@@ -186,6 +186,21 @@ def _build_combined_chart(
             hoverinfo="skip",
         ))
 
+    # --- Total CPU line on yaxis (left, main row) ---
+    if "Total CPU" in vmstat_df.columns:
+        series = pd.to_numeric(vmstat_df["Total CPU"], errors="coerce")
+        fig.add_trace(go.Scatter(
+            x=vmstat_df[vm_dt_col],
+            y=series,
+            mode="lines",
+            name="Total CPU",
+            xaxis="x", yaxis="y",
+            line=dict(width=2, color="#111111"),
+            hovertemplate="%{x}<br>Total CPU: %{y:,.3g}<extra></extra>",
+        ))
+    else:
+        print("  Skipping missing column: Total CPU")
+
     # --- IO metrics on yaxis2 (right, shared, main row) ---
     for col in _IO_COLS:
         if col not in mgstat_df.columns:
