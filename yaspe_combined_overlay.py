@@ -44,6 +44,81 @@ _OVERVIEW_ZOOM_JS = """
 })();
 """
 
+_YSCALE_JS = """
+(function() {
+    var gd = document.querySelector('.plotly-graph-div');
+    var rescaling = false;
+
+    function getXRange() {
+        var xaxis = gd.layout.xaxis;
+        if (xaxis && xaxis.range && !xaxis.autorange) {
+            return [new Date(xaxis.range[0]).getTime(), new Date(xaxis.range[1]).getTime()];
+        }
+        // autorange: compute full extent from data
+        var xmin = Infinity, xmax = -Infinity;
+        gd.data.forEach(function(trace) {
+            if (!trace.x || trace.xaxis === 'x2') return;
+            trace.x.forEach(function(v) {
+                var t = new Date(v).getTime();
+                if (t < xmin) xmin = t;
+                if (t > xmax) xmax = t;
+            });
+        });
+        return [xmin, xmax];
+    }
+
+    function rescaleOverlayAxes() {
+        if (rescaling) return;
+        var range = getXRange();
+        var x0 = range[0], x1 = range[1];
+        var axisMaxes = {};
+
+        gd.data.forEach(function(trace) {
+            if (trace.visible === 'legendonly' || trace.visible === false) return;
+            if (!trace.x || trace.xaxis === 'x2') return;
+            var yax = trace.yaxis || 'y';
+            if (yax === 'y' || yax === 'y8') return; // CPU fixed 0-100, overview skip
+
+            for (var i = 0; i < trace.x.length; i++) {
+                var t = new Date(trace.x[i]).getTime();
+                if (t >= x0 && t <= x1) {
+                    var v = trace.y[i];
+                    if (v != null && !isNaN(v)) {
+                        if (!(yax in axisMaxes) || v > axisMaxes[yax]) axisMaxes[yax] = v;
+                    }
+                }
+            }
+        });
+
+        var update = {};
+        Object.keys(axisMaxes).forEach(function(yax) {
+            var key = 'yaxis' + yax.slice(1);
+            update[key + '.range'] = [0, (axisMaxes[yax] || 1) * 1.1];
+            update[key + '.autorange'] = false;
+        });
+
+        if (Object.keys(update).length > 0) {
+            rescaling = true;
+            Plotly.relayout(gd, update).then(function() { rescaling = false; });
+        }
+    }
+
+    // x range changed (zoom or reset) — rescale overlay y-axes
+    gd.on('plotly_relayout', function(eventdata) {
+        if (rescaling) return;
+        if (eventdata['xaxis.range[0]'] !== undefined || eventdata['xaxis.autorange'] === true) {
+            setTimeout(rescaleOverlayAxes, 0);
+        }
+    });
+
+    // legend toggle — rescale to visible traces only
+    gd.on('plotly_restyle', function() {
+        if (rescaling) return;
+        setTimeout(rescaleOverlayAxes, 0);
+    });
+})();
+"""
+
 _AXIS_TOGGLE_JS = """
 (function() {
     var gd = document.querySelector('.plotly-graph-div');
@@ -345,7 +420,7 @@ def _build_combined_chart(
     fig.write_html(
         output_path,
         include_plotlyjs="cdn",
-        post_script=_OVERVIEW_ZOOM_JS + _AXIS_TOGGLE_JS,
+        post_script=_OVERVIEW_ZOOM_JS + _YSCALE_JS + _AXIS_TOGGLE_JS,
         full_html=True,
     )
     print(f"  Written: {output_path}")
