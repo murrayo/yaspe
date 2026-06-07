@@ -1156,7 +1156,7 @@ def _create_day_overlay_html(png_data, column_name, title, max_y, filepath, outp
     end_str = sorted_data.index.max().strftime("%d-%b-%y")
 
     fig.update_layout(
-        title=dict(text=f"{title} - Day Overlay ({start_str} to {end_str})", font=dict(size=16)),
+        title=dict(text=f"{title} - Day Overlay ({start_str} to {end_str})", font=dict(size=16), x=0.5, xanchor="center"),
         xaxis=dict(title="Time of day", tickfont=dict(size=13),
                    tickformat="%H:%M"),
         xaxis2=dict(title="Drag box here to zoom ↑   (double-click top chart to reset)",
@@ -1513,7 +1513,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     yaxis_range = [0, max_y] if max_y > 0 else [0, None]
     fig.update_layout(
-        title=dict(text=title, font=dict(size=16)),
+        title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
         xaxis=dict(title="", tickfont=dict(size=13)),
         xaxis2=dict(title="Drag box here to zoom ↑   (double-click top chart to reset)", tickfont=dict(size=11)),
         yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
@@ -1562,7 +1562,7 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
     yaxis_range = [0, max_y] if max_y > 0 else [0, None]
     fig.update_layout(
-        title=dict(text=title, font=dict(size=16)),
+        title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
         xaxis=dict(title="", tickfont=dict(size=13)),
         xaxis2=dict(title="Drag box here to zoom ↑   (double-click top chart to reset)", tickfont=dict(size=11)),
         yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
