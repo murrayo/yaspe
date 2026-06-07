@@ -32,6 +32,7 @@ from extract_sections import extract_sections
 from extract_mgstat import extract_mgstat
 import system_review
 import yaspe_compare_overlay
+import yaspe_combined_overlay
 
 # Suppress FutureWarning messages
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -2926,10 +2927,26 @@ if __name__ == "__main__":
         metavar='"/path/to/directory"',
     )
 
+    parser.add_argument(
+        "-B",
+        "--combined",
+        dest="combined_overlay",
+        help="Create a combined vmstat+mgstat overlay HTML chart from an existing database (requires -e).",
+        action="store_true",
+    )
+
     args = parser.parse_args()
 
     if args.compare_dir is not None:
         yaspe_compare_overlay.run(args.compare_dir)
+        sys.exit(0)
+
+    if args.combined_overlay:
+        if args.existing_database is None:
+            print('Error: --combined requires -e with an existing database path.')
+            sys.exit(1)
+        output_dir = os.path.dirname(os.path.abspath(args.existing_database))
+        yaspe_combined_overlay.run(args.existing_database, output_dir)
         sys.exit(0)
 
     # Validate input file
