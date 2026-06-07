@@ -320,9 +320,10 @@ def _build_combined_chart(
             rangemode="tozero",
         ),
         legend=dict(
-            bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1,
+            bgcolor="rgba(240,240,240,0.85)", bordercolor="gray", borderwidth=1,
             font=dict(size=12), orientation="v",
             title=dict(text="Click to show/hide", font=dict(size=11, color="grey")),
+            x=0.01, y=0.99, xanchor="left", yanchor="top",
         ),
         margin=dict(r=initial_margin_r),
         height=800,
