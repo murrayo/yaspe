@@ -235,4 +235,24 @@ def _build_combined_chart(
 
 def run(sql_path: str, output_dir: str) -> None:
     """Public entry point. Called by yaspe.py when --combined is given."""
-    raise NotImplementedError("run() not yet implemented")
+    mgstat_df, vmstat_df = _load_dataframes(sql_path)
+
+    if mgstat_df.empty:
+        print("  No mgstat data found in database — cannot build combined chart.")
+        return
+    if vmstat_df.empty:
+        print("  No vmstat data found in database — cannot build combined chart.")
+        return
+
+    mg_dt_col = _detect_datetime_column(mgstat_df)
+    vm_dt_col = _detect_datetime_column(vmstat_df)
+
+    if not mg_dt_col:
+        print("  Could not detect datetime column in mgstat — skipping.")
+        return
+    if not vm_dt_col:
+        print("  Could not detect datetime column in vmstat — skipping.")
+        return
+
+    output_path = os.path.join(output_dir, "combined_overlay.html")
+    _build_combined_chart(mgstat_df, vmstat_df, mg_dt_col, vm_dt_col, output_path)

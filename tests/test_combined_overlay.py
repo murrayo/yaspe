@@ -129,3 +129,58 @@ def test_build_combined_chart_skips_missing_vmstat_column(capsys):
         captured = capsys.readouterr()
         assert "wa" in captured.out
         assert os.path.exists(out_path)
+
+
+def test_run_writes_combined_overlay_html():
+    with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as f:
+        db_path = f.name
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE mgstat (id INTEGER PRIMARY KEY, datetime TEXT, "
+            "WIJwri REAL, PhyRds REAL, PhyWrs REAL, Jrnwrts REAL, "
+            "Rourefs REAL, RouLaS REAL, RouCMs REAL, Gloupds REAL, Glorefs REAL)"
+        )
+        for i in range(5):
+            ts = f"2026-04-30 10:0{i}:00"
+            conn.execute(
+                "INSERT INTO mgstat VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (i + 1, ts, float(i), float(i * 10), float(i * 5),
+                 float(i * 0.1), float(i * 100), float(i * 2),
+                 float(i * 0.05), float(i * 50), float(i * 200)),
+            )
+        conn.execute(
+            "CREATE TABLE vmstat (id INTEGER PRIMARY KEY, datetime TEXT, "
+            "us REAL, sy REAL, wa REAL, id_col REAL)"
+        )
+        for i in range(5):
+            ts = f"2026-04-30 10:0{i}:00"
+            conn.execute(
+                "INSERT INTO vmstat VALUES (?, ?, ?, ?, ?, ?)",
+                (i + 1, ts, 10.0 + i, 3.0, 2.0, 85.0 - i),
+            )
+        conn.commit()
+        conn.close()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yco.run(db_path, tmpdir)
+            out_path = os.path.join(tmpdir, "combined_overlay.html")
+            assert os.path.exists(out_path)
+    finally:
+        os.unlink(db_path)
+
+
+def test_run_exits_gracefully_on_empty_dataframes(capsys):
+    with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as f:
+        db_path = f.name
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.close()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yco.run(db_path, tmpdir)
+            captured = capsys.readouterr()
+            assert "No mgstat" in captured.out or "No vmstat" in captured.out
+            out_path = os.path.join(tmpdir, "combined_overlay.html")
+            assert not os.path.exists(out_path)
+    finally:
+        os.unlink(db_path)
