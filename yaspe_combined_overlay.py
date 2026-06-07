@@ -72,6 +72,167 @@ def _detect_datetime_column(df: pd.DataFrame) -> str:
     return ""
 
 
+# Column groups
+_CPU_COLS = ["wa", "us", "sy"]
+_IO_COLS  = ["WIJwri", "PhyRds", "PhyWrs", "Jrnwrts"]
+# Each routing metric gets its own y-axis (y3..y7)
+_ROU_COLS = ["Rourefs", "RouLaS", "RouCMs", "Gloupds", "Glorefs"]
+
+_ROU_YAXIS = {col: f"y{i + 3}" for i, col in enumerate(_ROU_COLS)}
+# {"Rourefs": "y3", "RouLaS": "y4", "RouCMs": "y5", "Gloupds": "y6", "Glorefs": "y7"}
+
+_CPU_COLORS = {"wa": "#d62728", "us": "#1f77b4", "sy": "#ff7f0e"}
+_IO_COLORS  = {"WIJwri": "#2ca02c", "PhyRds": "#9467bd",
+               "PhyWrs": "#8c564b", "Jrnwrts": "#e377c2"}
+_ROU_COLORS = {"Rourefs": "#17becf", "RouLaS": "#bcbd22",
+               "RouCMs": "#7f7f7f", "Gloupds": "#aec7e8",
+               "Glorefs": "#ffbb78"}
+
+
+def _build_combined_chart(
+    mgstat_df: pd.DataFrame,
+    vmstat_df: pd.DataFrame,
+    mg_dt_col: str,
+    vm_dt_col: str,
+    output_path: str,
+) -> None:
+    """Build and write the combined Plotly HTML chart."""
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=False,
+        row_heights=[0.75, 0.25],
+        vertical_spacing=0.05,
+        specs=[[{"secondary_y": False}], [{"secondary_y": False}]],
+    )
+
+    # Parse and sort datetimes
+    vmstat_df = vmstat_df.copy()
+    mgstat_df = mgstat_df.copy()
+    vmstat_df[vm_dt_col] = pd.to_datetime(vmstat_df[vm_dt_col])
+    vmstat_df = vmstat_df.sort_values(vm_dt_col)
+    mgstat_df[mg_dt_col] = pd.to_datetime(mgstat_df[mg_dt_col])
+    mgstat_df = mgstat_df.sort_values(mg_dt_col)
+
+    # --- CPU stacked areas on yaxis (left) ---
+    for col in _CPU_COLS:
+        if col not in vmstat_df.columns:
+            print(f"  Skipping missing column: {col}")
+            continue
+        series = pd.to_numeric(vmstat_df[col], errors="coerce")
+        color = _CPU_COLORS[col]
+        fig.add_trace(go.Scatter(
+            x=vmstat_df[vm_dt_col],
+            y=series,
+            mode="lines",
+            name=col,
+            stackgroup="cpu",
+            line=dict(width=0.5, color=color),
+            hovertemplate="%{x}<br>" + col + ": %{y:,.3g}<extra></extra>",
+        ), row=1, col=1)
+        # Overview panel: mirror full CPU stacked area (all three traces)
+        fig.add_trace(go.Scatter(
+            x=vmstat_df[vm_dt_col],
+            y=series,
+            mode="lines",
+            name=col,
+            stackgroup="cpu_overview",
+            showlegend=False,
+            line=dict(width=0.8, color=color),
+            hoverinfo="skip",
+        ), row=2, col=1)
+
+    # --- IO metrics on yaxis2 (right, shared) ---
+    for col in _IO_COLS:
+        if col not in mgstat_df.columns:
+            print(f"  Skipping missing column: {col}")
+            continue
+        series = pd.to_numeric(mgstat_df[col], errors="coerce")
+        fig.add_trace(go.Scatter(
+            x=mgstat_df[mg_dt_col],
+            y=series,
+            mode="lines",
+            name=col,
+            yaxis="y2",
+            line=dict(width=1.5, color=_IO_COLORS[col]),
+            hovertemplate="%{x}<br>" + col + ": %{y:,.3g}<extra></extra>",
+        ), row=1, col=1)
+
+    # --- Routing metrics: one independent y-axis each (y3..y7) ---
+    for col in _ROU_COLS:
+        if col not in mgstat_df.columns:
+            print(f"  Skipping missing column: {col}")
+            continue
+        series = pd.to_numeric(mgstat_df[col], errors="coerce")
+        fig.add_trace(go.Scatter(
+            x=mgstat_df[mg_dt_col],
+            y=series,
+            mode="lines",
+            name=col,
+            yaxis=_ROU_YAXIS[col],
+            line=dict(width=1.5, color=_ROU_COLORS[col], dash="dash"),
+            hovertemplate="%{x}<br>" + col + ": %{y:,.3g}<extra></extra>",
+        ), row=1, col=1)
+
+    # Build routing axis definitions dynamically (y3..y7, stacked 80px apart)
+    routing_axes = {
+        f"yaxis{i + 3}": dict(
+            title=col,
+            overlaying="y",
+            side="right",
+            anchor="free",
+            shift=i * 80,
+            rangemode="tozero",
+            tickfont=dict(size=10),
+            showgrid=False,
+        )
+        for i, col in enumerate(_ROU_COLS)
+    }
+
+    fig.update_layout(
+        title=dict(
+            text="vmstat CPU + mgstat IO/Routing — Combined Overlay",
+            font=dict(size=16),
+        ),
+        xaxis=dict(title="Time", tickfont=dict(size=13)),
+        xaxis2=dict(
+            title="Drag box here to zoom ↑   (double-click top chart to reset)",
+            tickfont=dict(size=11),
+        ),
+        yaxis=dict(
+            title="CPU %",
+            tickfont=dict(size=12),
+            rangemode="tozero",
+        ),
+        yaxis2=dict(
+            title="mgstat IO",
+            tickfont=dict(size=12),
+            anchor="x",
+            overlaying="y",
+            side="right",
+            rangemode="tozero",
+        ),
+        **routing_axes,
+        legend=dict(
+            bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1,
+            font=dict(size=12), orientation="v",
+            title=dict(text="Click to show/hide", font=dict(size=11, color="grey")),
+        ),
+        margin=dict(r=460),
+        height=800,
+        hovermode="x unified",
+        template="plotly_white",
+    )
+
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    fig.write_html(
+        output_path,
+        include_plotlyjs="cdn",
+        post_script=_OVERVIEW_ZOOM_JS,
+        full_html=True,
+    )
+    print(f"  Written: {output_path}")
+
+
 def run(sql_path: str, output_dir: str) -> None:
     """Public entry point. Called by yaspe.py when --combined is given."""
     raise NotImplementedError("run() not yet implemented")
