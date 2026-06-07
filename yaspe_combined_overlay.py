@@ -10,30 +10,72 @@ import sqlite3
 
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 
 _OVERVIEW_ZOOM_JS = """
-var gd = document.querySelector('.plotly-graph-div');
-var syncing = false;
-gd.on('plotly_relayout', function(eventdata) {
-    if (syncing) return;
-    var r0 = eventdata['xaxis2.range[0]'];
-    var r1 = eventdata['xaxis2.range[1]'];
-    if (r0 !== undefined && r1 !== undefined) {
-        syncing = true;
-        Plotly.relayout(gd, {
-            'xaxis.range[0]': r0,
-            'xaxis.range[1]': r1,
-            'xaxis.autorange': false,
-            'xaxis2.autorange': true
-        }).then(function() { syncing = false; });
-    } else if (eventdata['xaxis2.autorange'] === true) {
-        syncing = true;
-        Plotly.relayout(gd, {'xaxis.autorange': true})
-            .then(function() { syncing = false; });
+(function() {
+    var gd = document.querySelector('.plotly-graph-div');
+    var syncing = false;
+    gd.on('plotly_relayout', function(eventdata) {
+        if (syncing) return;
+        var r0 = eventdata['xaxis2.range[0]'];
+        var r1 = eventdata['xaxis2.range[1]'];
+        if (r0 !== undefined && r1 !== undefined) {
+            syncing = true;
+            Plotly.relayout(gd, {
+                'xaxis.range[0]': r0,
+                'xaxis.range[1]': r1,
+                'xaxis.autorange': false,
+                'xaxis2.autorange': true
+            }).then(function() { syncing = false; });
+        } else if (eventdata['xaxis2.autorange'] === true) {
+            syncing = true;
+            Plotly.relayout(gd, {'xaxis.autorange': true})
+                .then(function() { syncing = false; });
+        }
+    });
+})();
+"""
+
+_AXIS_TOGGLE_JS = """
+(function() {
+    var gd = document.querySelector('.plotly-graph-div');
+    var routingAxes = ['y3', 'y4', 'y5', 'y6', 'y7'];
+
+    function updateOverlayAxes() {
+        var axisHasVisible = {};
+        gd.data.forEach(function(trace) {
+            var yax = trace.yaxis || 'y';
+            var visible = trace.visible !== 'legendonly' && trace.visible !== false;
+            axisHasVisible[yax] = (axisHasVisible[yax] || false) || visible;
+        });
+
+        var update = {};
+
+        // IO axis: show/hide as a unit
+        update['yaxis2.visible'] = !!axisHasVisible['y2'];
+
+        // Routing axes: hide invisible ones, repack shifts on the rest
+        var shiftIdx = 0;
+        routingAxes.forEach(function(yid) {
+            var layoutKey = 'yaxis' + yid.slice(1);
+            if (axisHasVisible[yid]) {
+                update[layoutKey + '.visible'] = true;
+                update[layoutKey + '.shift'] = (shiftIdx + 1) * 80;
+                shiftIdx++;
+            } else {
+                update[layoutKey + '.visible'] = false;
+            }
+        });
+
+        // Shrink/grow right margin to match remaining visible axes
+        update['margin.r'] = Math.max(60, shiftIdx * 80 + 160);
+        Plotly.relayout(gd, update);
     }
-});
+
+    gd.on('plotly_legendclick', function() { setTimeout(updateOverlayAxes, 0); });
+    gd.on('plotly_legenddoubleclick', function() { setTimeout(updateOverlayAxes, 0); });
+})();
 """
 
 
@@ -239,7 +281,7 @@ def _build_combined_chart(
     fig.write_html(
         output_path,
         include_plotlyjs="cdn",
-        post_script=_OVERVIEW_ZOOM_JS,
+        post_script=_OVERVIEW_ZOOM_JS + _AXIS_TOGGLE_JS,
         full_html=True,
     )
     print(f"  Written: {output_path}")
