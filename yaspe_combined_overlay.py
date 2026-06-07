@@ -79,6 +79,18 @@ _AXIS_TOGGLE_JS = """
 })();
 """
 
+_RESET_JS = """
+(function() {
+    var gd = document.querySelector('.plotly-graph-div');
+    gd.on('plotly_doubleclick', function() {
+        Plotly.relayout(gd, {
+            'xaxis.autorange': true,
+            'xaxis2.autorange': true
+        });
+    });
+})();
+"""
+
 
 def _load_dataframes(sql_path: str):
     """Return (mgstat_df, vmstat_df) from the SQLite at sql_path.
@@ -337,7 +349,7 @@ def _build_combined_chart(
     fig.write_html(
         output_path,
         include_plotlyjs="cdn",
-        post_script=_OVERVIEW_ZOOM_JS + _AXIS_TOGGLE_JS,
+        post_script=_OVERVIEW_ZOOM_JS + _AXIS_TOGGLE_JS + _RESET_JS,
         full_html=True,
     )
     print(f"  Written: {output_path}")
