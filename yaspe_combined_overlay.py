@@ -296,7 +296,7 @@ def _build_combined_chart(
             title="CPU %",
             tickfont=dict(size=12),
             domain=[0.30, 1.0],
-            rangemode="tozero",
+            range=[0, 100],
             side="left",
         ),
         yaxis2=dict(
