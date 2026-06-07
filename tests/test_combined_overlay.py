@@ -150,8 +150,8 @@ def test_run_writes_combined_overlay_html():
                  float(i * 0.05), float(i * 50), float(i * 200)),
             )
         conn.execute(
-            "CREATE TABLE vmstat (id INTEGER PRIMARY KEY, datetime TEXT, "
-            "us REAL, sy REAL, wa REAL, id_col REAL)"
+            "CREATE TABLE vmstat (rownum INTEGER PRIMARY KEY, datetime TEXT, "
+            "us REAL, sy REAL, wa REAL, id REAL)"
         )
         for i in range(5):
             ts = f"2026-04-30 10:0{i}:00"
