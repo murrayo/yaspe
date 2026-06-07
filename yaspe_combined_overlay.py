@@ -75,6 +75,12 @@ _AXIS_TOGGLE_JS = """
 
     gd.on('plotly_legendclick', function() { setTimeout(updateOverlayAxes, 0); });
     gd.on('plotly_legenddoubleclick', function() { setTimeout(updateOverlayAxes, 0); });
+
+    // Apply initial state — collapse axes for traces that start as legendonly
+    gd.on('plotly_afterplot', function() {
+        gd.removeAllListeners('plotly_afterplot');
+        updateOverlayAxes();
+    });
 })();
 """
 
@@ -123,6 +129,8 @@ _ROU_COLS = ["Rourefs", "RouLaS", "RouCMs", "Gloupds", "Glorefs"]
 _ROU_YAXIS = {col: f"y{i + 3}" for i, col in enumerate(_ROU_COLS)}
 # {"Rourefs": "y3", "RouLaS": "y4", "RouCMs": "y5", "Gloupds": "y6", "Glorefs": "y7"}
 
+_DEFAULT_VISIBLE = {"Glorefs", "Total CPU"}
+
 _CPU_COLORS = {"wa": "#d62728", "us": "#1f77b4", "sy": "#ff7f0e"}
 _IO_COLORS  = {"WIJwri": "#2ca02c", "PhyRds": "#9467bd",
                "PhyWrs": "#8c564b", "Jrnwrts": "#e377c2"}
@@ -170,6 +178,7 @@ def _build_combined_chart(
             name=col,
             xaxis="x", yaxis="y",
             stackgroup="cpu",
+            visible=True if col in _DEFAULT_VISIBLE else "legendonly",
             line=dict(width=0.5, color=color),
             hovertemplate="%{x}<br>" + col + ": %{y:,.3g}<extra></extra>",
         ))
@@ -195,6 +204,7 @@ def _build_combined_chart(
             mode="lines",
             name="Total CPU",
             xaxis="x", yaxis="y",
+            visible=True if "Total CPU" in _DEFAULT_VISIBLE else "legendonly",
             line=dict(width=2, color="#111111"),
             hovertemplate="%{x}<br>Total CPU: %{y:,.3g}<extra></extra>",
         ))
@@ -213,6 +223,7 @@ def _build_combined_chart(
             mode="lines",
             name=col,
             xaxis="x", yaxis="y2",
+            visible=True if col in _DEFAULT_VISIBLE else "legendonly",
             line=dict(width=1.5, color=_IO_COLORS[col]),
             hovertemplate="%{x}<br>" + col + ": %{y:,.3g}<extra></extra>",
         ))
@@ -229,6 +240,7 @@ def _build_combined_chart(
             mode="lines",
             name=col,
             xaxis="x", yaxis=_ROU_YAXIS[col],
+            visible=True if col in _DEFAULT_VISIBLE else "legendonly",
             line=dict(width=1.5, color=_ROU_COLORS[col], dash="dash"),
             hovertemplate="%{x}<br>" + col + ": %{y:,.3g}<extra></extra>",
         ))
