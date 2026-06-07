@@ -73,8 +73,9 @@ _AXIS_TOGGLE_JS = """
         Plotly.relayout(gd, update);
     }
 
-    gd.on('plotly_legendclick', function() { setTimeout(updateOverlayAxes, 0); });
-    gd.on('plotly_legenddoubleclick', function() { setTimeout(updateOverlayAxes, 0); });
+    // plotly_restyle fires after Plotly has committed the new visibility state,
+    // so gd.data reflects the correct values when updateOverlayAxes reads it.
+    gd.on('plotly_restyle', function() { updateOverlayAxes(); });
 })();
 """
 
