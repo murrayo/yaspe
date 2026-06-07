@@ -200,6 +200,8 @@ def _write_overlay_html(datasets: list, column_name: str, metric_type: str, outp
         title=dict(
             text=f"{metric_type} — {column_name} — Instance Overlay",
             font=dict(size=16),
+            x=0.5,
+            xanchor="center",
         ),
         xaxis=dict(title="Time of day", tickfont=dict(size=13), tickformat="%H:%M"),
         xaxis2=dict(
