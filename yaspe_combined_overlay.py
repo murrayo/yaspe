@@ -21,6 +21,7 @@ _OVERVIEW_ZOOM_JS = """
         var r0 = eventdata['xaxis2.range[0]'];
         var r1 = eventdata['xaxis2.range[1]'];
         if (r0 !== undefined && r1 !== undefined) {
+            // Overview drag -> zoom main chart
             syncing = true;
             Plotly.relayout(gd, {
                 'xaxis.range[0]': r0,
@@ -29,8 +30,14 @@ _OVERVIEW_ZOOM_JS = """
                 'xaxis2.autorange': true
             }).then(function() { syncing = false; });
         } else if (eventdata['xaxis2.autorange'] === true) {
+            // Overview reset -> reset main chart
             syncing = true;
             Plotly.relayout(gd, {'xaxis.autorange': true})
+                .then(function() { syncing = false; });
+        } else if (eventdata['xaxis.autorange'] === true) {
+            // Main chart double-click reset -> also reset overview
+            syncing = true;
+            Plotly.relayout(gd, {'xaxis2.autorange': true})
                 .then(function() { syncing = false; });
         }
     });
@@ -79,17 +86,6 @@ _AXIS_TOGGLE_JS = """
 })();
 """
 
-_RESET_JS = """
-(function() {
-    var gd = document.querySelector('.plotly-graph-div');
-    gd.on('plotly_doubleclick', function() {
-        Plotly.relayout(gd, {
-            'xaxis.autorange': true,
-            'xaxis2.autorange': true
-        });
-    });
-})();
-"""
 
 
 def _load_dataframes(sql_path: str):
@@ -349,7 +345,7 @@ def _build_combined_chart(
     fig.write_html(
         output_path,
         include_plotlyjs="cdn",
-        post_script=_OVERVIEW_ZOOM_JS + _AXIS_TOGGLE_JS + _RESET_JS,
+        post_script=_OVERVIEW_ZOOM_JS + _AXIS_TOGGLE_JS,
         full_html=True,
     )
     print(f"  Written: {output_path}")
