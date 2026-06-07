@@ -2935,6 +2935,15 @@ if __name__ == "__main__":
         action="store_true",
     )
 
+    parser.add_argument(
+        "--smooth-minutes",
+        dest="smooth_minutes",
+        help="Rolling average window in minutes for --combined chart (default: 5, 0 = raw).",
+        type=float,
+        default=5,
+        metavar="N",
+    )
+
     args = parser.parse_args()
 
     if args.compare_dir is not None:
@@ -2946,7 +2955,8 @@ if __name__ == "__main__":
             print('Error: --combined requires -e with an existing database path.')
             sys.exit(1)
         output_dir = os.path.dirname(os.path.abspath(args.existing_database))
-        yaspe_combined_overlay.run(args.existing_database, output_dir)
+        yaspe_combined_overlay.run(args.existing_database, output_dir,
+                                   smooth_minutes=args.smooth_minutes)
         sys.exit(0)
 
     # Validate input file

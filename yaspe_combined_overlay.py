@@ -75,12 +75,6 @@ _AXIS_TOGGLE_JS = """
 
     gd.on('plotly_legendclick', function() { setTimeout(updateOverlayAxes, 0); });
     gd.on('plotly_legenddoubleclick', function() { setTimeout(updateOverlayAxes, 0); });
-
-    // Apply initial state — collapse axes for traces that start as legendonly
-    gd.on('plotly_afterplot', function() {
-        gd.removeAllListeners('plotly_afterplot');
-        updateOverlayAxes();
-    });
 })();
 """
 
@@ -120,6 +114,19 @@ def _detect_datetime_column(df: pd.DataFrame) -> str:
     return ""
 
 
+def _smooth(series: pd.Series, dt_series: pd.Series, smooth_minutes: float) -> pd.Series:
+    """Return a centred rolling mean over smooth_minutes of data.
+    Window size is inferred from the median sample interval."""
+    if smooth_minutes <= 0 or len(series) < 2:
+        return series
+    diffs = dt_series.diff().dropna()
+    median_secs = diffs.median().total_seconds()
+    if median_secs <= 0:
+        return series
+    window = max(1, round(smooth_minutes * 60 / median_secs))
+    return series.rolling(window=window, center=True, min_periods=1).mean()
+
+
 # Column groups
 _CPU_COLS = ["wa", "us", "sy"]
 _IO_COLS  = ["WIJwri", "PhyRds", "PhyWrs", "Jrnwrts"]
@@ -127,7 +134,6 @@ _IO_COLS  = ["WIJwri", "PhyRds", "PhyWrs", "Jrnwrts"]
 _ROU_COLS = ["Rourefs", "RouLaS", "RouCMs", "Gloupds", "Glorefs"]
 
 _ROU_YAXIS = {col: f"y{i + 3}" for i, col in enumerate(_ROU_COLS)}
-# {"Rourefs": "y3", "RouLaS": "y4", "RouCMs": "y5", "Gloupds": "y6", "Glorefs": "y7"}
 
 _DEFAULT_VISIBLE = {"Glorefs", "Total CPU"}
 
@@ -145,6 +151,7 @@ def _build_combined_chart(
     mg_dt_col: str,
     vm_dt_col: str,
     output_path: str,
+    smooth_minutes: float = 5,
 ) -> None:
     """Build and write the combined Plotly HTML chart.
 
@@ -169,7 +176,8 @@ def _build_combined_chart(
         if col not in vmstat_df.columns:
             print(f"  Skipping missing column: {col}")
             continue
-        series = pd.to_numeric(vmstat_df[col], errors="coerce")
+        series = _smooth(pd.to_numeric(vmstat_df[col], errors="coerce"),
+                         vmstat_df[vm_dt_col], smooth_minutes)
         color = _CPU_COLORS[col]
         fig.add_trace(go.Scatter(
             x=vmstat_df[vm_dt_col],
@@ -197,7 +205,8 @@ def _build_combined_chart(
 
     # --- Total CPU line on yaxis (left, main row) ---
     if "Total CPU" in vmstat_df.columns:
-        series = pd.to_numeric(vmstat_df["Total CPU"], errors="coerce")
+        series = _smooth(pd.to_numeric(vmstat_df["Total CPU"], errors="coerce"),
+                         vmstat_df[vm_dt_col], smooth_minutes)
         fig.add_trace(go.Scatter(
             x=vmstat_df[vm_dt_col],
             y=series,
@@ -216,7 +225,8 @@ def _build_combined_chart(
         if col not in mgstat_df.columns:
             print(f"  Skipping missing column: {col}")
             continue
-        series = pd.to_numeric(mgstat_df[col], errors="coerce")
+        series = _smooth(pd.to_numeric(mgstat_df[col], errors="coerce"),
+                         mgstat_df[mg_dt_col], smooth_minutes)
         fig.add_trace(go.Scatter(
             x=mgstat_df[mg_dt_col],
             y=series,
@@ -233,7 +243,8 @@ def _build_combined_chart(
         if col not in mgstat_df.columns:
             print(f"  Skipping missing column: {col}")
             continue
-        series = pd.to_numeric(mgstat_df[col], errors="coerce")
+        series = _smooth(pd.to_numeric(mgstat_df[col], errors="coerce"),
+                         mgstat_df[mg_dt_col], smooth_minutes)
         fig.add_trace(go.Scatter(
             x=mgstat_df[mg_dt_col],
             y=series,
@@ -241,28 +252,41 @@ def _build_combined_chart(
             name=col,
             xaxis="x", yaxis=_ROU_YAXIS[col],
             visible=True if col in _DEFAULT_VISIBLE else "legendonly",
-            line=dict(width=1.5, color=_ROU_COLORS[col], dash="dash"),
+            line=dict(width=1.5, color=_ROU_COLORS[col]),
             hovertemplate="%{x}<br>" + col + ": %{y:,.3g}<extra></extra>",
         ))
 
-    # Build routing axis definitions dynamically (y3..y7, 80px apart starting at 80px out)
-    routing_axes = {
-        f"yaxis{i + 3}": dict(
+    # Build routing axis definitions — hidden axes start invisible, visible ones
+    # get contiguous shifts so there are no gaps on initial render.
+    routing_axes = {}
+    shift_idx = 0
+    for i, col in enumerate(_ROU_COLS):
+        is_visible = col in _DEFAULT_VISIBLE
+        if is_visible:
+            shift = (shift_idx + 1) * 80
+            shift_idx += 1
+        else:
+            shift = 80  # irrelevant — axis is hidden
+        routing_axes[f"yaxis{i + 3}"] = dict(
             title=col,
             overlaying="y",
             side="right",
             anchor="free",
-            shift=(i + 1) * 80,
+            shift=shift,
             rangemode="tozero",
             tickfont=dict(size=10),
             showgrid=False,
+            visible=is_visible,
         )
-        for i, col in enumerate(_ROU_COLS)
-    }
+
+    io_visible = any(col in _DEFAULT_VISIBLE for col in _IO_COLS)
+    n_visible_rou = sum(1 for col in _ROU_COLS if col in _DEFAULT_VISIBLE)
+    initial_margin_r = max(60, n_visible_rou * 80 + 160)
 
     fig.update_layout(
         title=dict(
-            text="vmstat CPU + mgstat IO/Routing — Combined Overlay",
+            text=f"vmstat CPU + mgstat IO/Routing — Combined Overlay"
+                 + (f" ({smooth_minutes:.0f} min avg)" if smooth_minutes > 0 else ""),
             font=dict(size=16),
         ),
         # Main row axes
@@ -280,6 +304,7 @@ def _build_combined_chart(
             overlaying="y",
             side="right",
             rangemode="tozero",
+            visible=io_visible,
         ),
         **routing_axes,
         # Overview row axes
@@ -298,7 +323,7 @@ def _build_combined_chart(
             font=dict(size=12), orientation="v",
             title=dict(text="Click to show/hide", font=dict(size=11, color="grey")),
         ),
-        margin=dict(r=540),
+        margin=dict(r=initial_margin_r),
         height=800,
         hovermode="x unified",
         template="plotly_white",
@@ -314,7 +339,7 @@ def _build_combined_chart(
     print(f"  Written: {output_path}")
 
 
-def run(sql_path: str, output_dir: str) -> None:
+def run(sql_path: str, output_dir: str, smooth_minutes: float = 5) -> None:
     """Public entry point. Called by yaspe.py when --combined is given."""
     mgstat_df, vmstat_df = _load_dataframes(sql_path)
 
@@ -336,4 +361,5 @@ def run(sql_path: str, output_dir: str) -> None:
         return
 
     output_path = os.path.join(output_dir, "combined_overlay.html")
-    _build_combined_chart(mgstat_df, vmstat_df, mg_dt_col, vm_dt_col, output_path)
+    _build_combined_chart(mgstat_df, vmstat_df, mg_dt_col, vm_dt_col,
+                          output_path, smooth_minutes=smooth_minutes)
