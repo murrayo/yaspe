@@ -145,7 +145,6 @@ def _build_overlay_charts(datasets: list, metric_type: str, output_dir: str) -> 
         common_cols &= _numeric_cols(ds)
 
     if not common_cols:
-        print(f"  No common numeric columns found for {metric_type}, skipping.")
         return
 
     for col in sorted(common_cols):
@@ -229,7 +228,6 @@ def _write_overlay_html(datasets: list, column_name: str, metric_type: str, outp
         post_script=_OVERVIEW_ZOOM_JS,
         full_html=True,
     )
-    print(f"  Written: {out_path}")
 
 
 def _detect_datetime_column(df: pd.DataFrame) -> str:
@@ -262,14 +260,11 @@ def run(directory: str) -> None:
         print(f"No HTML files found in {directory}")
         return
 
-    print(f"Found {len(html_files)} HTML file(s) in {directory}")
-
     mgstat_datasets = []
     vmstat_datasets = []
 
     for html_path in html_files:
         html_path_str = str(html_path)
-        print(f"Processing: {html_path.name}")
 
         sql_path = _extract_to_sqlite(html_path_str)
 
@@ -296,11 +291,7 @@ def run(directory: str) -> None:
     overlay_base = os.path.join(directory, "compare_overlay")
 
     if mgstat_datasets:
-        print(f"\nBuilding mgstat overlay charts ({len(mgstat_datasets)} traces)...")
         _build_overlay_charts(mgstat_datasets, "mgstat", os.path.join(overlay_base, "mgstat"))
 
     if vmstat_datasets:
-        print(f"\nBuilding vmstat overlay charts ({len(vmstat_datasets)} traces)...")
         _build_overlay_charts(vmstat_datasets, "vmstat", os.path.join(overlay_base, "vmstat"))
-
-    print(f"\nDone. Charts written to: {overlay_base}")

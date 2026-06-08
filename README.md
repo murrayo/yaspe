@@ -66,7 +66,7 @@ For local version:
 ``` commandline
 usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c]
              [-p] [-P] [--dots] [-s] [-m] [-D] [-d DISK_LIST [DISK_LIST ...]] [--iostat_subfolders]
-             [-l "string to split on"] [--peak_chart] [--no_peak_chart]
+             [-l "string to split on"] [--peak_chart] [--no_peak_chart] [-C "/path/to/directory"] [-B] [--smooth-minutes N]
 
 Performance file review.
 
@@ -84,7 +84,8 @@ options:
                         Chart existing database, full path and filename to existing database.
   -c, --csv             Create CSV files of each HTML files metrics, append if csv file exists.
   -p, --png             Create PNG charts of metrics. No HTML. HTML is the default if PNG not selected.
-  -P, --PNG             Create PNG and HTML charts of metrics. HTML is the default if PNG not selected.
+  -P, --PNG             Create PNG and HTML charts of metrics. Charts are written into png/ and html/
+                        subdirectories within each metric folder.
   --dots                Create PNG charts as dot charts instead of line charts (default is lines).
   -s, --system          Output system overview.
   -m, --mgstat_file     This is an mgstat file log file (with extension .mgst).
@@ -96,6 +97,12 @@ options:
                         Split large input file on first occurrence of this string. Blank -l "" defaults to "div id=iostat"
   --peak_chart          Create additional peak 60-minute charts for metrics with min_max enabled when data is 8-25 hours. Default is True.
   --no_peak_chart       Disable peak 60-minute charts.
+  -C "/path/to/directory", --compare-dir "/path/to/directory"
+                        Compare all HTML files in a directory: produce vmstat and mgstat overlay charts (standalone, exits after).
+  -B, --combined        Create a combined vmstat+mgstat overlay HTML chart (standalone use requires -e).
+                        Also runs automatically in default HTML and -P modes; combined_overlay.html is
+                        written to {prefix}_metrics/.
+  --smooth-minutes N    Rolling average window in minutes for --combined chart (default: 5, 0 = raw).
 
 Be safe, "quote the path".
 ```
@@ -187,9 +194,9 @@ docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/three_d
 
 ## Output files
 
-- **HTML charts** (default): interactive Plotly charts for all columns in mgstat, vmstat/perfmon, and optionally iostat, written to `./prefix_metrics`. Each chart has a main zoom panel and an overview panel — drag the overview to zoom, double-click to reset.
+- **HTML charts** (default): interactive Plotly charts for all columns in mgstat, vmstat/perfmon, and optionally iostat, written to `./prefix_metrics`. Each chart has a main zoom panel and an overview panel — drag the overview to zoom, double-click to reset. A `combined_overlay.html` (vmstat CPU + mgstat IO) is also written automatically to `{prefix}_metrics/`.
 - **PNG charts** (`-p`): static matplotlib charts. Use for quick review or when sharing files that will not be opened in a browser.
-- **PNG + HTML** (`-P`): produce both formats.
+- **PNG + HTML** (`-P`): produce both formats. PNG files go into `png/` and HTML files go into `html/` subdirectories within each metric folder (e.g. `vmstat/png/`, `vmstat/html/`). A `combined_overlay.html` is also written automatically to `{prefix}_metrics/`.
 - It is optional to create charts for iostat (`-x`) as this can take a long time if there is a large disk list.
 - If you do not want the default prefix (html file name), override with `-o your_choice` or `-o ''` for no prefix.
 - If you want a csv file for further processing use the `-c` argument. If you use `-c` with `-o` csv files (for example for multiple days) will append.
