@@ -44,14 +44,16 @@ _OVERVIEW_ZOOM_JS = """
 })();
 """
 
-_YSCALE_JS = ""  # merged into _AXIS_TOGGLE_JS below
+_YSCALE_JS = ""  # logic is in _AXIS_TOGGLE_JS
 
 _AXIS_TOGGLE_JS = """
 (function() {
     var gd = document.querySelector('.plotly-graph-div');
     var routingAxes = ['y3', 'y4', 'y5', 'y6', 'y7'];
-    var savedRange = null;   // [t0_ms, t1_ms] while zoomed, null when autoranged
-    var updating   = false;
+    var savedRange     = null;   // [t0_ms, t1_ms] while zoomed
+    var toggleBusy     = false;
+    var rescaleBusy    = false;
+    var rescalePending = false;
 
     function toMs(v) {
         if (typeof v === 'number') return v;
@@ -62,85 +64,93 @@ _AXIS_TOGGLE_JS = """
         return t;
     }
 
-    // Build a single update object covering both axis visibility and y-range rescaling.
-    function buildUpdate() {
-        var update = {};
+    // ── Rescale only: set y-ranges for visible traces within the saved x-window ──
+    function runRescale() {
+        if (rescaleBusy || !savedRange) { rescalePending = false; return; }
+        rescalePending = false;
+        var t0 = savedRange[0], t1 = savedRange[1];
+        var axMax = {};
+        gd.data.forEach(function(trace) {
+            if (trace.visible === 'legendonly' || trace.visible === false) return;
+            if (!trace.x || trace.xaxis === 'x2') return;
+            var yax = trace.yaxis || 'y';
+            if (yax === 'y' || yax === 'y8') return;
+            for (var i = 0; i < trace.x.length; i++) {
+                var t = toMs(trace.x[i]), v = trace.y[i];
+                if (t >= t0 && t <= t1 && v != null && !isNaN(v)) {
+                    if (!(yax in axMax) || v > axMax[yax]) axMax[yax] = v;
+                }
+            }
+        });
+        var u = {};
+        Object.keys(axMax).forEach(function(yax) {
+            var key = 'yaxis' + yax.slice(1);
+            u[key + '.range']     = [0, axMax[yax] * 1.1];
+            u[key + '.autorange'] = false;
+        });
+        if (!Object.keys(u).length) return;
+        rescaleBusy = true;
+        Plotly.relayout(gd, u).then(function() {
+            rescaleBusy = false;
+            if (rescalePending) runRescale();  // drain any pending rescale
+        });
+    }
 
-        // ---- axis visibility / shift / margin ----
+    function scheduleRescale() {
+        rescalePending = true;
+        if (!rescaleBusy) runRescale();
+    }
+
+    // ── Toggle only: update axis visibility / shift / margin ──
+    function runToggle() {
+        if (toggleBusy) return;
         var axisHasVisible = {};
         gd.data.forEach(function(trace) {
             var yax = trace.yaxis || 'y';
             var vis = trace.visible !== 'legendonly' && trace.visible !== false;
             axisHasVisible[yax] = (axisHasVisible[yax] || false) || vis;
         });
-
-        update['yaxis2.visible'] = !!axisHasVisible['y2'];
-
+        var u = {};
+        u['yaxis2.visible'] = !!axisHasVisible['y2'];
         var shiftIdx = 0;
         routingAxes.forEach(function(yid) {
             var key = 'yaxis' + yid.slice(1);
             if (axisHasVisible[yid]) {
-                update[key + '.visible'] = true;
-                update[key + '.shift']   = (shiftIdx + 1) * 80;
+                u[key + '.visible'] = true;
+                u[key + '.shift']   = (shiftIdx + 1) * 80;
                 shiftIdx++;
             } else {
-                update[key + '.visible'] = false;
+                u[key + '.visible'] = false;
             }
         });
-        update['margin.r'] = Math.max(60, shiftIdx * 80 + 160);
-
-        // ---- y-range rescaling (only when zoomed) ----
-        if (savedRange) {
-            var t0 = savedRange[0], t1 = savedRange[1];
-            var axMax = {};
-            gd.data.forEach(function(trace) {
-                if (trace.visible === 'legendonly' || trace.visible === false) return;
-                if (!trace.x || trace.xaxis === 'x2') return;
-                var yax = trace.yaxis || 'y';
-                if (yax === 'y' || yax === 'y8') return;
-                for (var i = 0; i < trace.x.length; i++) {
-                    var t = toMs(trace.x[i]), v = trace.y[i];
-                    if (t >= t0 && t <= t1 && v != null && !isNaN(v)) {
-                        if (!(yax in axMax) || v > axMax[yax]) axMax[yax] = v;
-                    }
-                }
-            });
-            Object.keys(axMax).forEach(function(yax) {
-                var key = 'yaxis' + yax.slice(1);
-                update[key + '.range']     = [0, axMax[yax] * 1.1];
-                update[key + '.autorange'] = false;
-            });
-        }
-
-        return update;
+        u['margin.r'] = Math.max(60, shiftIdx * 80 + 160);
+        toggleBusy = true;
+        Plotly.relayout(gd, u).then(function() {
+            toggleBusy = false;
+            // After visibility settles, rescale ranges to match (if zoomed)
+            if (savedRange) scheduleRescale();
+        });
     }
 
-    function applyUpdate() {
-        if (updating) return;
-        var u = buildUpdate();
-        if (!Object.keys(u).length) return;
-        updating = true;
-        Plotly.relayout(gd, u).then(function() { updating = false; });
-    }
+    // ── Event wiring ──
 
-    // Legend toggle — visibility changed, repack axes + rescale if zoomed
-    gd.on('plotly_restyle', function() { applyUpdate(); });
+    // Legend click → update axis visibility, then rescale if zoomed
+    gd.on('plotly_restyle', function() { runToggle(); });
 
     gd.on('plotly_relayout', function(ev) {
-        if (updating) return;
         if (ev['xaxis.autorange'] === true) {
-            // double-click reset: drop saved range, restore autorange on overlay axes
+            // double-click reset: restore autorange on all overlay axes
             savedRange = null;
             var u = {};
             ['yaxis2','yaxis3','yaxis4','yaxis5','yaxis6','yaxis7'].forEach(function(ax) {
                 if (gd.layout[ax] && gd.layout[ax].visible !== false)
                     u[ax + '.autorange'] = true;
             });
-            if (Object.keys(u).length) { updating = true; Plotly.relayout(gd, u).then(function(){ updating = false; }); }
+            if (Object.keys(u).length) Plotly.relayout(gd, u);
         } else if (ev['xaxis.range[0]'] !== undefined) {
-            // zoom: save range and rescale immediately (single relayout)
+            // User zoomed: capture range and rescale AFTER Plotly finishes rendering zoom
             savedRange = [toMs(ev['xaxis.range[0]']), toMs(ev['xaxis.range[1]'])];
-            applyUpdate();
+            setTimeout(scheduleRescale, 0);
         }
     });
 })();
