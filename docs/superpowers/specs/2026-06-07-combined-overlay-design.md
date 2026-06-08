@@ -35,15 +35,20 @@ Two subplot rows:
 - **Row 1 (75%)** — main multi-axis chart
 - **Row 2 (25%)** — overview/zoom panel (mirrors CPU stack from row 1)
 
-### Three y-axes in Row 1
+### Seven y-axes in Row 1
 
 | Axis | Side | Series | Style |
 |---|---|---|---|
 | yaxis (left) | left | `wa`, `us`, `sy` | stacked filled areas (`stackgroup="cpu"`), semi-transparent |
-| yaxis2 (right) | right | `WIJwri`, `PhyRds`, `PhyWrs`, `Jrnwrts` | solid lines |
-| yaxis3 (right, offset +80px) | right | `Rourefs`, `RouLaS`, `RouCMs`, `Gloupds` | dashed lines |
+| yaxis2 (right, anchored) | right | `WIJwri`, `PhyRds`, `PhyWrs`, `Jrnwrts` | solid lines (shared IO axis) |
+| yaxis3 (right, free, shift 0px) | right | `Rourefs` | dashed line |
+| yaxis4 (right, free, shift +80px) | right | `RouLaS` | dashed line |
+| yaxis5 (right, free, shift +160px) | right | `RouCMs` | dashed line |
+| yaxis6 (right, free, shift +240px) | right | `Gloupds` | dashed line |
+| yaxis7 (right, free, shift +320px) | right | `Glorefs` | dashed line |
 
-All 11 traces individually toggleable via legend click (Plotly default behaviour).
+All 15 traces individually toggleable via legend click (Plotly default behaviour).
+Each routing metric has its own independent scale — necessary because `Glorefs` can be orders of magnitude larger than `RouCMs`.
 
 The overview panel (row 2) mirrors the CPU stacked area only — keeps the zoom panel readable.
 
