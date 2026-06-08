@@ -48,46 +48,46 @@ _YSCALE_JS = """
 (function() {
     var gd = document.querySelector('.plotly-graph-div');
     var rescaling = false;
-    var pendingRange = null;
-
-    // Plotly can emit dates as "YYYY-MM-DD HH:MM:SS" (space) — normalise to ISO.
-    function toMs(s) {
-        if (typeof s === 'string' && s.indexOf('T') === -1) s = s.replace(' ', 'T');
-        return new Date(s).getTime();
-    }
+    var rescalePending = false;
+    var resetPending = false;
 
     function rescaleOverlayAxes() {
         if (rescaling) return;
-        var range = pendingRange;
-        pendingRange = null;
-        if (!range) return;
+        var doReset = resetPending;
+        rescalePending = false;
+        resetPending = false;
 
         var update = {};
 
-        if (range === 'reset') {
+        if (doReset) {
             ['yaxis2','yaxis3','yaxis4','yaxis5','yaxis6','yaxis7'].forEach(function(ax) {
                 if (gd.layout[ax] && gd.layout[ax].visible !== false) {
                     update[ax + '.autorange'] = true;
                 }
             });
         } else {
-            var t0 = toMs(range[0]);
-            var t1 = toMs(range[1]);
+            // Use Plotly's internal numeric range (ms epoch) — avoids all date string
+            // parsing issues (e.g. microsecond-precision ISO strings from pandas).
+            var fullAx = gd._fullLayout && gd._fullLayout.xaxis;
+            if (!fullAx || fullAx.autorange !== false) return;
+            var t0 = fullAx.range[0];
+            var t1 = fullAx.range[1];
             var axisMaxes = {};
 
-            gd.data.forEach(function(trace) {
+            gd.data.forEach(function(trace, ti) {
                 if (trace.visible === 'legendonly' || trace.visible === false) return;
                 if (!trace.x || trace.xaxis === 'x2') return;
                 var yax = trace.yaxis || 'y';
                 if (yax === 'y' || yax === 'y8') return;
 
-                for (var i = 0; i < trace.x.length; i++) {
-                    var t = toMs(trace.x[i]);
-                    if (t >= t0 && t <= t1) {
-                        var v = trace.y[i];
-                        if (v != null && !isNaN(v)) {
-                            if (!(yax in axisMaxes) || v > axisMaxes[yax]) axisMaxes[yax] = v;
-                        }
+                // _calcdata[ti] has already-numeric x (ms epoch) and original y.
+                var calcPts = gd._calcdata && gd._calcdata[ti];
+                if (!calcPts) return;
+                for (var i = 0; i < calcPts.length; i++) {
+                    var t = calcPts[i].x;
+                    var v = calcPts[i].y;
+                    if (t >= t0 && t <= t1 && v != null && !isNaN(v)) {
+                        if (!(yax in axisMaxes) || v > axisMaxes[yax]) axisMaxes[yax] = v;
                     }
                 }
             });
@@ -107,26 +107,23 @@ _YSCALE_JS = """
     gd.on('plotly_relayout', function(eventdata) {
         if (rescaling) return;
         if (eventdata['xaxis.autorange'] === true) {
-            pendingRange = 'reset';
+            resetPending = true;
             setTimeout(rescaleOverlayAxes, 0);
         } else if (eventdata['xaxis.range[0]'] !== undefined) {
-            pendingRange = [eventdata['xaxis.range[0]'], eventdata['xaxis.range[1]']];
+            rescalePending = true;
             setTimeout(rescaleOverlayAxes, 0);
         } else if (eventdata['xaxis2.range[0]'] !== undefined) {
-            // Overview drag — _OVERVIEW_ZOOM_JS will relayout xaxis, pick it up from there
-            pendingRange = [eventdata['xaxis2.range[0]'], eventdata['xaxis2.range[1]']];
+            // Overview drag — give _OVERVIEW_ZOOM_JS time to commit xaxis range first
+            rescalePending = true;
             setTimeout(rescaleOverlayAxes, 50);
         }
     });
 
-    // Trace made visible while already zoomed — rescale to current window
+    // Trace toggled while chart is zoomed — rescale to current visible window
     gd.on('plotly_restyle', function() {
         if (rescaling) return;
-        var ax = gd.layout && gd.layout.xaxis;
-        if (ax && ax.autorange !== true && ax.range && ax.range.length === 2) {
-            pendingRange = [ax.range[0], ax.range[1]];
-            setTimeout(rescaleOverlayAxes, 0);
-        }
+        rescalePending = true;
+        setTimeout(rescaleOverlayAxes, 0);
     });
 })();
 """
