@@ -333,7 +333,6 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     line_chart = kwargs.get("line_chart", True)  # Use line charts by default
     threshold = kwargs.get("threshold")  # Optional (value, label) tuple for a reference line
     business_hours_chart = kwargs.get("business_hours_chart", False)  # Generate business-hours peak chart
-    html_out = kwargs.get("html_out", False)  # Whether HTML output is requested alongside PNG
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -568,8 +567,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
         _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix, file_prefix, datetime_column)
         _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
-        if html_out:
-            _create_day_overlay_html(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
+        # day_overlay HTML is handled by linked_chart via _maybe_day_overlay_html
         _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
 
     # Return peak times (useful for Glorefs to pass to other charts)
@@ -1397,30 +1395,76 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
 
 _OVERVIEW_ZOOM_JS = """
+(function() {
 var gd = document.querySelector('.plotly-graph-div');
 var syncing = false;
+var zoomRange = null;  // [x0, x1] in xaxis2 datetime space, or null
+
+function drawHighlight() {
+    var baseShapes = (gd.layout.shapes || []).filter(function(s) {
+        return !s._yaspe_highlight;
+    });
+    var shapes = zoomRange ? baseShapes.concat([{
+        _yaspe_highlight: true,
+        type: 'rect',
+        xref: 'x2', yref: 'y2 domain',
+        x0: zoomRange[0], x1: zoomRange[1],
+        y0: 0, y1: 1,
+        fillcolor: 'rgba(255,165,0,0.3)',
+        line: {color: 'rgba(255,140,0,0.7)', width: 1},
+        layer: 'above'
+    }]) : baseShapes;
+    syncing = true;
+    Plotly.relayout(gd, {shapes: shapes}).then(function() { syncing = false; });
+}
+
 gd.on('plotly_relayout', function(eventdata) {
     if (syncing) return;
+
     var r0 = eventdata['xaxis2.range[0]'];
     var r1 = eventdata['xaxis2.range[1]'];
+
     if (r0 !== undefined && r1 !== undefined) {
-        // User zoomed/dragged on overview — apply that range to main chart
-        // then snap overview back to full range
+        // Drag on overview: zoom main chart, snap overview back, then draw highlight
+        zoomRange = [r0, r1];
         syncing = true;
         Plotly.relayout(gd, {
             'xaxis.range[0]': r0,
             'xaxis.range[1]': r1,
             'xaxis.autorange': false,
             'xaxis2.autorange': true
-        }).then(function() { syncing = false; });
+        }).then(function() { syncing = false; drawHighlight(); });
+
     } else if (eventdata['xaxis2.autorange'] === true) {
-        // Overview was double-clicked/reset — also reset main chart
+        // Overview double-click reset: clear highlight and reset main
+        zoomRange = null;
         syncing = true;
         Plotly.relayout(gd, {'xaxis.autorange': true})
-            .then(function() { syncing = false; });
+            .then(function() { syncing = false; drawHighlight(); });
+
+    } else {
+        var m0 = eventdata['xaxis.range[0]'];
+        var m1 = eventdata['xaxis.range[1]'];
+        if (m0 !== undefined && m1 !== undefined) {
+            // Direct zoom on main chart: mirror range to highlight on overview
+            zoomRange = [m0, m1];
+            drawHighlight();
+        } else if (eventdata['xaxis.autorange'] === true) {
+            zoomRange = null;
+            drawHighlight();
+        }
     }
 });
+})();
 """
+
+
+def _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix):
+    """Emit a day-overlay HTML chart when data spans more than 25 hours."""
+    x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
+    time_range = data[x_column].max() - data[x_column].min()
+    if time_range.total_seconds() > 25 * 60 * 60:
+        _create_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, x_column)
 
 
 def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -1531,6 +1575,9 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         post_script=_OVERVIEW_ZOOM_JS,
         full_html=True,
     )
+
+    _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix)
+
 
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
     """Interactive HTML chart for index-based data: drag overview (bottom) to zoom main chart (top)."""
@@ -1823,12 +1870,14 @@ def chart_vmstat(
     # Create a cached datetime column
     df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
 
+    png_filepath, html_filepath = _split_filepath(filepath, png_html_out)
+
     # Create stacked CPU chart if columns exist
     if png_out or png_html_out:
         if "sy" in df.columns and "wa" in df.columns and "us" in df.columns:
             title = f"CPU utilisation % - {customer}"
             title += f"\n{number_cpus} cores ({processor})"
-            simple_chart_stacked(df, "sy, wa, us", title, 100, filepath, output_prefix)
+            simple_chart_stacked(df, "sy, wa, us", title, 100, png_filepath, output_prefix)
 
     # Format the data for Altair
     # Cut down the df to just the list of categorical data we care about (columns)
@@ -1880,7 +1929,7 @@ def chart_vmstat(
                     column_name,
                     title,
                     max_y,
-                    filepath,
+                    png_filepath,
                     output_prefix,
                     min_max=min_max,
                     peak_chart=peak_chart,
@@ -1888,10 +1937,9 @@ def chart_vmstat(
                     line_chart=line_chart,
                     threshold=threshold,
                     business_hours_chart=min_max,
-                    html_out=png_html_out,
                 )
                 if png_html_out:
-                    linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                    linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
                                  min_max=min_max, threshold=threshold)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
@@ -1907,6 +1955,8 @@ def chart_mgstat(
     # print(f"mgstat...")
 
     glorefs_peak_window = (None, None)  # Will be populated if Glorefs peak chart is created
+
+    png_filepath, html_filepath = _split_filepath(filepath, png_html_out)
 
     if not mgstat_file:
         customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
@@ -1987,19 +2037,18 @@ def chart_mgstat(
                     column_name,
                     title,
                     max_y,
-                    filepath,
+                    png_filepath,
                     output_prefix,
                     min_max=min_max,
                     peak_chart=peak_chart,
                     line_chart=line_chart,
                     business_hours_chart=min_max,
-                    html_out=png_html_out,
                 )
                 # Capture Glorefs peak window
                 if column_name == "Glorefs" and peak_start is not None:
                     glorefs_peak_window = (peak_start, peak_end)
                 if png_html_out:
-                    linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                    linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
                                  min_max=min_max)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
@@ -2069,6 +2118,8 @@ def chart_perfmon(
         "TotalDisk_Writessec",
     ]
 
+    png_filepath, html_filepath = _split_filepath(filepath, png_html_out)
+
     for column_name in columns_to_chart:
         if column_name == "datetime":
             pass
@@ -2095,12 +2146,12 @@ def chart_perfmon(
 
             if png_out or png_html_out:
                 simple_chart(
-                    data, column_name, title, max_y, filepath, output_prefix,
+                    data, column_name, title, max_y, png_filepath, output_prefix,
                     min_max=min_max, peak_chart=peak_chart, glorefs_peak_window=glorefs_peak_window,
-                    line_chart=line_chart, business_hours_chart=min_max, html_out=png_html_out,
+                    line_chart=line_chart, business_hours_chart=min_max,
                 )
                 if png_html_out:
-                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
+                    linked_chart(data, column_name, title, max_y, html_filepath, output_prefix, min_max=min_max)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
 
@@ -2174,25 +2225,25 @@ def chart_iostat(
             else:
                 device_filepath = filepath
 
-            # Create stacked read write chart if columns exist
-            if png_out:
-                if operating_system == "AIX":
-                    # pass
+            dev_png_fp, dev_html_fp = _split_filepath(device_filepath, png_html_out)
 
+            # Create stacked read write chart if columns exist
+            if png_out or png_html_out:
+                if operating_system == "AIX":
                     # Something wrong with the way stacked charts come out base is not zero and a fake base rises l-r
 
                     if "read rps" in device_df.columns and "write wps" in device_df.columns:
                         title = f"{device} : Total IOPS - {customer}"
                         columns_to_stack = {"read rps": "Reads per sec", "write wps": "Writes per sec"}
                         simple_chart_stacked_iostat(
-                            device_df, columns_to_stack, device, title, 0, device_filepath, output_prefix
+                            device_df, columns_to_stack, device, title, 0, dev_png_fp, output_prefix
                         )
 
                         if "read avg serv" in device_df.columns and "write avg serv" in device_df.columns:
                             title = f"{device} : Latency - {customer}"
                             columns_to_histogram = {"read avg serv": "read rps", "write avg serv": "write wps"}
                             simple_chart_histogram_iostat(
-                                device_df, columns_to_histogram, device, title, device_filepath, output_prefix
+                                device_df, columns_to_histogram, device, title, dev_png_fp, output_prefix
                             )
 
                 else:
@@ -2200,7 +2251,7 @@ def chart_iostat(
                         title = f"{device} : Total IOPS - {customer}"
                         columns_to_stack = {"r/s": "Reads per sec", "w/s": "Writes per sec"}
                         simple_chart_stacked_iostat(
-                            device_df, columns_to_stack, device, title, 0, device_filepath, output_prefix
+                            device_df, columns_to_stack, device, title, 0, dev_png_fp, output_prefix
                         )
 
                         if "r_await" in device_df.columns and "w_await" in device_df.columns:
@@ -2208,7 +2259,7 @@ def chart_iostat(
                             # Column name : check for non-zero column
                             columns_to_histogram = {"r_await": "r/s", "w_await": "w/s"}
                             simple_chart_histogram_iostat(
-                                device_df, columns_to_histogram, device, title, device_filepath, output_prefix
+                                device_df, columns_to_histogram, device, title, dev_png_fp, output_prefix
                             )
 
             # unpivot the dataframe; include both datetime and datetime_parsed as id_vars
@@ -2246,7 +2297,7 @@ def chart_iostat(
                             column_name,
                             title,
                             max_y,
-                            device_filepath,
+                            dev_png_fp,
                             output_prefix,
                             file_prefix=device,
                             min_max=min_max,
@@ -2255,10 +2306,9 @@ def chart_iostat(
                             line_chart=line_chart,
                             threshold=threshold,
                             business_hours_chart=min_max,
-                            html_out=png_html_out,
                         )
                         if png_html_out:
-                            linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
+                            linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
                                          file_prefix=device, min_max=min_max, threshold=threshold)
                     else:
                         linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
@@ -2292,6 +2342,8 @@ def chart_iostat(
             else:
                 device_filepath = filepath
 
+            dev_png_fp, dev_html_fp = _split_filepath(device_filepath, png_html_out)
+
             # unpivot the dataframe; first column is index, column name is next, then the value in that column
             device_df = device_df.melt("id_key", var_name="Type", value_name="metric")
 
@@ -2314,10 +2366,10 @@ def chart_iostat(
                         )
                     elif png_html_out:
                         simple_chart_no_time(
-                            data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device
+                            data, column_name, title, max_y, dev_png_fp, output_prefix, file_prefix=device
                         )
                         linked_chart_no_time(
-                            data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device
+                            data, column_name, title, max_y, dev_html_fp, output_prefix, file_prefix=device
                         )
                     else:
                         linked_chart_no_time(
@@ -2359,6 +2411,8 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
         else:
             device_filepath = filepath
 
+        dev_png_fp, dev_html_fp = _split_filepath(device_filepath, png_html_out)
+
         # unpivot the dataframe; first column is index, column name is next, then the value in that column
         device_df = device_df.melt("id_key", var_name="Type", value_name="metric")
 
@@ -2375,15 +2429,14 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
 
                 data = to_chart_df
 
-                fp = device_filepath
                 pfx = "" if iostat_subfolders else device.replace("/", "_")
 
                 if png_out or png_html_out:
-                    simple_chart_no_time(data, column_name, title, max_y, fp, output_prefix, file_prefix=pfx)
+                    simple_chart_no_time(data, column_name, title, max_y, dev_png_fp, output_prefix, file_prefix=pfx)
                     if png_html_out:
-                        linked_chart_no_time(data, column_name, title, max_y, fp, output_prefix, file_prefix=pfx)
+                        linked_chart_no_time(data, column_name, title, max_y, dev_html_fp, output_prefix, file_prefix=pfx)
                 else:
-                    linked_chart_no_time(data, column_name, title, max_y, fp, output_prefix, file_prefix=pfx)
+                    linked_chart_no_time(data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=pfx)
 
 
 def chart_aix_sar_d(
@@ -2440,6 +2493,8 @@ def chart_aix_sar_d(
         else:
             device_filepath = filepath
 
+        dev_png_fp, dev_html_fp = _split_filepath(device_filepath, png_html_out)
+
         # unpivot the dataframe; first column is index, column name is next, then the value in that column
         device_df = device_df.melt("datetime", var_name="Type", value_name="metric")
 
@@ -2458,18 +2513,17 @@ def chart_aix_sar_d(
 
                 data = to_chart_df
 
-                fp = device_filepath
                 pfx = "" if iostat_subfolders else device
 
                 if png_out or png_html_out:
-                    simple_chart(data, column_name, title, max_y, fp, output_prefix,
+                    simple_chart(data, column_name, title, max_y, dev_png_fp, output_prefix,
                                  file_prefix=pfx, peak_chart=peak_chart, line_chart=line_chart,
-                                 min_max=min_max, business_hours_chart=min_max, html_out=png_html_out)
+                                 min_max=min_max, business_hours_chart=min_max)
                     if png_html_out:
-                        linked_chart(data, column_name, title, max_y, fp, output_prefix,
+                        linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
                                      file_prefix=pfx, min_max=min_max)
                 else:
-                    linked_chart(data, column_name, title, max_y, fp, output_prefix,
+                    linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
                                  file_prefix=pfx, min_max=min_max)
 
 
@@ -2505,6 +2559,8 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
     # unpivot the dataframe
     free_df = free_df.melt(id_vars=["datetime", "datetime_parsed"], var_name="Type", value_name="metric")
 
+    png_filepath, html_filepath = _split_filepath(filepath, png_html_out)
+
     # For each column create a chart
     for column_name in columns_to_chart:
         if column_name == "datetime":
@@ -2521,12 +2577,12 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
 
             if png_out or png_html_out:
                 simple_chart(
-                    data, column_name, title, max_y, filepath, output_prefix,
+                    data, column_name, title, max_y, png_filepath, output_prefix,
                     min_max=min_max, peak_chart=peak_chart, line_chart=line_chart,
-                    business_hours_chart=min_max, html_out=png_html_out,
+                    business_hours_chart=min_max,
                 )
                 if png_html_out:
-                    linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
+                    linked_chart(data, column_name, title, max_y, html_filepath, output_prefix, min_max=min_max)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
                              min_max=min_max)
@@ -2537,6 +2593,13 @@ def _make_chart_dir(base, name):
     if not os.path.isdir(path):
         os.mkdir(path)
     return path
+
+
+def _split_filepath(fp, png_html_out):
+    """When -P is active, return separate png/ and html/ subdirs; otherwise return fp for both."""
+    if not png_html_out:
+        return fp, fp
+    return _make_chart_dir(fp.rstrip("/"), "png"), _make_chart_dir(fp.rstrip("/"), "html")
 
 
 def mainline(
@@ -2758,6 +2821,9 @@ def mainline(
 
         connection.close()
 
+        if not png_out:
+            yaspe_combined_overlay.run(sql_filename, output_file_path_base, smooth_minutes=5)
+
     return
 
 
@@ -2843,7 +2909,7 @@ if __name__ == "__main__":
         "-P",
         "--PNG",
         dest="png_html_out",
-        help="Create PNG and HTML charts of metrics. HTML is the default if PNG not selected.",
+        help="Create PNG and HTML charts of metrics. Charts are written into png/ and html/ subdirectories within each metric folder.",
         action="store_true",
     )
 
@@ -2931,7 +2997,7 @@ if __name__ == "__main__":
         "-B",
         "--combined",
         dest="combined_overlay",
-        help="Create a combined vmstat+mgstat overlay HTML chart from an existing database (requires -e).",
+        help="Create a combined vmstat+mgstat overlay HTML chart (standalone use requires -e). Also runs automatically in default HTML and -P modes; combined_overlay.html is written to {prefix}_metrics/.",
         action="store_true",
     )
 
@@ -2954,8 +3020,15 @@ if __name__ == "__main__":
         if args.existing_database is None:
             print('Error: --combined requires -e with an existing database path.')
             sys.exit(1)
-        output_dir = os.path.dirname(os.path.abspath(args.existing_database))
-        yaspe_combined_overlay.run(args.existing_database, output_dir,
+        db_base = os.path.splitext(os.path.basename(args.existing_database))[0]
+        db_dir = os.path.dirname(os.path.abspath(args.existing_database))
+        output_prefix_b = args.output_prefix if args.output_prefix is not None else db_base
+        if output_prefix_b:
+            output_prefix_b = f"{output_prefix_b}_"
+        metrics_dir = os.path.join(db_dir, f"{output_prefix_b}metrics")
+        if not os.path.isdir(metrics_dir):
+            os.makedirs(metrics_dir, exist_ok=True)
+        yaspe_combined_overlay.run(args.existing_database, metrics_dir,
                                    smooth_minutes=args.smooth_minutes)
         sys.exit(0)
 

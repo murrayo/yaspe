@@ -463,9 +463,9 @@ def build_log(sp_dict):
             warn_count += 1
             sp_dict[f"warning {warn_count}"] = f"** Insecure Private Webserver Enabled! **"
             sp_dict[f"warning {warn_count} explanation"] = (
-                "The IRIS private web server runs without TLS and is intended only for local development. "
-                "Leaving it enabled on a production system exposes the management portal and REST endpoints "
-                "to unencrypted traffic and potential unauthorised access."
+                "The IRIS Private Web Server is enabled. Many production deployments use Apache, IIS, or "
+                "another front-end web server instead. Review whether the Private Web Server is required "
+                "and ensure it is restricted to trusted networks if it is not intended for direct client access."
             )
 
     if "freeze" in sp_dict:
@@ -485,8 +485,9 @@ def build_log(sp_dict):
             pass_count += 1
             sp_dict[f"pass {pass_count}"] = f"freeze on error is enabled."
             sp_dict[f"pass {pass_count} explanation"] = (
-                "FreezeOnError=1 means IRIS will halt immediately if a journal write fails, preventing "
-                "unrecoverable database changes and ensuring a clean recovery point."
+                "FreezeOnError=1 causes IRIS to stop processing updates if journal writes fail. This helps "
+                "prevent the database from continuing to accept transactions that could not be recovered "
+                "from journals."
             )
 
     if sp_dict["current journal"] == sp_dict["alternate journal"]:
@@ -595,9 +596,10 @@ def build_log(sp_dict):
                 f"warning {warn_count}"
             ] = f"locksiz is 0; lock table size is limited only by gmheap ({gmheap_kb} KB)"
             sp_dict[f"warning {warn_count} explanation"] = (
-                "When locksiz=0, the IRIS lock table can grow until it exhausts gmheap. While flexible, "
-                "this means a lock storm can starve other gmheap consumers (process private globals, "
-                "shared structures). Setting an explicit locksiz gives predictable resource boundaries."
+                "When locksiz=0, the IRIS lock table can grow dynamically and is limited by available "
+                "gmheap rather than by a separate fixed lock table size. This is flexible, but a lock "
+                "storm or very large transaction can consume gmheap that may also be needed by other "
+                "shared-memory structures. Review gmheap sizing and lock behaviour for the workload."
             )
         elif locksiz == 16777216:
             # Old default for most platforms (16 MB)
@@ -665,10 +667,10 @@ def build_log(sp_dict):
                     f"SQL Adaptive Mode is ON (AdaptiveMode=1) but IRIS version year is " f"{sp_dict['version year']}."
                 )
                 sp_dict[f"app warning {app_warn_count} explanation"] = (
-                    "SQL Adaptive Mode allows the query engine to dynamically adjust query plans at "
-                    "runtime based on actual row counts. On versions before 2024 this feature had known "
-                    "issues that could cause plans to flip unexpectedly under load, leading to "
-                    "performance regressions. It was significantly improved in 2024.1."
+                    "SQL Adaptive Mode allows IRIS to adjust query execution plans using runtime "
+                    "statistics. On recent IRIS versions this is generally recommended for many "
+                    "workloads, but application-specific guidance and existing query-plan management "
+                    "practices should be considered before changing it."
                 )
             else:
                 # No warning for this setting -> record as pass
@@ -677,9 +679,10 @@ def build_log(sp_dict):
                     f"SQL Adaptive Mode is {sp_dict['SQL Adaptive Mode']} " f"(AdaptiveMode={adaptive_mode})."
                 )
                 sp_dict[f"app pass {app_pass_count} explanation"] = (
-                    "SQL Adaptive Mode allows the query engine to refine query plans at runtime using "
-                    "actual cardinality data. On IRIS 2024.1 and later this is stable and recommended "
-                    "for most workloads."
+                    "SQL Adaptive Mode allows IRIS to adjust query execution plans using runtime "
+                    "statistics. On recent IRIS versions this is generally recommended for many "
+                    "workloads, but application-specific guidance and existing query-plan management "
+                    "practices should be considered before changing it."
                 )
 
     # AutoParallel: Execute queries in a single process ON/OFF
@@ -701,19 +704,20 @@ def build_log(sp_dict):
                     f"app warning {app_warn_count}"
                 ] = "Execute queries in a single process is OFF (AutoParallel=1)."
                 sp_dict[f"app warning {app_warn_count} explanation"] = (
-                    "AutoParallel=1 disables the restriction that forces queries to run in a single "
-                    "process, meaning queries may spawn parallel worker processes. On some workloads "
-                    "this can cause unexpected CPU spikes or resource contention. Review whether "
-                    "parallel query execution is appropriate for this system."
+                    "AutoParallel=0 means SQL queries execute in a single process unless explicitly "
+                    "parallelised by other mechanisms. This often provides more predictable CPU usage "
+                    "for OLTP-style workloads and avoids parallel query overhead. Review before "
+                    "changing on reporting or analytic workloads."
                 )
             else:
                 # No warning -> pass
                 app_pass_count += 1
                 sp_dict[f"app pass {app_pass_count}"] = "Execute queries in a single process is ON (AutoParallel=0)."
                 sp_dict[f"app pass {app_pass_count} explanation"] = (
-                    "AutoParallel=0 ensures all SQL queries run within a single process. This is the "
-                    "recommended setting for most IRIS OLTP workloads as it gives predictable CPU usage "
-                    "and avoids parallel query overhead."
+                    "AutoParallel=0 means SQL queries execute in a single process unless explicitly "
+                    "parallelised by other mechanisms. This often provides more predictable CPU usage "
+                    "for OLTP-style workloads and avoids parallel query overhead. Review before "
+                    "changing on reporting or analytic workloads."
                 )
 
     # LockThreshold: OK / High / Warning
@@ -729,9 +733,9 @@ def build_log(sp_dict):
                 app_pass_count += 1
                 sp_dict[f"app pass {app_pass_count}"] = "LockThreshold is 10000 (OK)."
                 sp_dict[f"app pass {app_pass_count} explanation"] = (
-                    "LockThreshold controls the number of locks a process can hold before IRIS "
-                    "escalates to a table-level lock. 10000 is the standard recommended value "
-                    "balancing concurrency and lock table size."
+                    "LockThreshold controls when IRIS may escalate large numbers of row-level locks "
+                    "into broader locks. Higher values delay escalation and may increase lock table "
+                    "memory consumption during large transactions."
                 )
             elif lock_threshold == 100000:
                 sp_dict["LockThreshold status"] = "High"
@@ -740,17 +744,18 @@ def build_log(sp_dict):
                     f"app warning {app_warn_count}"
                 ] = "LockThreshold is 100000 (High). Review lock table threshold, see app documentation."
                 sp_dict[f"app warning {app_warn_count} explanation"] = (
-                    "A LockThreshold of 100000 delays lock escalation significantly, which can cause "
-                    "the lock table to grow very large under heavy concurrent write workloads. This "
-                    "consumes gmheap and may cause other processes to wait for lock table space."
+                    "LockThreshold controls when IRIS may escalate large numbers of row-level locks "
+                    "into broader locks. Higher values delay escalation and may increase lock table "
+                    "memory consumption during large transactions."
                 )
             else:
                 sp_dict["LockThreshold status"] = "Warning"
                 app_warn_count += 1
                 sp_dict[f"app warning {app_warn_count}"] = f"LockThreshold is {lock_threshold}, see app documentation."
                 sp_dict[f"app warning {app_warn_count} explanation"] = (
-                    "LockThreshold is set to a non-standard value. Verify this is intentional and "
-                    "appropriate for the application's locking behaviour."
+                    "LockThreshold controls when IRIS may escalate large numbers of row-level locks "
+                    "into broader locks. Higher values delay escalation and may increase lock table "
+                    "memory consumption during large transactions."
                 )
 
     # FastDistinct: OFF is correct for some applications
@@ -763,18 +768,21 @@ def build_log(sp_dict):
         if fast_distinct in (0, 1):
             if fast_distinct == 1:
                 app_warn_count += 1
-                sp_dict[f"app warning {app_warn_count}"] = "FastDistinct is ON (FastDistinct=1). For some applications this can cause ALPHAUP index values to be returned instead of actual data, breaking some reports."
+                sp_dict[f"app warning {app_warn_count}"] = "FastDistinct is ON (FastDistinct=1). Review against application and query workload requirements."
                 sp_dict[f"app warning {app_warn_count} explanation"] = (
-                    "FastDistinct=1 enables an optimisation that can return raw index key values (e.g. "
-                    "ALPHAUP-collated strings) instead of the underlying stored data. For some applications "
-                    "this produces incorrect report output. The recommended value is 0."
+                    "FastDistinct enables an optimisation for some SQL DISTINCT queries. Disabling it "
+                    "ensures results are derived from stored data values rather than relying on certain "
+                    "index-based optimisations. Confirm the correct setting for the application and "
+                    "query workload."
                 )
             else:
                 app_pass_count += 1
-                sp_dict[f"app pass {app_pass_count}"] = "FastDistinct is OFF (FastDistinct=0). This is the recommended setting for some applications (example — verify against site documentation)."
+                sp_dict[f"app pass {app_pass_count}"] = "FastDistinct is OFF (FastDistinct=0)."
                 sp_dict[f"app pass {app_pass_count} explanation"] = (
-                    "FastDistinct=0 ensures that SQL DISTINCT queries return actual stored values rather "
-                    "than index key values. This is required for correct report output in some applications."
+                    "FastDistinct enables an optimisation for some SQL DISTINCT queries. Disabling it "
+                    "ensures results are derived from stored data values rather than relying on certain "
+                    "index-based optimisations. Confirm the correct setting for the application and "
+                    "query workload."
                 )
 
     # DBSizesAllowed: 8192,65536 is required for some applications (example check)
@@ -782,19 +790,19 @@ def build_log(sp_dict):
         dbs = sp_dict["DBSizesAllowed"].strip()
         if "65536" in dbs:
             app_pass_count += 1
-            sp_dict[f"app pass {app_pass_count}"] = f"DBSizesAllowed includes 64KB block size ({dbs}). Required for some applications databases (example — verify against site documentation)."
+            sp_dict[f"app pass {app_pass_count}"] = f"DBSizesAllowed includes 64KB block size ({dbs})."
             sp_dict[f"app pass {app_pass_count} explanation"] = (
-                "some applications uses databases with a 64KB (65536-byte) block size. Including 65536 "
-                "in DBSizesAllowed permits IRIS to create and mount these databases. Without it, "
-                "Analytics databases cannot be attached and Analytics will not start."
+                "DBSizesAllowed controls which database block sizes IRIS is permitted to mount. If a "
+                "database uses a block size that is not listed, IRIS will refuse to mount that database. "
+                "Include only the block sizes required by the databases used in this environment."
             )
         else:
             app_warn_count += 1
-            sp_dict[f"app warning {app_warn_count}"] = f"DBSizesAllowed does not include 64KB block size ({dbs}). some applications requires 65536 (example — verify against site documentation)."
+            sp_dict[f"app warning {app_warn_count}"] = f"DBSizesAllowed does not include 64KB block size ({dbs}). Verify block sizes required for this environment."
             sp_dict[f"app warning {app_warn_count} explanation"] = (
-                "some applications uses 64KB (65536-byte) block-size databases. If 65536 is not in "
-                "DBSizesAllowed, IRIS will refuse to mount Analytics databases, preventing Analytics "
-                "from starting. Recommended value: DBSizesAllowed=8192,65536."
+                "DBSizesAllowed controls which database block sizes IRIS is permitted to mount. If a "
+                "database uses a block size that is not listed, IRIS will refuse to mount that database. "
+                "Include only the block sizes required by the databases used in this environment."
             )
 
     # RTPC: ON/OFF, always report as a pass (no warning defined)
@@ -810,9 +818,9 @@ def build_log(sp_dict):
             app_pass_count += 1
             sp_dict[f"app pass {app_pass_count}"] = f"RTPC is {rtpc_status} (RTPC={rtpc_val})."
             sp_dict[f"app pass {app_pass_count} explanation"] = (
-                "RTPC (Real-Time Process Control) enables priority-based scheduling of IRIS processes. "
-                f"It is currently {rtpc_status}. When ON, IRIS can deprioritise background tasks "
-                "relative to interactive queries, which can improve response time consistency under load."
+                "RTPC (Runtime Plan Choice) allows IRIS to evaluate alternative SQL execution strategies "
+                "using runtime statistics. This can improve query performance when actual data "
+                f"distributions differ from optimizer estimates. It is currently {rtpc_status}."
             )
 
     # bbsiz: -1 is recommended from IRIS 2022.2+
@@ -839,10 +847,10 @@ def build_log(sp_dict):
                     f"the per-process memory limit."
                 )
                 sp_dict[f"warning {warn_count} explanation"] = (
-                    "bbsiz sets the maximum per-process private memory that IRIS will allocate. The old "
-                    "default (~512 MB) was adequate for Caché but can be exhausted by large globals, "
-                    "object caches, or complex queries in IRIS. Setting bbsiz=-1 removes this cap "
-                    "and is the recommended configuration from IRIS 2022.2 onwards."
+                    "bbsiz controls the maximum amount of private memory an IRIS process can allocate. "
+                    "Modern workloads may exceed historic per-process limits. In IRIS 2022.2 and later, "
+                    "many environments use bbsiz=-1 to remove this limit, but the setting should be "
+                    "validated against operational and support requirements."
                 )
 
     # wduseasyncio / asyncwij: informational
@@ -853,19 +861,19 @@ def build_log(sp_dict):
             pass_count += 1
             sp_dict[f"pass {pass_count}"] = f"AsyncIO is enabled (wduseasyncio=1, Asyncwij={asyncwij}). Recommended for all-flash/NVMe storage."
             sp_dict[f"pass {pass_count} explanation"] = (
-                "wduseasyncio=1 enables IRIS direct async I/O, bypassing the OS filesystem cache for "
-                "database writes. This reduces write latency on all-flash and NVMe storage. Note: "
-                "direct I/O makes OS-level file operations (copies, online backup) slower because they "
-                "also bypass the cache. The Asyncwij parameter controls in-flight WIJ writes."
+                "AsyncIO allows IRIS to issue multiple I/O requests concurrently, improving throughput "
+                "and reducing latency on modern storage systems. When combined with direct I/O, "
+                "filesystem cache usage is reduced because IRIS already maintains its own database "
+                "cache. Review storage vendor and IRIS guidance before changing this setting."
             )
         else:
             pass_count += 1
             sp_dict[f"pass {pass_count}"] = f"AsyncIO is not enabled (wduseasyncio={wduseasyncio}). Consider enabling for all-flash/NVMe storage."
             sp_dict[f"pass {pass_count} explanation"] = (
-                "wduseasyncio=0 means IRIS uses standard synchronous I/O through the OS filesystem "
-                "cache. For spinning disk or hybrid storage this is typically fine. For all-flash or "
-                "NVMe storage, enabling wduseasyncio=1 and setting Asyncwij=8 can reduce write latency "
-                "by allowing the write daemon to issue multiple I/Os concurrently."
+                "AsyncIO allows IRIS to issue multiple I/O requests concurrently, improving throughput "
+                "and reducing latency on modern storage systems. When combined with direct I/O, "
+                "filesystem cache usage is reduced because IRIS already maintains its own database "
+                "cache. Review storage vendor and IRIS guidance before changing this setting."
             )
 
     # Linux kernel
@@ -887,9 +895,9 @@ def build_log(sp_dict):
             pass_count += 1
             sp_dict[f"pass {pass_count}"] = f"overcommit memory is {sp_dict['overcommit_memory']} (heuristic)"
             sp_dict[f"pass {pass_count} explanation"] = (
-                "vm.overcommit_memory=0 uses heuristic overcommit handling — the kernel estimates "
-                "whether allocations are safe before allowing them, reducing the risk of the OOM "
-                "killer terminating IRIS processes unexpectedly."
+                "vm.overcommit_memory=0 uses heuristic overcommit handling. The kernel estimates "
+                "whether memory allocations are safe before allowing them. This is the default and "
+                "commonly recommended setting for IRIS database servers."
             )
 
     if "kernel.numa_balancing" in sp_dict:
@@ -905,18 +913,19 @@ def build_log(sp_dict):
                 f"balancing can cause page migration latency. Recommended: kernel.numa_balancing=0."
             )
             sp_dict[f"warning {warn_count} explanation"] = (
-                "NUMA automatic balancing periodically migrates memory pages between NUMA nodes to "
-                "place them closer to the CPU using them. HugePages cannot be migrated, so on systems "
-                "with HugePages enabled this process adds overhead without benefit and can introduce "
-                "latency spikes. Disabling it with kernel.numa_balancing=0 removes this overhead."
+                "Automatic NUMA balancing periodically attempts to move memory closer to the CPUs "
+                "using it. On systems using static HugePages, this can add overhead with little "
+                "benefit because HugePages cannot be migrated in the same way as normal pages. "
+                "Review whether kernel.numa_balancing=0 is appropriate for production database hosts."
             )
         elif numa_balancing == 0:
             pass_count += 1
-            sp_dict[f"pass {pass_count}"] = "kernel.numa_balancing is disabled (0). Correct for NUMA systems running IRIS with HugePages."
+            sp_dict[f"pass {pass_count}"] = "kernel.numa_balancing is disabled (0). Recommended for NUMA systems using static HugePages."
             sp_dict[f"pass {pass_count} explanation"] = (
-                "With NUMA balancing disabled, the kernel will not attempt to migrate HugePages between "
-                "NUMA nodes. This avoids unnecessary latency on systems where IRIS shared memory is "
-                "allocated on HugePages."
+                "Automatic NUMA balancing periodically attempts to move memory closer to the CPUs "
+                "using it. On systems using static HugePages, this can add overhead with little "
+                "benefit because HugePages cannot be migrated in the same way as normal pages. "
+                "Review whether kernel.numa_balancing=0 is appropriate for production database hosts."
             )
 
     if "vm.max_map_count" in sp_dict:
@@ -933,17 +942,19 @@ def build_log(sp_dict):
                     f"vm.max_map_count is {max_map_count:,}. Recommended minimum is {recommended_max_map_count:,} for IRIS."
                 )
                 sp_dict[f"warning {warn_count} explanation"] = (
-                    "vm.max_map_count limits the number of virtual memory areas (VMAs) a process can "
-                    "have. IRIS uses many memory-mapped files and shared memory regions. If this limit "
-                    "is too low, IRIS processes can fail with ENOMEM errors during startup or at runtime "
-                    "when mapping databases. Set vm.max_map_count=131060 (or higher) in sysctl.conf."
+                    "vm.max_map_count limits the number of virtual memory areas a process can create. "
+                    "IRIS can use many mappings for databases, shared memory, libraries, and other "
+                    "resources. If the limit is too low, processes may fail with memory-mapping or "
+                    "ENOMEM errors. Set this to at least the recommended IRIS value."
                 )
             else:
                 pass_count += 1
                 sp_dict[f"pass {pass_count}"] = f"vm.max_map_count is {max_map_count:,} (recommended minimum is {recommended_max_map_count:,})."
                 sp_dict[f"pass {pass_count} explanation"] = (
-                    "vm.max_map_count is at or above the recommended minimum, so IRIS should not "
-                    "encounter virtual memory area limits when mapping databases and shared memory regions."
+                    "vm.max_map_count limits the number of virtual memory areas a process can create. "
+                    "IRIS can use many mappings for databases, shared memory, libraries, and other "
+                    "resources. If the limit is too low, processes may fail with memory-mapping or "
+                    "ENOMEM errors. Set this to at least the recommended IRIS value."
                 )
 
     if "ulimit open files" in sp_dict:
@@ -961,19 +972,21 @@ def build_log(sp_dict):
                     f"{recommended_open_files:,} (ideally 65535)."
                 )
                 sp_dict[f"warning {warn_count} explanation"] = (
-                    "Each open database, journal file, network connection, and internal IRIS pipe "
-                    "consumes a file descriptor. The default Linux limit of 1024 is too low for a "
-                    "production IRIS instance with many databases and concurrent users. Exhausting "
-                    "file descriptors causes 'too many open files' errors, connection failures, and "
-                    "potentially IRIS process crashes. Set 'nofile' to at least 8192 (preferably "
-                    "65535) for the IRIS service account in /etc/security/limits.conf."
+                    "nofile limits the number of file descriptors available to the IRIS service "
+                    "account. Databases, journal files, network sockets, devices, pipes, and other "
+                    "resources consume file descriptors. A low value can cause 'too many open files' "
+                    "errors, connection failures, or operational instability. Set this to at least "
+                    "the recommended IRIS minimum, and preferably higher for larger systems."
                 )
             else:
                 pass_count += 1
                 sp_dict[f"pass {pass_count}"] = f"ulimit open files (nofile) is {open_files:,}."
                 sp_dict[f"pass {pass_count} explanation"] = (
-                    "The open files limit is sufficient for IRIS to open its databases, journals, "
-                    "network connections, and internal pipes without hitting descriptor limits."
+                    "nofile limits the number of file descriptors available to the IRIS service "
+                    "account. Databases, journal files, network sockets, devices, pipes, and other "
+                    "resources consume file descriptors. A low value can cause 'too many open files' "
+                    "errors, connection failures, or operational instability. Set this to at least "
+                    "the recommended IRIS minimum, and preferably higher for larger systems."
                 )
 
     if "swappiness" in sp_dict:
@@ -995,20 +1008,19 @@ def build_log(sp_dict):
                     f"pages to disk. "
                 )
                 sp_dict[f"warning {warn_count} explanation"] = (
-                    "vm.swappiness controls how eagerly the Linux kernel moves memory pages to swap. "
-                    "For a large-memory server running IRIS, a value of 1 is recommended — it allows "
-                    "swapping only to avoid an out-of-memory condition. Higher values can cause the "
-                    "kernel to page out IRIS global buffer cache to disk, dramatically increasing "
-                    "database read latency as data must be re-read from storage."
+                    f"vm.swappiness={sp_dict['swappiness']} makes the kernel strongly prefer RAM over "
+                    "swap. This is commonly used on large-memory database servers. It does not directly "
+                    "affect HugePage-backed shared memory, but it helps reduce unnecessary swapping of "
+                    "other process and operating-system memory."
                 )
             else:
                 pass_count += 1
                 sp_dict[f"pass {pass_count}"] = f"swappiness is {sp_dict['swappiness']}"
                 sp_dict[f"pass {pass_count} explanation"] = (
-                    f"vm.swappiness={sp_dict['swappiness']} is within the recommended range for a "
-                    f"server with more than {swappiness_high_memory_gb} GB RAM. The kernel will only "
-                    "swap under genuine memory pressure, protecting IRIS shared memory from being "
-                    "paged out unnecessarily."
+                    f"vm.swappiness={sp_dict['swappiness']} makes the kernel strongly prefer RAM over "
+                    "swap. This is commonly used on large-memory database servers. It does not directly "
+                    "affect HugePage-backed shared memory, but it helps reduce unnecessary swapping of "
+                    "other process and operating-system memory."
                 )
         else:
             # If swappiness greater than 10, recommend 5.
@@ -1022,18 +1034,19 @@ def build_log(sp_dict):
                     f"pages to disk. "
                 )
                 sp_dict[f"warning {warn_count} explanation"] = (
-                    "vm.swappiness controls how eagerly the Linux kernel swaps memory pages to disk. "
-                    f"For a server with less than {swappiness_high_memory_gb} GB RAM, a value of "
-                    f"{swappiness_low_memory} is recommended. A higher value increases the risk of "
-                    "IRIS shared memory (global buffers) being paged out, causing latency spikes "
-                    "as the database re-reads blocks from storage."
+                    f"vm.swappiness={sp_dict['swappiness']} makes the kernel strongly prefer RAM over "
+                    "swap. This is commonly used on large-memory database servers. It does not directly "
+                    "affect HugePage-backed shared memory, but it helps reduce unnecessary swapping of "
+                    "other process and operating-system memory."
                 )
             else:
                 pass_count += 1
                 sp_dict[f"pass {pass_count}"] = f"swappiness is {sp_dict['swappiness']}"
                 sp_dict[f"pass {pass_count} explanation"] = (
-                    f"vm.swappiness={sp_dict['swappiness']} is within the recommended range for this "
-                    "server's memory size. IRIS shared memory should remain in RAM under normal load."
+                    f"vm.swappiness={sp_dict['swappiness']} makes the kernel strongly prefer RAM over "
+                    "swap. This is commonly used on large-memory database servers. It does not directly "
+                    "affect HugePage-backed shared memory, but it helps reduce unnecessary swapping of "
+                    "other process and operating-system memory."
                 )
 
     # memory comes from Linux free or from Windows info
@@ -1043,11 +1056,11 @@ def build_log(sp_dict):
             warn_count += 1
             sp_dict[f"warning {warn_count}"] = f"memlock={sp_dict['memlock']} does not enforce Huge/Large pages"
             sp_dict[f"warning {warn_count} explanation"] = (
-                "The memlock ulimit controls how much memory a process can lock into RAM (prevent from "
-                "being swapped). A value of 0 means IRIS cannot lock its shared memory segment, so even "
-                "if HugePages are configured the OS may still page out shared memory under pressure. "
-                "Set memlock to unlimited (or at least as large as the IRIS shared memory segment) in "
-                "/etc/security/limits.conf for the IRIS service account."
+                "memlock controls how much memory a process may lock into RAM. HugePages themselves "
+                "are not swappable, but memlock can still matter when IRIS is configured to explicitly "
+                "lock memory or enforce startup behaviour. Review IRIS and operating-system guidance "
+                "to determine whether memlock should be unlimited or set large enough for the IRIS "
+                "shared memory footprint."
             )
 
     if "memory MB" in sp_dict:
@@ -1175,12 +1188,11 @@ def build_log(sp_dict):
                                 f"pages (see ulimit -a) "
                             )
                             sp_dict[f"warning {warn_count} explanation"] = (
-                                "The ulimit for locked memory (memlock) limits how much memory the IRIS "
-                                "process can pin in RAM. Without HugePages, IRIS relies on this limit to "
-                                "lock its shared memory segment. A value this small means IRIS cannot "
-                                "prevent its shared memory from being paged out under memory pressure. "
-                                "Set 'memlock unlimited' for the IRIS service account in "
-                                "/etc/security/limits.conf, or configure HugePages instead."
+                                "memlock controls how much memory a process may lock into RAM. HugePages "
+                                "themselves are not swappable, but memlock can still matter when IRIS is "
+                                "configured to explicitly lock memory or enforce startup behaviour. Review "
+                                "IRIS and operating-system guidance to determine whether memlock should be "
+                                "unlimited or set large enough for the IRIS shared memory footprint."
                             )
 
             # Huge pages is specified, validate
@@ -1193,10 +1205,11 @@ def build_log(sp_dict):
                     "rebuild with grub2-mkconfig. THP can interfere with HugePages and cause unpredictable latency."
                 )
                 sp_dict[f"recommend {recommend_count} explanation"] = (
-                    "Transparent Huge Pages is a Linux feature that automatically promotes regular 4 KB pages to "
-                    "2 MB pages at runtime. When HugePages are also configured, THP can conflict with the pre-allocated "
-                    "HugePage pool, causing memory allocation failures or compaction stalls. InterSystems recommends "
-                    "disabling THP permanently on all IRIS production servers."
+                    "Transparent Huge Pages dynamically promotes normal memory pages into larger pages. "
+                    "Database systems that use explicitly configured HugePages usually perform more "
+                    "predictably with THP disabled, because THP can introduce memory compaction stalls "
+                    "and latency spikes. Confirm THP is disabled for production IRIS database servers "
+                    "unless there is a specific reason to keep it enabled."
                 )
 
                 if sp_dict["hugepages MB"] < sp_dict["shared memory MB"]:
@@ -1220,10 +1233,10 @@ def build_log(sp_dict):
                     hugepage_message += f":"
                     sp_dict[f"pass {pass_count}"] = hugepage_message
                     sp_dict[f"pass {pass_count} explanation"] = (
-                        "HugePages are configured and cover at least the IRIS shared memory footprint. "
-                        "IRIS shared memory (global buffers, routine buffers, gmheap) is allocated on "
-                        "HugePages, which cannot be swapped out and reduce TLB pressure on large-memory "
-                        "servers."
+                        "HugePages are configured. IRIS shared memory can use HugePages to reduce "
+                        "page-table overhead and protect the shared memory segment from paging. Confirm "
+                        "that the HugePages allocation covers the IRIS shared memory requirement with "
+                        "sufficient headroom for configuration changes."
                     )
 
                     pass_count += 1
@@ -1253,9 +1266,10 @@ def build_log(sp_dict):
                     pass_count += 1
                     sp_dict[f"pass {pass_count}"] = f"Kernel shared memory limit is at default"
                     sp_dict[f"pass {pass_count} explanation"] = (
-                        "kernel.shmmax sets the maximum size of a single shared memory segment. The "
-                        "default value (effectively unlimited on modern kernels) means IRIS can allocate "
-                        "its full shared memory segment without hitting this limit."
+                        "kernel.shmmax controls the maximum size of a single shared memory segment. On "
+                        "many modern Linux systems the default is effectively very large. If the default "
+                        "is already larger than the IRIS shared memory requirement, no change is usually "
+                        "needed."
                     )
                 else:
                     if "hugepages MB" in sp_dict:
@@ -1274,9 +1288,10 @@ def build_log(sp_dict):
                             pass_count += 1
                             sp_dict[f"pass {pass_count}"] = f"Kernel shared memory limit is higher than hugepages"
                             sp_dict[f"pass {pass_count} explanation"] = (
-                                "kernel.shmmax is large enough to accommodate the HugePages allocation, "
-                                "so IRIS can attach its full shared memory segment without hitting this "
-                                "kernel limit."
+                                "kernel.shmmax controls the maximum size of a single shared memory "
+                                "segment. On many modern Linux systems the default is effectively very "
+                                "large. If the default is already larger than the IRIS shared memory "
+                                "requirement, no change is usually needed."
                             )
 
         # dirty_* parameters are not relevant if using async IO – which any IRIS-based install should be.
@@ -1542,16 +1557,10 @@ def build_log(sp_dict):
         log += "What this means:\n"
         log += "--------------------------------------------------------------------------------------------------\n"
         log += "\n"
-        log += "**Important:** The findings and recommendations contained in this review are provided as examples\n"
-        log += "only and are based solely on the information available at the time of assessment. These\n"
-        log += "recommendations are not universally applicable and may not be suitable for all environments,\n"
-        log += "workloads, business requirements, or operational constraints.\n"
-        log += "\n"
-        log += "No changes should be recommended to, or implemented for, a customer without first validating\n"
-        log += "their suitability for the specific environment. Before proposing or making any configuration,\n"
-        log += "architecture, performance, or capacity changes, consult with an experienced systems engineer,\n"
-        log += "solutions architect, or the relevant vendor support team to confirm compatibility, risks, and\n"
-        log += "expected outcomes.\n"
+        log += "These explanations are general guidance for InterSystems IRIS and Linux environments.\n"
+        log += "They are not universal recommendations. Validate changes against the application workload,\n"
+        log += "IRIS version, operating system, storage platform, and support requirements before\n"
+        log += "implementation.\n"
         log += "--------------------------------------------------------------------------------------------------\n"
         for item_text, explanation in explanation_lines:
             log += f"\n- {item_text}\n"
