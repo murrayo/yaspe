@@ -48,44 +48,45 @@ _YSCALE_JS = """
 (function() {
     var gd = document.querySelector('.plotly-graph-div');
     var rescaling = false;
-    var rescalePending = false;
-    var resetPending = false;
+    var savedRange = null;  // [t0_ms, t1_ms] when zoomed, null when autoranger
 
-    function rescaleOverlayAxes() {
+    // Convert any date representation to ms-epoch.
+    // Handles: ms numbers, "YYYY-MM-DD HH:MM:SS.ffffff", "YYYY-MM-DDTHH:MM:SS.ffffff"
+    function toMs(v) {
+        if (typeof v === 'number') return v;
+        v = String(v).replace(' ', 'T');           // space sep -> ISO T
+        v = v.replace(/(\\..{3})\\d+/, '$1');       // truncate sub-ms digits
+        var t = Date.parse(v);
+        if (isNaN(t)) t = Date.parse(v.replace(/\\.\\d+$/, ''));  // strip fractions if still bad
+        return t;
+    }
+
+    function rescaleOverlayAxes(doReset) {
         if (rescaling) return;
-        var doReset = resetPending;
-        rescalePending = false;
-        resetPending = false;
-
         var update = {};
 
         if (doReset) {
+            savedRange = null;
             ['yaxis2','yaxis3','yaxis4','yaxis5','yaxis6','yaxis7'].forEach(function(ax) {
                 if (gd.layout[ax] && gd.layout[ax].visible !== false) {
                     update[ax + '.autorange'] = true;
                 }
             });
         } else {
-            // Use Plotly's internal numeric range (ms epoch) — avoids all date string
-            // parsing issues (e.g. microsecond-precision ISO strings from pandas).
-            var fullAx = gd._fullLayout && gd._fullLayout.xaxis;
-            if (!fullAx || fullAx.autorange !== false) return;
-            var t0 = fullAx.range[0];
-            var t1 = fullAx.range[1];
+            if (!savedRange) return;  // not zoomed — Plotly autorange handles it
+            var t0 = savedRange[0], t1 = savedRange[1];
+            if (isNaN(t0) || isNaN(t1)) return;
             var axisMaxes = {};
 
-            gd.data.forEach(function(trace, ti) {
+            gd.data.forEach(function(trace) {
                 if (trace.visible === 'legendonly' || trace.visible === false) return;
                 if (!trace.x || trace.xaxis === 'x2') return;
                 var yax = trace.yaxis || 'y';
                 if (yax === 'y' || yax === 'y8') return;
 
-                // _calcdata[ti] has already-numeric x (ms epoch) and original y.
-                var calcPts = gd._calcdata && gd._calcdata[ti];
-                if (!calcPts) return;
-                for (var i = 0; i < calcPts.length; i++) {
-                    var t = calcPts[i].x;
-                    var v = calcPts[i].y;
+                for (var i = 0; i < trace.x.length; i++) {
+                    var t = toMs(trace.x[i]);
+                    var v = trace.y[i];
                     if (t >= t0 && t <= t1 && v != null && !isNaN(v)) {
                         if (!(yax in axisMaxes) || v > axisMaxes[yax]) axisMaxes[yax] = v;
                     }
@@ -94,7 +95,7 @@ _YSCALE_JS = """
 
             Object.keys(axisMaxes).forEach(function(yax) {
                 var key = 'yaxis' + yax.slice(1);
-                update[key + '.range'] = [0, (axisMaxes[yax] || 1) * 1.1];
+                update[key + '.range'] = [0, axisMaxes[yax] * 1.1];
                 update[key + '.autorange'] = false;
             });
         }
@@ -107,23 +108,21 @@ _YSCALE_JS = """
     gd.on('plotly_relayout', function(eventdata) {
         if (rescaling) return;
         if (eventdata['xaxis.autorange'] === true) {
-            resetPending = true;
-            setTimeout(rescaleOverlayAxes, 0);
+            // double-click reset
+            setTimeout(function() { rescaleOverlayAxes(true); }, 0);
         } else if (eventdata['xaxis.range[0]'] !== undefined) {
-            rescalePending = true;
-            setTimeout(rescaleOverlayAxes, 0);
-        } else if (eventdata['xaxis2.range[0]'] !== undefined) {
-            // Overview drag — give _OVERVIEW_ZOOM_JS time to commit xaxis range first
-            rescalePending = true;
-            setTimeout(rescaleOverlayAxes, 50);
+            // user zoomed main chart — capture range directly from event (most reliable)
+            savedRange = [toMs(eventdata['xaxis.range[0]']), toMs(eventdata['xaxis.range[1]'])];
+            setTimeout(function() { rescaleOverlayAxes(false); }, 0);
         }
+        // xaxis2 drag is handled by _OVERVIEW_ZOOM_JS which re-relayouts xaxis,
+        // producing the xaxis.range[0] event above — no need to handle xaxis2 here
     });
 
-    // Trace toggled while chart is zoomed — rescale to current visible window
+    // Trace toggled while chart is zoomed — rescale new/removed trace into window
     gd.on('plotly_restyle', function() {
-        if (rescaling) return;
-        rescalePending = true;
-        setTimeout(rescaleOverlayAxes, 0);
+        if (rescaling || !savedRange) return;
+        setTimeout(function() { rescaleOverlayAxes(false); }, 0);
     });
 })();
 """
