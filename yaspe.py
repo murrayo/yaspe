@@ -2620,6 +2620,7 @@ def mainline(
     peak_chart=True,
     line_chart=True,
     iostat_subfolders=False,
+    smooth_minutes=5,
 ):
     input_error = False
 
@@ -2822,7 +2823,7 @@ def mainline(
         connection.close()
 
         if not png_out:
-            yaspe_combined_overlay.run(sql_filename, output_file_path_base, smooth_minutes=5)
+            yaspe_combined_overlay.run(sql_filename, output_file_path_base, smooth_minutes=smooth_minutes)
 
     return
 
@@ -3082,6 +3083,7 @@ if __name__ == "__main__":
             args.peak_chart,
             not args.dot_chart,  # line_chart is True by default (when dot_chart is False)
             args.iostat_subfolders,
+            args.smooth_minutes,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))

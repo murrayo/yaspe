@@ -80,6 +80,23 @@ for i in *.html; do ./yaspe.py -i "$i" -a -s -x -o yaspe; done
 
 The resulting SQLite file is named `{prefix}_SystemPerformance.sqlite`.
 
+## Flask web app sync
+
+This CLI repo is the **source of truth** for all engine files. A companion Flask repo at `/Users/moldfiel/projects/all_live_projects/yaspe_flask_v1` copies these files via `sync_engine.sh`.
+
+**When you add, rename, or remove a `.py` module in this repo, update `ENGINE_FILES` in `yaspe_flask_v1/sync_engine.sh`.**
+
+Rules:
+- Add any new `.py` file that is imported (directly or transitively) by `yaspe.py`.
+- Remove entries for files that have been deleted or renamed.
+- Do not add standalone tools not imported by `yaspe.py` (e.g. `yaspe_runner.py`, `vmstat_example.py`).
+- Note the sync script change in your commit message.
+
+To verify nothing is missing: check the local imports at the top of `yaspe.py` and confirm every one appears in `ENGINE_FILES`.
+
+Current engine files tracked:
+`yaspe.py`, `extract_sections.py`, `extract_mgstat.py`, `sp_check.py`, `split_large_file.py`, `system_review.py`, `chart_output.py`, `chart_templates.py`, `yaspe_utilities.py`, `pretty_performance.py`, `yaspe_compare_overlay.py`, `yaspe_combined_overlay.py`
+
 ## Version numbering
 
 This project uses `bump2version` (`.bumpversion.cfg`). After committing and merging to `main`, always bump the version before pushing:
