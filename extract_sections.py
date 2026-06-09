@@ -6,6 +6,32 @@ import pandas as pd
 from yaspe_utilities import get_number_type, get_aix_wacky_numbers, format_date
 
 
+def parse_toc_section_order(input_file):
+    """Read the first 90 lines of an HTML pButtons file and return the TOC section
+    anchor names in document order (lowercased), or None if none are found."""
+    anchors = []
+    try:
+        with open(input_file, "r", encoding="ISO-8859-1") as fh:
+            for i, line in enumerate(fh):
+                if i >= 90:
+                    break
+                # Each TOC cell contains  href=#SECTIONNAME
+                start = 0
+                while True:
+                    idx = line.find("href=#", start)
+                    if idx == -1:
+                        break
+                    end = idx + 6
+                    # anchor name ends at first '>' or '"' or whitespace
+                    while end < len(line) and line[end] not in (">", '"', " ", "\t", "\n"):
+                        end += 1
+                    anchors.append(line[idx + 6 : end].lower())
+                    start = end
+    except OSError:
+        return None
+    return anchors if anchors else None
+
+
 def extract_sections(operating_system, input_file, include_iostat, include_nfsiostat, html_filename, disk_list):
     """
     :param operating_system: The operating system on which the data was collected. Possible values are "Linux", "Ubuntu", or "AIX".
