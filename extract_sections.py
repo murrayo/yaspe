@@ -174,10 +174,21 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
     free_memory_rows_list = []
     free_memory_date = ""
 
-    # Determine the last section we need to read so we can stop early.
-    _toc = parse_toc_section_order(input_file)
-    _stop_after = get_last_needed_section(_toc, operating_system, include_iostat, include_nfsiostat) if _toc else None
-    _stop_section_ended = False
+    # Build the set of sections we need to collect. The loop breaks once all are completed.
+    _os = (operating_system or "").lower()
+    if _os == "windows":
+        _needed = {"mgstat", "perfmon"}
+    elif _os == "aix":
+        _needed = {"mgstat", "vmstat"}
+        if include_iostat:
+            _needed.add("iostat")
+    else:  # Linux / Ubuntu / default
+        _needed = {"mgstat", "vmstat", "free"}
+        if include_iostat:
+            _needed.add("iostat")
+        if include_nfsiostat:
+            _needed.add("nfsiostat")
+    _completed = set()
 
     with open(input_file, "r", encoding="ISO-8859-1") as file:
         for line in file:
@@ -202,8 +213,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                 free_memory_processing = True
             if free_memory_processing and ("pre>" in line or "div id=" in line) and "div id=free" not in line:
                 free_memory_processing = False
-                if _stop_after == "free":
-                    _stop_section_ended = True
+                _completed.add("free")
             if free_memory_processing and free_memory_header != "":
                 line_stripped = line.strip()
                 if line_stripped and "," in line_stripped:
@@ -252,8 +262,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                 mgstat_processing = True
             if "<!-- end_mgstat -->" in line:
                 mgstat_processing = False
-                if _stop_after == "mgstat":
-                    _stop_section_ended = True
+                _completed.add("mgstat")
             if mgstat_processing and mgstat_header != "":
                 if line.strip() != "":
                     mgstat_row_dict = {}
@@ -296,8 +305,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                     vmstat_processing = True
                 if "<!-- end_vmstat -->" in line:
                     vmstat_processing = False
-                    if _stop_after == "vmstat":
-                        _stop_section_ended = True
+                    _completed.add("vmstat")
                 if vmstat_processing and vmstat_header != "":
                     if line.strip() != "":
                         vmstat_row_dict = {}
@@ -338,8 +346,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                     vmstat_processing = True
                 if "<!-- end_vmstat -->" in line:
                     vmstat_processing = False
-                    if _stop_after == "vmstat":
-                        _stop_section_ended = True
+                    _completed.add("vmstat")
                 if vmstat_processing and vmstat_header != "":
                     if line.strip() != "":
                         vmstat_row_dict = {}
@@ -404,8 +411,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                     aix_sar_d_processing = True
                 if "</pre><p align=" in line and "<div id=sar-d>" not in line:
                     aix_sar_d_processing = False
-                    if _stop_after == "sar-d":
-                        _stop_section_ended = True
+                    _completed.add("sar-d")
                 if aix_sar_d_processing and aix_sar_d_header != "":
                     if line.strip() != "":
                         aix_sar_d_row_dict = {}
@@ -465,8 +471,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                     perfmon_processing = True
                 if "<!-- end_win_perfmon -->" in line:
                     perfmon_processing = False
-                    if _stop_after == "perfmon":
-                        _stop_section_ended = True
+                    _completed.add("perfmon")
                 if perfmon_processing and perfmon_header != "":
                     if line.strip() != "":
                         perfmon_row_dict = {}
@@ -496,8 +501,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
             if (operating_system == "Linux" or operating_system == "Ubuntu") and include_iostat:
                 if iostat_processing and "<div" in line:  # iostat does not flag end
                     iostat_processing = False
-                    if _stop_after == "iostat":
-                        _stop_section_ended = True
+                    _completed.add("iostat")
                 else:
                     # Found iostat
                     if "id=iostat" in line or 'id="iostat"' in line:
@@ -586,8 +590,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
             if (operating_system == "Linux" or operating_system == "Ubuntu") and include_nfsiostat:
                 if nfsiostat_processing and "pre>" in line:  # nfsiostat does not flag end
                     nfsiostat_processing = False
-                    if _stop_after == "nfsiostat":
-                        _stop_section_ended = True
+                    _completed.add("nfsiostat")
                 else:
                     # Found nfsiostat
                     if "id=nfsiostat" in line:
@@ -732,8 +735,8 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         aix_iostat_columns.extend(["Date"])
                         iostat_header = ",".join(aix_iostat_columns)
 
-            if _stop_section_ended:
-                print(f"Early stop: finished reading '{_stop_after}' section, skipping remainder of file.")
+            if _needed.issubset(_completed):
+                print(f"Early stop: all needed sections collected ({', '.join(sorted(_completed & _needed))}), skipping remainder of file.")
                 break
 
     if mgstat_header != "":
