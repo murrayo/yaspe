@@ -727,6 +727,7 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
                         iostat_header = ",".join(aix_iostat_columns)
 
             if _stop_section_ended:
+                print(f"Early stop: finished reading '{_stop_after}' section, skipping remainder of file.")
                 break
 
     if mgstat_header != "":
