@@ -580,6 +580,8 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
             if (operating_system == "Linux" or operating_system == "Ubuntu") and include_nfsiostat:
                 if nfsiostat_processing and "pre>" in line:  # nfsiostat does not flag end
                     nfsiostat_processing = False
+                    if _stop_after == "nfsiostat":
+                        _stop_section_ended = True
                 else:
                     # Found nfsiostat
                     if "id=nfsiostat" in line:
