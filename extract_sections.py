@@ -34,6 +34,30 @@ def parse_toc_section_order(input_file):
     return anchors if anchors else None
 
 
+def get_last_needed_section(toc_order, operating_system, include_iostat, include_nfsiostat):
+    """Return the anchor name of the last section that needs to be read for this run,
+    based on OS and flags, or None if no needed section appears in the TOC."""
+    os_lower = operating_system.lower() if operating_system else ""
+
+    if os_lower == "windows":
+        needed = {"mgstat", "perfmon"}
+    elif os_lower == "aix":
+        needed = {"mgstat", "vmstat"}
+        if include_iostat:
+            needed.add("iostat")
+    else:  # Linux / Ubuntu / default
+        needed = {"mgstat", "vmstat", "free"}
+        if include_iostat:
+            needed.update({"iostat", "sar-d"})
+        if include_nfsiostat:
+            needed.add("nfsiostat")
+
+    for anchor in reversed(toc_order):
+        if anchor in needed:
+            return anchor
+    return None
+
+
 def extract_sections(operating_system, input_file, include_iostat, include_nfsiostat, html_filename, disk_list):
     """
     :param operating_system: The operating system on which the data was collected. Possible values are "Linux", "Ubuntu", or "AIX".

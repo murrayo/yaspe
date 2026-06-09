@@ -4,7 +4,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from extract_sections import parse_toc_section_order
+from extract_sections import parse_toc_section_order, get_last_needed_section
 
 
 RHEL_TOC = """\
@@ -75,3 +75,48 @@ def test_parse_toc_no_anchors_returns_none():
         assert result is None
     finally:
         os.unlink(path)
+
+
+RHEL_TOC_ORDER = ["irisall", "cpffile", "mgstat", "vmstat", "free", "iostat", "sar-d"]
+AIX_TOC_ORDER  = ["irisall", "cpffile", "mgstat", "vmstat", "iostat"]
+WIN_TOC_ORDER  = ["irisall", "cpffile", "mgstat", "perfmon"]
+
+
+def test_last_needed_linux_no_iostat():
+    # Default Linux run: needs mgstat, vmstat, free — last in TOC order is free
+    result = get_last_needed_section(RHEL_TOC_ORDER, "Linux", include_iostat=False, include_nfsiostat=False)
+    assert result == "free"
+
+
+def test_last_needed_linux_with_iostat():
+    # With iostat: also needs iostat, sar-d — last in TOC order is sar-d
+    result = get_last_needed_section(RHEL_TOC_ORDER, "Linux", include_iostat=True, include_nfsiostat=False)
+    assert result == "sar-d"
+
+
+def test_last_needed_linux_with_nfsiostat():
+    # nfsiostat appears between free and iostat in some files; if not in TOC falls back to free
+    toc_with_nfs = ["irisall", "mgstat", "vmstat", "free", "nfsiostat", "iostat", "sar-d"]
+    result = get_last_needed_section(toc_with_nfs, "Linux", include_iostat=False, include_nfsiostat=True)
+    assert result == "nfsiostat"
+
+
+def test_last_needed_aix_no_iostat():
+    result = get_last_needed_section(AIX_TOC_ORDER, "AIX", include_iostat=False, include_nfsiostat=False)
+    assert result == "vmstat"
+
+
+def test_last_needed_aix_with_iostat():
+    result = get_last_needed_section(AIX_TOC_ORDER, "AIX", include_iostat=True, include_nfsiostat=False)
+    assert result == "iostat"
+
+
+def test_last_needed_windows():
+    result = get_last_needed_section(WIN_TOC_ORDER, "Windows", include_iostat=False, include_nfsiostat=False)
+    assert result == "perfmon"
+
+
+def test_last_needed_no_match_returns_none():
+    # TOC has none of the needed sections
+    result = get_last_needed_section(["linuxinfo", "cpu"], "Linux", include_iostat=False, include_nfsiostat=False)
+    assert result is None
