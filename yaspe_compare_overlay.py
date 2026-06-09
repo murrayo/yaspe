@@ -21,26 +21,60 @@ _COLORS = [
 ]
 
 _OVERVIEW_ZOOM_JS = """
+(function() {
 var gd = document.querySelector('.plotly-graph-div');
 var syncing = false;
+var zoomRange = null;
+
+function drawHighlight() {
+    var baseShapes = (gd.layout.shapes || []).filter(function(s) {
+        return !s._yaspe_highlight;
+    });
+    var shapes = zoomRange ? baseShapes.concat([{
+        _yaspe_highlight: true,
+        type: 'rect',
+        xref: 'x2', yref: 'y2 domain',
+        x0: zoomRange[0], x1: zoomRange[1],
+        y0: 0, y1: 1,
+        fillcolor: 'rgba(255,165,0,0.3)',
+        line: {color: 'rgba(255,140,0,0.7)', width: 1},
+        layer: 'above'
+    }]) : baseShapes;
+    syncing = true;
+    Plotly.relayout(gd, {shapes: shapes}).then(function() { syncing = false; });
+}
+
 gd.on('plotly_relayout', function(eventdata) {
     if (syncing) return;
     var r0 = eventdata['xaxis2.range[0]'];
     var r1 = eventdata['xaxis2.range[1]'];
     if (r0 !== undefined && r1 !== undefined) {
+        zoomRange = [r0, r1];
         syncing = true;
         Plotly.relayout(gd, {
             'xaxis.range[0]': r0,
             'xaxis.range[1]': r1,
             'xaxis.autorange': false,
             'xaxis2.autorange': true
-        }).then(function() { syncing = false; });
+        }).then(function() { syncing = false; drawHighlight(); });
     } else if (eventdata['xaxis2.autorange'] === true) {
+        zoomRange = null;
         syncing = true;
         Plotly.relayout(gd, {'xaxis.autorange': true})
-            .then(function() { syncing = false; });
+            .then(function() { syncing = false; drawHighlight(); });
+    } else {
+        var m0 = eventdata['xaxis.range[0]'];
+        var m1 = eventdata['xaxis.range[1]'];
+        if (m0 !== undefined && m1 !== undefined) {
+            zoomRange = [m0, m1];
+            drawHighlight();
+        } else if (eventdata['xaxis.autorange'] === true) {
+            zoomRange = null;
+            drawHighlight();
+        }
     }
 });
+})();
 """
 
 

@@ -14,7 +14,6 @@ from datetime import datetime
 from dateutil.parser import parse
 from functools import lru_cache
 
-# from altair_saver import save
 import sqlite3
 import sys
 from sqlite3 import Error
