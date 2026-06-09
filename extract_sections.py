@@ -48,7 +48,7 @@ def get_last_needed_section(toc_order, operating_system, include_iostat, include
     else:  # Linux / Ubuntu / default
         needed = {"mgstat", "vmstat", "free"}
         if include_iostat:
-            needed.update({"iostat", "sar-d"})
+            needed.add("iostat")
         if include_nfsiostat:
             needed.add("nfsiostat")
 

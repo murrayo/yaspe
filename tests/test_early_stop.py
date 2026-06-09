@@ -89,9 +89,9 @@ def test_last_needed_linux_no_iostat():
 
 
 def test_last_needed_linux_with_iostat():
-    # With iostat: also needs iostat, sar-d — last in TOC order is sar-d
+    # With iostat: also needs iostat — last in TOC order is iostat (sar-d is AIX-only)
     result = get_last_needed_section(RHEL_TOC_ORDER, "Linux", include_iostat=True, include_nfsiostat=False)
-    assert result == "sar-d"
+    assert result == "iostat"
 
 
 def test_last_needed_linux_with_nfsiostat():
