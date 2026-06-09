@@ -12,6 +12,7 @@ import yaml
 
 from datetime import datetime
 from dateutil.parser import parse
+from functools import lru_cache
 
 # from altair_saver import save
 import sqlite3
@@ -39,6 +40,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
 # Define a function to infer the date format
+@lru_cache(maxsize=128)
 def guess_datetime_format(datetime_string):
     try:
         dt = parse(datetime_string)
