@@ -36,7 +36,7 @@ def parse_toc_section_order(input_file):
 
 def get_last_needed_section(toc_order, operating_system, include_iostat, include_nfsiostat):
     """Return the anchor name of the last section that needs to be read for this run,
-    based on OS and flags, or None if no needed section appears in the TOC."""
+    based on OS and flags, or None if any needed section is absent from the TOC (fall back to full read)."""
     os_lower = operating_system.lower() if operating_system else ""
 
     if os_lower == "windows":
@@ -51,6 +51,12 @@ def get_last_needed_section(toc_order, operating_system, include_iostat, include
             needed.add("iostat")
         if include_nfsiostat:
             needed.add("nfsiostat")
+
+    # If any needed section is missing from the TOC the file may be older and not list all sections.
+    # Fall back to full-file read to avoid silently missing data.
+    toc_set = set(toc_order)
+    if not needed.issubset(toc_set):
+        return None
 
     for anchor in reversed(toc_order):
         if anchor in needed:

@@ -122,6 +122,13 @@ def test_last_needed_no_match_returns_none():
     assert result is None
 
 
+def test_last_needed_returns_none_when_needed_section_absent_from_toc():
+    # Older files may have vmstat in TOC but not free — must fall back to full read
+    toc_without_free = ["irisall", "cpffile", "mgstat", "linuxinfo", "vmstat"]
+    result = get_last_needed_section(toc_without_free, "Linux", include_iostat=False, include_nfsiostat=False)
+    assert result is None
+
+
 def test_early_stop_does_not_lose_data(tmp_path):
     """extract_sections must return the same mgstat rows whether it stops early or reads the whole file."""
     # Build a minimal synthetic HTML that looks like a real pButtons file:
