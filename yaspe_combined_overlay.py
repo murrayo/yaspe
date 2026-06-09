@@ -14,33 +14,65 @@ import plotly.graph_objects as go
 
 _OVERVIEW_ZOOM_JS = """
 (function() {
-    var gd = document.querySelector('.plotly-graph-div');
-    var syncing = false;
-    gd.on('plotly_relayout', function(eventdata) {
-        if (syncing) return;
-        var r0 = eventdata['xaxis2.range[0]'];
-        var r1 = eventdata['xaxis2.range[1]'];
-        if (r0 !== undefined && r1 !== undefined) {
-            // Overview drag -> zoom main chart
-            syncing = true;
-            Plotly.relayout(gd, {
-                'xaxis.range[0]': r0,
-                'xaxis.range[1]': r1,
-                'xaxis.autorange': false,
-                'xaxis2.autorange': true
-            }).then(function() { syncing = false; });
-        } else if (eventdata['xaxis2.autorange'] === true) {
-            // Overview reset -> reset main chart
-            syncing = true;
-            Plotly.relayout(gd, {'xaxis.autorange': true})
-                .then(function() { syncing = false; });
-        } else if (eventdata['xaxis.autorange'] === true) {
-            // Main chart double-click reset -> also reset overview
-            syncing = true;
-            Plotly.relayout(gd, {'xaxis2.autorange': true})
-                .then(function() { syncing = false; });
-        }
-    });
+var gd = document.querySelector('.plotly-graph-div');
+var syncing = false;
+var zoomRange = null;
+
+function noHighlightShapes() {
+    return (gd.layout.shapes || []).filter(function(s) { return !s._yaspe_highlight; });
+}
+
+function applyHighlight(r0, r1) {
+    var shapes = noHighlightShapes().concat([{
+        _yaspe_highlight: true,
+        type: 'rect', xref: 'x2', yref: 'y2 domain',
+        x0: r0, x1: r1, y0: 0, y1: 1,
+        fillcolor: 'rgba(255,165,0,0.3)',
+        line: {color: 'rgba(255,140,0,0.7)', width: 1},
+        layer: 'above'
+    }]);
+    syncing = true;
+    Plotly.relayout(gd, {shapes: shapes}).then(function() { syncing = false; });
+}
+
+function resetAll() {
+    zoomRange = null;
+    syncing = true;
+    Plotly.relayout(gd, {
+        'xaxis.autorange': true,
+        'xaxis2.autorange': true,
+        shapes: noHighlightShapes()
+    }).then(function() { syncing = false; });
+}
+
+gd.on('plotly_relayout', function(eventdata) {
+    if (syncing) return;
+    var r0 = eventdata['xaxis2.range[0]'];
+    var r1 = eventdata['xaxis2.range[1]'];
+    if (r0 !== undefined && r1 !== undefined) {
+        // User dragged on overview: zoom top chart, snap overview back, draw highlight
+        zoomRange = [r0, r1];
+        syncing = true;
+        Plotly.relayout(gd, {
+            'xaxis.range[0]': r0, 'xaxis.range[1]': r1,
+            'xaxis.autorange': false,
+            'xaxis2.autorange': true
+        }).then(function() { syncing = false; applyHighlight(r0, r1); });
+        return;
+    }
+    // Double-click on either chart: reset both axes and clear highlight
+    if (eventdata['xaxis.autorange'] === true || eventdata['xaxis2.autorange'] === true) {
+        resetAll();
+        return;
+    }
+    // Direct zoom on top chart: mirror to highlight on overview
+    var m0 = eventdata['xaxis.range[0]'];
+    var m1 = eventdata['xaxis.range[1]'];
+    if (m0 !== undefined && m1 !== undefined) {
+        zoomRange = [m0, m1];
+        applyHighlight(m0, m1);
+    }
+});
 })();
 """
 
