@@ -25,7 +25,7 @@ function noHighlightShapes() {
 function applyHighlight(r0, r1) {
     var shapes = noHighlightShapes().concat([{
         _yaspe_highlight: true,
-        type: 'rect', xref: 'x2', yref: 'y2 domain',
+        type: 'rect', xref: 'x2', yref: 'y8 domain',
         x0: r0, x1: r1, y0: 0, y1: 1,
         fillcolor: 'rgba(255,165,0,0.3)',
         line: {color: 'rgba(255,140,0,0.7)', width: 1},
