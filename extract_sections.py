@@ -25,7 +25,9 @@ def parse_toc_section_order(input_file):
                     # anchor name ends at first '>' or '"' or whitespace
                     while end < len(line) and line[end] not in (">", '"', " ", "\t", "\n"):
                         end += 1
-                    anchors.append(line[idx + 6 : end].lower())
+                    anchor = line[idx + 6 : end].lower()
+                    if anchor:
+                        anchors.append(anchor)
                     start = end
     except OSError:
         return None
