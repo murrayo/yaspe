@@ -1173,6 +1173,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     min_max = kwargs.get("min_max", False)
     threshold = kwargs.get("threshold")  # Optional (value, label) tuple
     write_png = kwargs.get("write_png", False)
+    write_html = kwargs.get("write_html", True)
     png_path = kwargs.get("png_path", filepath)
 
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
@@ -1268,12 +1269,13 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     )
 
     output_name = column_name.replace("/", "_")
-    fig.write_html(
-        f"{filepath}{output_prefix}{file_prefix}{output_name}.html",
-        include_plotlyjs="cdn",
-        post_script=_OVERVIEW_ZOOM_JS,
-        full_html=True,
-    )
+    if write_html:
+        fig.write_html(
+            f"{filepath}{output_prefix}{file_prefix}{output_name}.html",
+            include_plotlyjs="cdn",
+            post_script=_OVERVIEW_ZOOM_JS,
+            full_html=True,
+        )
 
     if write_png:
         fig.write_image(
@@ -1281,7 +1283,8 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
             scale=2, width=1400, height=650,
         )
 
-    _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix)
+    if write_html:
+        _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix)
 
 
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -1290,6 +1293,7 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
     write_png = kwargs.get("write_png", False)
+    write_html = kwargs.get("write_html", True)
     png_path = kwargs.get("png_path", filepath)
 
     fig = make_subplots(
@@ -1328,12 +1332,13 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     )
 
     output_name = column_name.replace(" ", "_").replace("/", "_per_")
-    fig.write_html(
-        f"{filepath}{output_prefix}{file_prefix}{output_name}.html",
-        include_plotlyjs="cdn",
-        post_script=_OVERVIEW_ZOOM_JS,
-        full_html=True,
-    )
+    if write_html:
+        fig.write_html(
+            f"{filepath}{output_prefix}{file_prefix}{output_name}.html",
+            include_plotlyjs="cdn",
+            post_script=_OVERVIEW_ZOOM_JS,
+            full_html=True,
+        )
 
     if write_png:
         fig.write_image(
@@ -1548,7 +1553,7 @@ def chart_vmstat(
                 linked_chart(data, column_name, title, max_y,
                              html_filepath if png_html_out else filepath, output_prefix,
                              min_max=min_max, threshold=threshold,
-                             write_png=True, png_path=png_filepath)
+                             write_html=png_html_out, write_png=True, png_path=png_filepath)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
                              min_max=min_max, threshold=threshold)
@@ -1643,7 +1648,7 @@ def chart_mgstat(
                 linked_chart(data, column_name, title, max_y,
                              html_filepath if png_html_out else filepath, output_prefix,
                              min_max=min_max,
-                             write_png=True, png_path=png_filepath)
+                             write_html=png_html_out, write_png=True, png_path=png_filepath)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
                              min_max=min_max)
@@ -1742,7 +1747,7 @@ def chart_perfmon(
                 linked_chart(data, column_name, title, max_y,
                              html_filepath if png_html_out else filepath, output_prefix,
                              min_max=min_max,
-                             write_png=True, png_path=png_filepath)
+                             write_html=png_html_out, write_png=True, png_path=png_filepath)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
 
@@ -1886,7 +1891,7 @@ def chart_iostat(
                         linked_chart(data, column_name, title, max_y,
                                      dev_html_fp if png_html_out else device_filepath, output_prefix,
                                      file_prefix=device, min_max=min_max, threshold=threshold,
-                                     write_png=True, png_path=dev_png_fp)
+                                     write_html=png_html_out, write_png=True, png_path=dev_png_fp)
                     else:
                         linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
                                      file_prefix=device, min_max=min_max, threshold=threshold)
@@ -1941,7 +1946,7 @@ def chart_iostat(
                         linked_chart_no_time(data, column_name, title, max_y,
                                              dev_html_fp if png_html_out else device_filepath, output_prefix,
                                              file_prefix=device,
-                                             write_png=True, png_path=dev_png_fp)
+                                             write_html=png_html_out, write_png=True, png_path=dev_png_fp)
                     else:
                         linked_chart_no_time(data, column_name, title, max_y,
                                              device_filepath, output_prefix, file_prefix=device)
@@ -2005,7 +2010,7 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
                     linked_chart_no_time(data, column_name, title, max_y,
                                          dev_html_fp if png_html_out else device_filepath, output_prefix,
                                          file_prefix=pfx,
-                                         write_png=True, png_path=dev_png_fp)
+                                         write_html=png_html_out, write_png=True, png_path=dev_png_fp)
                 else:
                     linked_chart_no_time(data, column_name, title, max_y,
                                          device_filepath, output_prefix, file_prefix=pfx)
@@ -2091,7 +2096,7 @@ def chart_aix_sar_d(
                     linked_chart(data, column_name, title, max_y,
                                  dev_html_fp if png_html_out else device_filepath, output_prefix,
                                  file_prefix=pfx, min_max=min_max,
-                                 write_png=True, png_path=dev_png_fp)
+                                 write_html=png_html_out, write_png=True, png_path=dev_png_fp)
                 else:
                     linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
                                  file_prefix=pfx, min_max=min_max)
@@ -2149,7 +2154,7 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
                 linked_chart(data, column_name, title, max_y,
                              html_filepath if png_html_out else filepath, output_prefix,
                              min_max=min_max,
-                             write_png=True, png_path=png_filepath)
+                             write_html=png_html_out, write_png=True, png_path=png_filepath)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
                              min_max=min_max)
