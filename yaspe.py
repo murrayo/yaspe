@@ -1309,9 +1309,24 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         )
 
     if write_png:
-        fig.write_image(
+        png_fig = go.Figure()
+        png_fig.add_trace(go.Scatter(
+            x=data[x_column], y=data["metric"],
+            mode="lines", name=column_name,
+            line=dict(width=1),
+        ))
+        _apply_ref_lines(png_fig, data, min_max, threshold, row=None)
+        png_fig.update_layout(
+            title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
+            xaxis=dict(title="", tickfont=dict(size=13)),
+            yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
+            legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
+            height=500, width=1400,
+            template="plotly_white",
+        )
+        png_fig.write_image(
             f"{png_path}{output_prefix}{file_prefix}{output_name}.png",
-            scale=2, width=1400, height=650,
+            scale=2, width=1400, height=500,
         )
 
     if write_html:
@@ -1396,9 +1411,23 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
         )
 
     if write_png:
-        fig.write_image(
+        png_fig = go.Figure()
+        png_fig.add_trace(go.Scatter(
+            x=data["id_key"], y=data["metric"],
+            mode="lines", name=column_name,
+            line=dict(width=1),
+        ))
+        png_fig.update_layout(
+            title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
+            xaxis=dict(title="Sample", tickfont=dict(size=13)),
+            yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
+            legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
+            height=500, width=1400,
+            template="plotly_white",
+        )
+        png_fig.write_image(
             f"{png_path}{output_prefix}{file_prefix}{output_name}.png",
-            scale=2, width=1400, height=650,
+            scale=2, width=1400, height=500,
         )
 
 
