@@ -63,6 +63,18 @@ def create_connection(path):
     return connection
 
 
+def close_connection(connection):
+    """Checkpoint the WAL, switch back to rollback journal, then close.
+    This removes the -wal and -shm files rather than leaving them on disk."""
+    if connection is None:
+        return
+    try:
+        connection.execute("PRAGMA journal_mode = DELETE")
+    except Error:
+        pass
+    connection.close()
+
+
 def execute_simple_query(connection, query):
     cursor = connection.cursor()
     try:
@@ -2716,7 +2728,7 @@ def mainline(
     mgstat_file,
     peak_chart=True,
     line_chart=True,
-    iostat_subfolders=False,
+    iostat_subfolders=True,
     smooth_minutes=5,
 ):
     input_error = False
@@ -2845,7 +2857,7 @@ def mainline(
                     csv_date_format,
                 )
 
-        connection.close()
+        close_connection(connection)
         connection = None
 
     # Charting is separate
@@ -2918,7 +2930,7 @@ def mainline(
                 )
 
         finally:
-            connection.close()
+            close_connection(connection)
 
         if not png_out:
             yaspe_combined_overlay.run(sql_filename, output_file_path_base, smooth_minutes=smooth_minutes)
