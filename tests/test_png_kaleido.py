@@ -100,3 +100,18 @@ def test_plotly_histogram_iostat_png_produces_files():
         write_out = os.path.join(d, "prefix__sdb_z_Write Latency Histogram.png")
         assert os.path.exists(read_out), f"Read PNG missing: {read_out}"
         assert os.path.exists(write_out), f"Write PNG missing: {write_out}"
+
+
+def test_plotly_stacked_iostat_png_produces_file():
+    import yaspe
+    base = datetime.datetime(2024, 1, 1, 10, 0, 0)
+    rows = [{"datetime_parsed": base + datetime.timedelta(minutes=i),
+             "r/s": float(i), "w/s": float(20 - i)} for i in range(20)]
+    df = pd.DataFrame(rows)
+    columns_to_stack = {"r/s": "Reads per sec", "w/s": "Writes per sec"}
+    with tempfile.TemporaryDirectory() as d:
+        filepath = d + "/"
+        yaspe._plotly_stacked_iostat_png(df, columns_to_stack, "sdb", "IOPS Title", 0, filepath, "prefix_")
+        out = os.path.join(d, "prefix__sdb_z_Stacked IOPS.png")
+        assert os.path.exists(out), f"PNG missing: {out}"
+        assert os.path.getsize(out) > 5000

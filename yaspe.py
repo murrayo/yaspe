@@ -1912,6 +1912,45 @@ def _plotly_histogram_iostat_png(data, columns_to_histogram, device, title, file
         )
 
 
+def _plotly_stacked_iostat_png(data, columns_to_stack, device, title, max_y, filepath, output_prefix, **kwargs):
+    """Plotly stacked area chart for iostat IOPS. Exported to PNG via kaleido.
+    columns_to_stack: dict like {'r/s': 'Reads per sec', 'w/s': 'Writes per sec'}
+    """
+    file_prefix = kwargs.get("file_prefix", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
+
+    x_col = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
+
+    col0, label0 = list(columns_to_stack.items())[0]
+    col1, label1 = list(columns_to_stack.items())[1]
+
+    fig = go.Figure()
+    for col, label in [(col0, label0), (col1, label1)]:
+        if col not in data.columns:
+            continue
+        fig.add_trace(go.Scatter(
+            x=data[x_col], y=data[col],
+            mode="lines", name=label,
+            stackgroup="one",
+            line=dict(width=0.5),
+        ))
+
+    yaxis_range = [0, max_y] if max_y and max_y > 0 else [0, None]
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
+        yaxis=dict(title="Total IOPS", range=yaxis_range, rangemode="tozero"),
+        height=650, width=1400,
+        template="plotly_white",
+        legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
+    )
+
+    fig.write_image(
+        f"{filepath}{output_prefix}{file_prefix}_{device}_z_Stacked IOPS.png",
+        scale=2, width=1400, height=650,
+    )
+
+
 def chart_vmstat(
     connection,
     filepath,
@@ -2288,14 +2327,14 @@ def chart_iostat(
                     if "read rps" in device_df.columns and "write wps" in device_df.columns:
                         title = f"{device} : Total IOPS - {customer}"
                         columns_to_stack = {"read rps": "Reads per sec", "write wps": "Writes per sec"}
-                        simple_chart_stacked_iostat(
+                        _plotly_stacked_iostat_png(
                             device_df, columns_to_stack, device, title, 0, dev_png_fp, output_prefix
                         )
 
                         if "read avg serv" in device_df.columns and "write avg serv" in device_df.columns:
                             title = f"{device} : Latency - {customer}"
                             columns_to_histogram = {"read avg serv": "read rps", "write avg serv": "write wps"}
-                            simple_chart_histogram_iostat(
+                            _plotly_histogram_iostat_png(
                                 device_df, columns_to_histogram, device, title, dev_png_fp, output_prefix
                             )
 
@@ -2303,7 +2342,7 @@ def chart_iostat(
                     if "r/s" in device_df.columns and "w/s" in device_df.columns:
                         title = f"{device} : Total IOPS - {customer}"
                         columns_to_stack = {"r/s": "Reads per sec", "w/s": "Writes per sec"}
-                        simple_chart_stacked_iostat(
+                        _plotly_stacked_iostat_png(
                             device_df, columns_to_stack, device, title, 0, dev_png_fp, output_prefix
                         )
 
@@ -2311,7 +2350,7 @@ def chart_iostat(
                             title = f"{device} : Latency - {customer}"
                             # Column name : check for non-zero column
                             columns_to_histogram = {"r_await": "r/s", "w_await": "w/s"}
-                            simple_chart_histogram_iostat(
+                            _plotly_histogram_iostat_png(
                                 device_df, columns_to_histogram, device, title, dev_png_fp, output_prefix
                             )
 
@@ -2345,24 +2384,10 @@ def chart_iostat(
                         threshold = (1, "1 ms latency target")
 
                     if png_out or png_html_out:
-                        simple_chart(
-                            data,
-                            column_name,
-                            title,
-                            max_y,
-                            dev_png_fp,
-                            output_prefix,
-                            file_prefix=device,
-                            min_max=min_max,
-                            peak_chart=peak_chart,
-                            glorefs_peak_window=glorefs_peak_window,
-                            line_chart=line_chart,
-                            threshold=threshold,
-                            business_hours_chart=min_max,
-                        )
-                        if png_html_out:
-                            linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
-                                         file_prefix=device, min_max=min_max, threshold=threshold)
+                        linked_chart(data, column_name, title, max_y,
+                                     dev_html_fp if png_html_out else device_filepath, output_prefix,
+                                     file_prefix=device, min_max=min_max, threshold=threshold,
+                                     write_png=True, png_path=dev_png_fp)
                     else:
                         linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
                                      file_prefix=device, min_max=min_max, threshold=threshold)
