@@ -1476,6 +1476,8 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         file_prefix = f"{file_prefix}_"
     min_max = kwargs.get("min_max", False)
     threshold = kwargs.get("threshold")  # Optional (value, label) tuple
+    write_png = kwargs.get("write_png", False)
+    png_path = kwargs.get("png_path", filepath)
 
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
@@ -1576,6 +1578,12 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         post_script=_OVERVIEW_ZOOM_JS,
         full_html=True,
     )
+
+    if write_png:
+        fig.write_image(
+            f"{png_path}{output_prefix}{file_prefix}{output_name}.png",
+            scale=2, width=1400, height=650,
+        )
 
     _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix)
 
