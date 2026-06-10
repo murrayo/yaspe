@@ -2201,13 +2201,10 @@ def chart_perfmon(
             data = to_chart_df
 
             if png_out or png_html_out:
-                simple_chart(
-                    data, column_name, title, max_y, png_filepath, output_prefix,
-                    min_max=min_max, peak_chart=peak_chart, glorefs_peak_window=glorefs_peak_window,
-                    line_chart=line_chart, business_hours_chart=min_max,
-                )
-                if png_html_out:
-                    linked_chart(data, column_name, title, max_y, html_filepath, output_prefix, min_max=min_max)
+                linked_chart(data, column_name, title, max_y,
+                             html_filepath if png_html_out else filepath, output_prefix,
+                             min_max=min_max,
+                             write_png=True, png_path=png_filepath)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
 
