@@ -65,7 +65,7 @@ For local version:
 
 ``` commandline
 usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c]
-             [-p] [-P] [--dots] [-s] [-m] [-D] [-d DISK_LIST [DISK_LIST ...]] [--iostat_subfolders]
+             [-p] [-P] [--dots] [-s] [-m] [-D] [-d DISK_LIST [DISK_LIST ...]] [--iostat_no_subfolders]
              [-l "string to split on"] [--peak_chart] [--no_peak_chart] [-C "/path/to/directory"] [-B] [--smooth-minutes N]
 
 Performance file review.
@@ -92,7 +92,8 @@ options:
   -D, --DDMMYYYY        Date format for csv files is DDMMYYYY
   -d DISK_LIST [DISK_LIST ...], --disk_list DISK_LIST [DISK_LIST ...]
                         List of disks, if not entered all are processed. No commas or quotes, e.g. -d dm-0 dm-1
-  --iostat_subfolders   Save iostat charts into separate subfolders, one per disk device name.
+  --iostat_no_subfolders
+                        Save all iostat charts flat (no per-device subfolders). Default is to use subfolders.
   -l "string to split on", --large_file_split_on_string "string to split on"
                         Split large input file on first occurrence of this string. Blank -l "" defaults to "div id=iostat"
   --peak_chart          Create additional peak 60-minute charts for metrics with min_max enabled when data is 8-25 hours. Default is True.
@@ -133,13 +134,11 @@ If you care only about a selected list of disks you can optionally add a disk li
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p -x -d dm-0 dm-1
 ```
 
-To save iostat charts into separate subfolders — one subfolder per disk device — add `--iostat_subfolders`:
+Iostat charts are saved into per-device subfolders by default, creating `{prefix}_metrics/iostat/dm-0/`, `{prefix}_metrics/iostat/dm-1/`, etc. To disable this and place all disk charts flat in a single `iostat/` folder, add `--iostat_no_subfolders`:
 
 ``` commandline
-docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p -x --iostat_subfolders
+docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p -x --iostat_no_subfolders
 ```
-
-This creates `{prefix}_metrics/iostat/dm-0/`, `{prefix}_metrics/iostat/dm-1/`, etc. instead of placing all disk charts in a single `iostat/` folder.
 
 ### For Apple ARM container
 
@@ -195,7 +194,7 @@ docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/three_d
 ## Output files
 
 - **HTML charts** (default): interactive Plotly charts for all columns in mgstat, vmstat/perfmon, and optionally iostat, written to `./prefix_metrics`. Each chart has a main zoom panel and an overview panel — drag the overview to zoom, double-click to reset. A `combined_overlay.html` (vmstat CPU + mgstat IO) is also written automatically to `{prefix}_metrics/`.
-- **PNG charts** (`-p`): static matplotlib charts. Use for quick review or when sharing files that will not be opened in a browser.
+- **PNG charts** (`-p`): static PNG charts. Use for quick review or when sharing files that will not be opened in a browser.
 - **PNG + HTML** (`-P`): produce both formats. PNG files go into `png/` and HTML files go into `html/` subdirectories within each metric folder (e.g. `vmstat/png/`, `vmstat/html/`). A `combined_overlay.html` is also written automatically to `{prefix}_metrics/`.
 - It is optional to create charts for iostat (`-x`) as this can take a long time if there is a large disk list.
 - If you do not want the default prefix (html file name), override with `-o your_choice` or `-o ''` for no prefix.
