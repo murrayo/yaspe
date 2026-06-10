@@ -1960,7 +1960,7 @@ def chart_vmstat(
         if "sy" in df.columns and "wa" in df.columns and "us" in df.columns:
             title = f"CPU utilisation % - {customer}"
             title += f"\n{number_cpus} cores ({processor})"
-            simple_chart_stacked(df, "sy, wa, us", title, 100, png_filepath, output_prefix)
+            _plotly_stacked_png(df, title, 100, png_filepath, output_prefix)
 
     # Format the data for Altair
     # Cut down the df to just the list of categorical data we care about (columns)
@@ -2007,23 +2007,10 @@ def chart_vmstat(
                 threshold = (10, "10% iowait threshold")
 
             if png_out or png_html_out:
-                simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    png_filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    glorefs_peak_window=glorefs_peak_window,
-                    line_chart=line_chart,
-                    threshold=threshold,
-                    business_hours_chart=min_max,
-                )
-                if png_html_out:
-                    linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
-                                 min_max=min_max, threshold=threshold)
+                linked_chart(data, column_name, title, max_y,
+                             html_filepath if png_html_out else filepath, output_prefix,
+                             min_max=min_max, threshold=threshold,
+                             write_png=True, png_path=png_filepath)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
                              min_max=min_max, threshold=threshold)
