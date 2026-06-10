@@ -81,3 +81,22 @@ def test_plotly_stacked_png_produces_file():
         out = os.path.join(d, "prefix_z_Stacked CPU.png")
         assert os.path.exists(out), f"PNG missing: {out}"
         assert os.path.getsize(out) > 5000
+
+
+def test_plotly_histogram_iostat_png_produces_files():
+    import yaspe
+    rng = list(range(1, 21))
+    df = pd.DataFrame({
+        "r_await": [float(v) for v in rng],
+        "w_await": [float(v * 0.5) for v in rng],
+        "r/s":     [float(v) for v in rng],
+        "w/s":     [float(v) for v in rng],
+    })
+    columns_to_histogram = {"r_await": "r/s", "w_await": "w/s"}
+    with tempfile.TemporaryDirectory() as d:
+        filepath = d + "/"
+        yaspe._plotly_histogram_iostat_png(df, columns_to_histogram, "sdb", "Latency", filepath, "prefix_")
+        read_out = os.path.join(d, "prefix__sdb_z_Read Latency Histogram.png")
+        write_out = os.path.join(d, "prefix__sdb_z_Write Latency Histogram.png")
+        assert os.path.exists(read_out), f"Read PNG missing: {read_out}"
+        assert os.path.exists(write_out), f"Write PNG missing: {write_out}"

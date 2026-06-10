@@ -1880,6 +1880,38 @@ def _plotly_stacked_png(data, title, max_y, filepath, output_prefix, **kwargs):
     )
 
 
+def _plotly_histogram_iostat_png(data, columns_to_histogram, device, title, filepath, output_prefix, **kwargs):
+    """Two Plotly histogram PNGs (read + write latency). Exported via kaleido.
+    columns_to_histogram: dict like {'r_await': 'r/s', 'w_await': 'w/s'}
+    """
+    file_prefix = kwargs.get("file_prefix", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
+
+    col0, nonzero0 = list(columns_to_histogram.items())[0]
+    col1, nonzero1 = list(columns_to_histogram.items())[1]
+
+    reads  = data.loc[data[nonzero0] != 0, col0].dropna()
+    writes = data.loc[data[nonzero1] != 0, col1].dropna()
+
+    for values, label, suffix in [
+        (reads,  f"Read {title}",  "Read Latency Histogram"),
+        (writes, f"Write {title}", "Write Latency Histogram"),
+    ]:
+        fig = go.Figure(go.Histogram(x=values, nbinsx=10, marker_line_color="black", marker_line_width=1))
+        fig.update_layout(
+            title=dict(text=label, font=dict(size=16), x=0.5, xanchor="center"),
+            xaxis_title=f"Latency ms (non-zero values only)",
+            yaxis_title="Frequency",
+            height=650, width=1400,
+            template="plotly_white",
+        )
+        fig.write_image(
+            f"{filepath}{output_prefix}{file_prefix}_{device}_z_{suffix}.png",
+            scale=2, width=1400, height=650,
+        )
+
+
 def chart_vmstat(
     connection,
     filepath,
