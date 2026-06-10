@@ -2438,21 +2438,14 @@ def chart_iostat(
 
                     data = to_chart_df
 
-                    if png_out:
-                        simple_chart_no_time(
-                            data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device
-                        )
-                    elif png_html_out:
-                        simple_chart_no_time(
-                            data, column_name, title, max_y, dev_png_fp, output_prefix, file_prefix=device
-                        )
-                        linked_chart_no_time(
-                            data, column_name, title, max_y, dev_html_fp, output_prefix, file_prefix=device
-                        )
+                    if png_out or png_html_out:
+                        linked_chart_no_time(data, column_name, title, max_y,
+                                             dev_html_fp if png_html_out else device_filepath, output_prefix,
+                                             file_prefix=device,
+                                             write_png=True, png_path=dev_png_fp)
                     else:
-                        linked_chart_no_time(
-                            data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device
-                        )
+                        linked_chart_no_time(data, column_name, title, max_y,
+                                             device_filepath, output_prefix, file_prefix=device)
 
 
 def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out, peak_chart=True, line_chart=True, iostat_subfolders=False):
@@ -2510,11 +2503,13 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
                 pfx = "" if iostat_subfolders else device.replace("/", "_")
 
                 if png_out or png_html_out:
-                    simple_chart_no_time(data, column_name, title, max_y, dev_png_fp, output_prefix, file_prefix=pfx)
-                    if png_html_out:
-                        linked_chart_no_time(data, column_name, title, max_y, dev_html_fp, output_prefix, file_prefix=pfx)
+                    linked_chart_no_time(data, column_name, title, max_y,
+                                         dev_html_fp if png_html_out else device_filepath, output_prefix,
+                                         file_prefix=pfx,
+                                         write_png=True, png_path=dev_png_fp)
                 else:
-                    linked_chart_no_time(data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=pfx)
+                    linked_chart_no_time(data, column_name, title, max_y,
+                                         device_filepath, output_prefix, file_prefix=pfx)
 
 
 def chart_aix_sar_d(
@@ -2594,12 +2589,10 @@ def chart_aix_sar_d(
                 pfx = "" if iostat_subfolders else device
 
                 if png_out or png_html_out:
-                    simple_chart(data, column_name, title, max_y, dev_png_fp, output_prefix,
-                                 file_prefix=pfx, peak_chart=peak_chart, line_chart=line_chart,
-                                 min_max=min_max, business_hours_chart=min_max)
-                    if png_html_out:
-                        linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
-                                     file_prefix=pfx, min_max=min_max)
+                    linked_chart(data, column_name, title, max_y,
+                                 dev_html_fp if png_html_out else device_filepath, output_prefix,
+                                 file_prefix=pfx, min_max=min_max,
+                                 write_png=True, png_path=dev_png_fp)
                 else:
                     linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
                                  file_prefix=pfx, min_max=min_max)
@@ -2654,13 +2647,10 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
             min_max = column_name in ("used", "free", "available")
 
             if png_out or png_html_out:
-                simple_chart(
-                    data, column_name, title, max_y, png_filepath, output_prefix,
-                    min_max=min_max, peak_chart=peak_chart, line_chart=line_chart,
-                    business_hours_chart=min_max,
-                )
-                if png_html_out:
-                    linked_chart(data, column_name, title, max_y, html_filepath, output_prefix, min_max=min_max)
+                linked_chart(data, column_name, title, max_y,
+                             html_filepath if png_html_out else filepath, output_prefix,
+                             min_max=min_max,
+                             write_png=True, png_path=png_filepath)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
                              min_max=min_max)
