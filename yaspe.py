@@ -1164,6 +1164,54 @@ def _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_pr
         _create_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, x_column)
 
 
+def _apply_ref_lines(fig, data, min_max, threshold, row):
+    """Add min/max percentile and threshold reference lines to a Plotly figure.
+    row=None for single-panel figures, row=1 for the top panel of a 2-row subplot."""
+    kw = dict(row=row, col=1) if row is not None else {}
+
+    if min_max:
+        metric = data["metric"]
+        abs_min = metric.min()
+        abs_max = metric.max()
+        p2 = metric.quantile(0.02)
+        p99 = metric.quantile(0.99)
+        filtered = metric[(metric >= p2) & (metric <= p99)]
+        has_outliers = len(filtered) < len(metric)
+
+        ann = dict(bgcolor="rgba(255,255,255,0.85)", bordercolor="lightgrey", borderwidth=1)
+
+        if has_outliers and len(filtered) > 0:
+            adj_min = filtered.min()
+            adj_max = filtered.max()
+            fig.add_hline(y=abs_min, line=dict(color="darkred", dash="dot", width=1),
+                          annotation_text=f"Abs Min: {abs_min:,.0f}", annotation_position="top left",
+                          annotation=ann, **kw)
+            fig.add_hline(y=adj_min, line=dict(color="red", dash="dash", width=1),
+                          annotation_text=f"98th pct Min: {adj_min:,.0f}", annotation_position="top right",
+                          annotation=ann, **kw)
+            fig.add_hline(y=abs_max, line=dict(color="darkgreen", dash="dot", width=1),
+                          annotation_text=f"Abs Max: {abs_max:,.0f}", annotation_position="top left",
+                          annotation=ann, **kw)
+            fig.add_hline(y=adj_max, line=dict(color="green", dash="dash", width=1),
+                          annotation_text=f"99th pct Max: {adj_max:,.0f}", annotation_position="top right",
+                          annotation=ann, **kw)
+        else:
+            fig.add_hline(y=abs_min, line=dict(color="red", dash="dash", width=1),
+                          annotation_text=f"Min: {abs_min:,.0f}", annotation_position="top right",
+                          annotation=ann, **kw)
+            fig.add_hline(y=abs_max, line=dict(color="green", dash="dash", width=1),
+                          annotation_text=f"Max: {abs_max:,.0f}", annotation_position="top right",
+                          annotation=ann, **kw)
+
+    if threshold is not None:
+        thresh_val, thresh_label = threshold
+        thresh_color = "red" if data["metric"].max() > thresh_val else "orange"
+        fig.add_hline(y=thresh_val, line=dict(color=thresh_color, dash="dashdot", width=1.5),
+                      annotation_text=thresh_label, annotation_position="top left",
+                      annotation=dict(bgcolor="rgba(255,255,255,0.85)", bordercolor="lightgrey", borderwidth=1),
+                      **kw)
+
+
 def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
     """Interactive HTML chart: drag a box on the overview (bottom) to zoom the main chart (top).
     The overview resets to full range after each zoom. Double-click overview to reset both."""
@@ -1178,13 +1226,6 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
-    fig = make_subplots(
-        rows=2, cols=1,
-        shared_xaxes=False,
-        row_heights=[0.75, 0.25],
-        vertical_spacing=0.05,
-    )
-
     # Pick hover format based on magnitude
     metric_max = data["metric"].max()
     if metric_max > 5 or metric_max == 0:
@@ -1193,6 +1234,40 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         hover_fmt = "%{y:,.4f}"
     else:
         hover_fmt = "%{y:,.3f}"
+
+    yaxis_range = [0, max_y] if max_y > 0 else [0, None]
+    output_name = column_name.replace("/", "_")
+
+    # PNG-only: single-panel figure, no overview row
+    if write_png and not write_html:
+        png_fig = go.Figure()
+        png_fig.add_trace(go.Scatter(
+            x=data[x_column], y=data["metric"],
+            mode="lines", name=column_name,
+            line=dict(width=1),
+        ))
+        _apply_ref_lines(png_fig, data, min_max, threshold, row=None)
+        png_fig.update_layout(
+            title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
+            xaxis=dict(title="", tickfont=dict(size=13)),
+            yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
+            legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
+            height=500, width=1400,
+            template="plotly_white",
+        )
+        png_fig.write_image(
+            f"{png_path}{output_prefix}{file_prefix}{output_name}.png",
+            scale=2, width=1400, height=500,
+        )
+        return
+
+    # HTML (or PNG+HTML): two-panel figure with overview row
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=False,
+        row_heights=[0.75, 0.25],
+        vertical_spacing=0.05,
+    )
 
     fig.add_trace(go.Scatter(
         x=data[x_column], y=data["metric"],
@@ -1211,51 +1286,8 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         hoverinfo="skip",
     ), row=2, col=1)
 
-    # Min/max and percentile reference lines on the main chart
-    if min_max:
-        metric = data["metric"]
-        abs_min = metric.min()
-        abs_max = metric.max()
-        p2 = metric.quantile(0.02)
-        p99 = metric.quantile(0.99)
-        filtered = metric[(metric >= p2) & (metric <= p99)]
-        has_outliers = len(filtered) < len(metric)
+    _apply_ref_lines(fig, data, min_max, threshold, row=1)
 
-        ann = dict(bgcolor="rgba(255,255,255,0.85)", bordercolor="lightgrey", borderwidth=1)
-
-        if has_outliers and len(filtered) > 0:
-            adj_min = filtered.min()
-            adj_max = filtered.max()
-            fig.add_hline(y=abs_min, line=dict(color="darkred", dash="dot", width=1),
-                          annotation_text=f"Abs Min: {abs_min:,.0f}", annotation_position="top left",
-                          annotation=ann, row=1, col=1)
-            fig.add_hline(y=adj_min, line=dict(color="red", dash="dash", width=1),
-                          annotation_text=f"98th pct Min: {adj_min:,.0f}", annotation_position="top right",
-                          annotation=ann, row=1, col=1)
-            fig.add_hline(y=abs_max, line=dict(color="darkgreen", dash="dot", width=1),
-                          annotation_text=f"Abs Max: {abs_max:,.0f}", annotation_position="top left",
-                          annotation=ann, row=1, col=1)
-            fig.add_hline(y=adj_max, line=dict(color="green", dash="dash", width=1),
-                          annotation_text=f"99th pct Max: {adj_max:,.0f}", annotation_position="top right",
-                          annotation=ann, row=1, col=1)
-        else:
-            fig.add_hline(y=abs_min, line=dict(color="red", dash="dash", width=1),
-                          annotation_text=f"Min: {abs_min:,.0f}", annotation_position="top right",
-                          annotation=ann, row=1, col=1)
-            fig.add_hline(y=abs_max, line=dict(color="green", dash="dash", width=1),
-                          annotation_text=f"Max: {abs_max:,.0f}", annotation_position="top right",
-                          annotation=ann, row=1, col=1)
-
-    # Threshold reference line (e.g. 80% CPU, 1ms latency)
-    if threshold is not None:
-        thresh_val, thresh_label = threshold
-        thresh_color = "red" if data["metric"].max() > thresh_val else "orange"
-        fig.add_hline(y=thresh_val, line=dict(color=thresh_color, dash="dashdot", width=1.5),
-                      annotation_text=thresh_label, annotation_position="top left",
-                      annotation=dict(bgcolor="rgba(255,255,255,0.85)", bordercolor="lightgrey", borderwidth=1),
-                      row=1, col=1)
-
-    yaxis_range = [0, max_y] if max_y > 0 else [0, None]
     fig.update_layout(
         title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
         xaxis=dict(title="", tickfont=dict(size=13)),
@@ -1268,7 +1300,6 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         template="plotly_white",
     )
 
-    output_name = column_name.replace("/", "_")
     if write_html:
         fig.write_html(
             f"{filepath}{output_prefix}{file_prefix}{output_name}.html",
@@ -1296,6 +1327,32 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     write_html = kwargs.get("write_html", True)
     png_path = kwargs.get("png_path", filepath)
 
+    yaxis_range = [0, max_y] if max_y > 0 else [0, None]
+    output_name = column_name.replace(" ", "_").replace("/", "_per_")
+
+    # PNG-only: single-panel figure, no overview row
+    if write_png and not write_html:
+        png_fig = go.Figure()
+        png_fig.add_trace(go.Scatter(
+            x=data["id_key"], y=data["metric"],
+            mode="lines", name=column_name,
+            line=dict(width=1),
+        ))
+        png_fig.update_layout(
+            title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
+            xaxis=dict(title="Sample", tickfont=dict(size=13)),
+            yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
+            legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
+            height=500, width=1400,
+            template="plotly_white",
+        )
+        png_fig.write_image(
+            f"{png_path}{output_prefix}{file_prefix}{output_name}.png",
+            scale=2, width=1400, height=500,
+        )
+        return
+
+    # HTML (or PNG+HTML): two-panel figure with overview row
     fig = make_subplots(
         rows=2, cols=1,
         shared_xaxes=False,
@@ -1318,7 +1375,6 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
         hoverinfo="skip",
     ), row=2, col=1)
 
-    yaxis_range = [0, max_y] if max_y > 0 else [0, None]
     fig.update_layout(
         title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
         xaxis=dict(title="", tickfont=dict(size=13)),
@@ -1331,7 +1387,6 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
         template="plotly_white",
     )
 
-    output_name = column_name.replace(" ", "_").replace("/", "_per_")
     if write_html:
         fig.write_html(
             f"{filepath}{output_prefix}{file_prefix}{output_name}.html",
