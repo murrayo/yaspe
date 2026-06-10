@@ -9,8 +9,7 @@ import os
 import re
 import pandas as pd
 import matplotlib as mpl
-
-# mpl.use('TkAgg')
+mpl.use("Agg")
 import seaborn as sns
 import string
 
