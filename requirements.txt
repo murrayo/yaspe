@@ -1,5 +1,4 @@
 plotly
-kaleido
 pandas
 matplotlib
 python-dateutil
