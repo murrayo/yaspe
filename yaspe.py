@@ -65,14 +65,25 @@ def create_connection(path):
 
 def close_connection(connection):
     """Checkpoint the WAL, switch back to rollback journal, then close.
-    This removes the -wal and -shm files rather than leaving them on disk."""
+    Manually removes the -shm file that SQLite leaves behind even after
+    switching journal modes."""
     if connection is None:
         return
+    db_path = None
     try:
+        db_path = connection.execute("PRAGMA database_list").fetchone()[2]
+        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         connection.execute("PRAGMA journal_mode = DELETE")
     except Error:
         pass
     connection.close()
+    if db_path:
+        shm = db_path + "-shm"
+        if os.path.exists(shm):
+            try:
+                os.remove(shm)
+            except OSError:
+                pass
 
 
 def execute_simple_query(connection, query):
