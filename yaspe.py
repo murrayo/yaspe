@@ -2332,67 +2332,68 @@ def mainline(
         if connection is None:
             connection = create_connection(sql_filename)
 
-        if not mgstat_file:
-            operating_system = execute_single_read_query(
-                connection, "SELECT * FROM overview WHERE field = 'operating system';"
-            )[2]
+        try:
+            if not mgstat_file:
+                operating_system = execute_single_read_query(
+                    connection, "SELECT * FROM overview WHERE field = 'operating system';"
+                )[2]
 
-        glorefs_peak_window = chart_mgstat(
-            connection, _make_chart_dir(output_file_path_base, "mgstat"),
-            output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart,
-        )
-
-        # No need to go further for .mgst file
-        if mgstat_file:
-            connection.close()
-            return
-
-        is_unix = operating_system in ("Linux", "Ubuntu", "AIX")
-        is_linux = operating_system in ("Linux", "Ubuntu")
-
-        if is_unix:
-            if extended_charts:
-                system_review.system_charts(filepath)
-
-            chart_vmstat(
-                connection, _make_chart_dir(output_file_path_base, "vmstat"),
-                output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart,
+            glorefs_peak_window = chart_mgstat(
+                connection, _make_chart_dir(output_file_path_base, "mgstat"),
+                output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart,
             )
 
-            if is_linux:
-                chart_free_memory(
-                    connection, _make_chart_dir(output_file_path_base, "free_memory"),
-                    output_prefix, png_out, png_html_out, peak_chart, line_chart,
+            # No need to go further for .mgst file
+            if mgstat_file:
+                return
+
+            is_unix = operating_system in ("Linux", "Ubuntu", "AIX")
+            is_linux = operating_system in ("Linux", "Ubuntu")
+
+            if is_unix:
+                if extended_charts:
+                    system_review.system_charts(filepath)
+
+                chart_vmstat(
+                    connection, _make_chart_dir(output_file_path_base, "vmstat"),
+                    output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart,
                 )
 
-            if include_iostat:
-                chart_iostat(
-                    connection, _make_chart_dir(output_file_path_base, "iostat"),
-                    output_prefix, operating_system, png_out, png_html_out,
-                    disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders,
-                )
-
-                if operating_system == "AIX":
-                    chart_aix_sar_d(
-                        connection, _make_chart_dir(output_file_path_base, "sar_d"),
-                        output_prefix, operating_system, png_out, png_html_out,
-                        disk_list, peak_chart, line_chart, iostat_subfolders,
+                if is_linux:
+                    chart_free_memory(
+                        connection, _make_chart_dir(output_file_path_base, "free_memory"),
+                        output_prefix, png_out, png_html_out, peak_chart, line_chart,
                     )
 
-            if include_nfsiostat:
-                chart_nfsiostat(
-                    connection, _make_chart_dir(output_file_path_base, "nfsiostat"),
-                    output_prefix, operating_system, png_out, png_html_out, peak_chart, line_chart,
-                    iostat_subfolders,
+                if include_iostat:
+                    chart_iostat(
+                        connection, _make_chart_dir(output_file_path_base, "iostat"),
+                        output_prefix, operating_system, png_out, png_html_out,
+                        disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders,
+                    )
+
+                    if operating_system == "AIX":
+                        chart_aix_sar_d(
+                            connection, _make_chart_dir(output_file_path_base, "sar_d"),
+                            output_prefix, operating_system, png_out, png_html_out,
+                            disk_list, peak_chart, line_chart, iostat_subfolders,
+                        )
+
+                if include_nfsiostat:
+                    chart_nfsiostat(
+                        connection, _make_chart_dir(output_file_path_base, "nfsiostat"),
+                        output_prefix, operating_system, png_out, png_html_out, peak_chart, line_chart,
+                        iostat_subfolders,
+                    )
+
+            if operating_system == "Windows":
+                chart_perfmon(
+                    connection, _make_chart_dir(output_file_path_base, "perfmon"),
+                    output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart,
                 )
 
-        if operating_system == "Windows":
-            chart_perfmon(
-                connection, _make_chart_dir(output_file_path_base, "perfmon"),
-                output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart,
-            )
-
-        connection.close()
+        finally:
+            connection.close()
 
         if not png_out:
             yaspe_combined_overlay.run(sql_filename, output_file_path_base, smooth_minutes=smooth_minutes)
