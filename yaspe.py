@@ -2102,24 +2102,10 @@ def chart_mgstat(
                 min_max = True
 
             if png_out or png_html_out:
-                peak_start, peak_end = simple_chart(
-                    data,
-                    column_name,
-                    title,
-                    max_y,
-                    png_filepath,
-                    output_prefix,
-                    min_max=min_max,
-                    peak_chart=peak_chart,
-                    line_chart=line_chart,
-                    business_hours_chart=min_max,
-                )
-                # Capture Glorefs peak window
-                if column_name == "Glorefs" and peak_start is not None:
-                    glorefs_peak_window = (peak_start, peak_end)
-                if png_html_out:
-                    linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
-                                 min_max=min_max)
+                linked_chart(data, column_name, title, max_y,
+                             html_filepath if png_html_out else filepath, output_prefix,
+                             min_max=min_max,
+                             write_png=True, png_path=png_filepath)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
                              min_max=min_max)
