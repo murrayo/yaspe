@@ -81,6 +81,8 @@ def system_check(input_file):
                 cpf_section = True
             elif "!-- beg_mgstat --" in line:
                 cpf_section = False
+            elif "<div id=iostat>" in line or "<!-- end_win_perfmon -->" in line:
+                break
 
             # Summary
 
