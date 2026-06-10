@@ -63,3 +63,21 @@ def test_linked_chart_no_time_writes_png_when_requested():
         png_file = os.path.join(d, "prefix_metric.png")
         assert os.path.exists(png_file), f"PNG missing: {png_file}"
         assert os.path.getsize(png_file) > 5000
+
+
+def test_plotly_stacked_png_produces_file():
+    import yaspe
+    base = datetime.datetime(2024, 1, 1, 10, 0, 0)
+    rows = []
+    for i in range(20):
+        dt = base + datetime.timedelta(minutes=i)
+        rows.append({"datetime": dt.strftime("%m/%d/%Y %H:%M:%S"),
+                     "datetime_parsed": dt,
+                     "sy": float(i), "wa": 2.0, "us": float(20 - i)})
+    df = pd.DataFrame(rows)
+    with tempfile.TemporaryDirectory() as d:
+        filepath = d + "/"
+        yaspe._plotly_stacked_png(df, "CPU Title", 100, filepath, "prefix_")
+        out = os.path.join(d, "prefix_z_Stacked CPU.png")
+        assert os.path.exists(out), f"PNG missing: {out}"
+        assert os.path.getsize(out) > 5000

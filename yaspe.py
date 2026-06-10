@@ -1846,6 +1846,40 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     plt.close("all")
 
 
+def _plotly_stacked_png(data, title, max_y, filepath, output_prefix, **kwargs):
+    """Plotly stacked area chart for CPU (sy/wa/us). Exported to PNG via kaleido."""
+    file_prefix = kwargs.get("file_prefix", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
+
+    x_col = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
+
+    fig = go.Figure()
+    for col, color in [("sy", "#e41a1c"), ("wa", "#ff7f00"), ("us", "#377eb8")]:
+        if col not in data.columns:
+            continue
+        fig.add_trace(go.Scatter(
+            x=data[x_col], y=data[col],
+            mode="lines", name=col,
+            stackgroup="one",
+            line=dict(width=0.5),
+        ))
+
+    yaxis_range = [0, max_y] if max_y and max_y > 0 else [0, None]
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
+        yaxis=dict(title="CPU Utilisation %", range=yaxis_range, rangemode="tozero"),
+        height=650, width=1400,
+        template="plotly_white",
+        legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
+    )
+
+    fig.write_image(
+        f"{filepath}{output_prefix}{file_prefix}z_Stacked CPU.png",
+        scale=2, width=1400, height=650,
+    )
+
+
 def chart_vmstat(
     connection,
     filepath,
