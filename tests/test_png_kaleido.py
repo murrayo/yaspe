@@ -51,3 +51,15 @@ def test_linked_chart_no_png_by_default():
         yaspe.linked_chart(df, "metric", "Test Title", 200, filepath, "prefix_")
         png_file = os.path.join(d, "prefix_metric.png")
         assert not os.path.exists(png_file), "PNG should not be written by default"
+
+
+def test_linked_chart_no_time_writes_png_when_requested():
+    import yaspe
+    df = pd.DataFrame({"id_key": list(range(20)), "metric": [float(i) for i in range(20)]})
+    with tempfile.TemporaryDirectory() as d:
+        filepath = d + "/"
+        yaspe.linked_chart_no_time(df, "metric", "Test Title", 20, filepath, "prefix_",
+                                   write_png=True, png_path=filepath)
+        png_file = os.path.join(d, "prefix_metric.png")
+        assert os.path.exists(png_file), f"PNG missing: {png_file}"
+        assert os.path.getsize(png_file) > 5000

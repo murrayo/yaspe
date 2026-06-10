@@ -1593,6 +1593,8 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     file_prefix = kwargs.get("file_prefix", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
+    write_png = kwargs.get("write_png", False)
+    png_path = kwargs.get("png_path", filepath)
 
     fig = make_subplots(
         rows=2, cols=1,
@@ -1636,6 +1638,12 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
         post_script=_OVERVIEW_ZOOM_JS,
         full_html=True,
     )
+
+    if write_png:
+        fig.write_image(
+            f"{png_path}{output_prefix}{file_prefix}{output_name}.png",
+            scale=2, width=1400, height=650,
+        )
 
 
 def simple_chart_stacked(data, column_names, title, max_y, filepath, output_prefix, **kwargs):
