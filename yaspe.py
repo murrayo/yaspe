@@ -1115,6 +1115,8 @@ def _create_glorefs_peak_chart(
 
 
 
+_DAY_OVERLAY_ALWAYS = {"Total CPU", "Glorefs", "PhyRds"}
+
 _OVERVIEW_ZOOM_JS = """
 (function() {
 var gd = document.querySelector('.plotly-graph-div');
@@ -1180,8 +1182,13 @@ gd.on('plotly_relayout', function(eventdata) {
 """
 
 
-def _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix):
-    """Emit a day-overlay HTML chart when data spans more than 25 hours."""
+def _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, day_overlay=False):
+    """Emit a day-overlay HTML chart when data spans more than 25 hours.
+
+    Created only when day_overlay=True OR the column is in _DAY_OVERLAY_ALWAYS.
+    """
+    if not day_overlay and column_name not in _DAY_OVERLAY_ALWAYS:
+        return
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
     time_range = data[x_column].max() - data[x_column].min()
     if time_range.total_seconds() > 25 * 60 * 60:
@@ -1247,6 +1254,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     write_png = kwargs.get("write_png", False)
     write_html = kwargs.get("write_html", True)
     png_path = kwargs.get("png_path", filepath)
+    day_overlay = kwargs.get("day_overlay", False)
 
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
@@ -1354,7 +1362,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         )
 
     if write_html:
-        _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix)
+        _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, day_overlay)
 
 
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -1472,6 +1480,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     min_max = kwargs.get("min_max", False)
     peak_chart = kwargs.get("peak_chart", True)
     glorefs_peak_window = kwargs.get("glorefs_peak_window")  # Can be None or (start, end) tuple
+    day_overlay = kwargs.get("day_overlay", False)
     line_chart = kwargs.get("line_chart", True)  # Use line charts by default
     threshold = kwargs.get("threshold")  # Optional (value, label) tuple for a reference line
     business_hours_chart = kwargs.get("business_hours_chart", False)  # Generate business-hours peak chart
@@ -1708,7 +1717,8 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
         _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
         _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix, file_prefix, datetime_column)
-        _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
+        if day_overlay or column_name in _DAY_OVERLAY_ALWAYS:
+            _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
         # day_overlay HTML is handled by linked_chart via _maybe_day_overlay_html
         _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
 
@@ -1959,6 +1969,7 @@ def chart_vmstat(
     peak_chart=True,
     glorefs_peak_window=None,
     line_chart=True,
+    day_overlay=False,
 ):
     # print(f"vmstat...")
     # Get useful
@@ -2058,17 +2069,18 @@ def chart_vmstat(
                     line_chart=line_chart,
                     threshold=threshold,
                     business_hours_chart=min_max,
+                    day_overlay=day_overlay,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
-                                 min_max=min_max, threshold=threshold)
+                                 min_max=min_max, threshold=threshold, day_overlay=day_overlay)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                             min_max=min_max, threshold=threshold)
+                             min_max=min_max, threshold=threshold, day_overlay=day_overlay)
 
 
 def chart_mgstat(
-    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=True
+    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=True, day_overlay=False,
 ):
     """
     Chart mgstat data. Returns the Glorefs peak window (start, end) if available, otherwise (None, None).
@@ -2164,16 +2176,17 @@ def chart_mgstat(
                     peak_chart=peak_chart,
                     line_chart=line_chart,
                     business_hours_chart=min_max,
+                    day_overlay=day_overlay,
                 )
                 # Capture Glorefs peak window
                 if column_name == "Glorefs" and peak_start is not None:
                     glorefs_peak_window = (peak_start, peak_end)
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
-                                 min_max=min_max)
+                                 min_max=min_max, day_overlay=day_overlay)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                             min_max=min_max)
+                             min_max=min_max, day_overlay=day_overlay)
 
     return glorefs_peak_window
 
@@ -2187,6 +2200,7 @@ def chart_perfmon(
     peak_chart=True,
     glorefs_peak_window=None,
     line_chart=True,
+    day_overlay=False,
 ):
     # print(f"perfmon...")
 
@@ -2269,12 +2283,14 @@ def chart_perfmon(
                 simple_chart(
                     data, column_name, title, max_y, png_filepath, output_prefix,
                     min_max=min_max, peak_chart=peak_chart, glorefs_peak_window=glorefs_peak_window,
-                    line_chart=line_chart, business_hours_chart=min_max,
+                    line_chart=line_chart, business_hours_chart=min_max, day_overlay=day_overlay,
                 )
                 if png_html_out:
-                    linked_chart(data, column_name, title, max_y, html_filepath, output_prefix, min_max=min_max)
+                    linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
+                                 min_max=min_max, day_overlay=day_overlay)
             else:
-                linked_chart(data, column_name, title, max_y, filepath, output_prefix, min_max=min_max)
+                linked_chart(data, column_name, title, max_y, filepath, output_prefix,
+                             min_max=min_max, day_overlay=day_overlay)
 
 
 def chart_iostat(
@@ -2289,6 +2305,7 @@ def chart_iostat(
     glorefs_peak_window=None,
     line_chart=True,
     iostat_subfolders=False,
+    day_overlay=False,
 ):
     # print(f"iostat...")
 
@@ -2427,13 +2444,16 @@ def chart_iostat(
                             line_chart=line_chart,
                             threshold=threshold,
                             business_hours_chart=min_max,
+                            day_overlay=day_overlay,
                         )
                         if png_html_out:
                             linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
-                                         file_prefix=device, min_max=min_max, threshold=threshold)
+                                         file_prefix=device, min_max=min_max, threshold=threshold,
+                                         day_overlay=day_overlay)
                     else:
                         linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
-                                     file_prefix=device, min_max=min_max, threshold=threshold)
+                                     file_prefix=device, min_max=min_max, threshold=threshold,
+                                     day_overlay=day_overlay)
 
     else:
         # No date or time, chart all columns, index is x axis
@@ -2571,6 +2591,7 @@ def chart_aix_sar_d(
     peak_chart=True,
     line_chart=True,
     iostat_subfolders=False,
+    day_overlay=False,
 ):
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
@@ -2639,16 +2660,16 @@ def chart_aix_sar_d(
                 if png_out or png_html_out:
                     simple_chart(data, column_name, title, max_y, dev_png_fp, output_prefix,
                                  file_prefix=pfx, peak_chart=peak_chart, line_chart=line_chart,
-                                 min_max=min_max, business_hours_chart=min_max)
+                                 min_max=min_max, business_hours_chart=min_max, day_overlay=day_overlay)
                     if png_html_out:
                         linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
-                                     file_prefix=pfx, min_max=min_max)
+                                     file_prefix=pfx, min_max=min_max, day_overlay=day_overlay)
                 else:
                     linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
-                                 file_prefix=pfx, min_max=min_max)
+                                 file_prefix=pfx, min_max=min_max, day_overlay=day_overlay)
 
 
-def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True, line_chart=True):
+def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True, line_chart=True, day_overlay=False):
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
 
     # Read in to dataframe, drop any bad rows
@@ -2700,13 +2721,14 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
                 simple_chart(
                     data, column_name, title, max_y, png_filepath, output_prefix,
                     min_max=min_max, peak_chart=peak_chart, line_chart=line_chart,
-                    business_hours_chart=min_max,
+                    business_hours_chart=min_max, day_overlay=day_overlay,
                 )
                 if png_html_out:
-                    linked_chart(data, column_name, title, max_y, html_filepath, output_prefix, min_max=min_max)
+                    linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
+                                 min_max=min_max, day_overlay=day_overlay)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                             min_max=min_max)
+                             min_max=min_max, day_overlay=day_overlay)
 
 
 def _make_chart_dir(base, name):
@@ -2742,6 +2764,7 @@ def mainline(
     line_chart=True,
     iostat_subfolders=True,
     smooth_minutes=5,
+    day_overlay=False,
 ):
     input_error = False
 
@@ -2889,7 +2912,7 @@ def mainline(
 
             glorefs_peak_window = chart_mgstat(
                 connection, _make_chart_dir(output_file_path_base, "mgstat"),
-                output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart,
+                output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart, day_overlay,
             )
 
             # No need to go further for .mgst file
@@ -2905,27 +2928,27 @@ def mainline(
 
                 chart_vmstat(
                     connection, _make_chart_dir(output_file_path_base, "vmstat"),
-                    output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart,
+                    output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay,
                 )
 
                 if is_linux:
                     chart_free_memory(
                         connection, _make_chart_dir(output_file_path_base, "free_memory"),
-                        output_prefix, png_out, png_html_out, peak_chart, line_chart,
+                        output_prefix, png_out, png_html_out, peak_chart, line_chart, day_overlay,
                     )
 
                 if include_iostat:
                     chart_iostat(
                         connection, _make_chart_dir(output_file_path_base, "iostat"),
                         output_prefix, operating_system, png_out, png_html_out,
-                        disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders,
+                        disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders, day_overlay,
                     )
 
                     if operating_system == "AIX":
                         chart_aix_sar_d(
                             connection, _make_chart_dir(output_file_path_base, "sar_d"),
                             output_prefix, operating_system, png_out, png_html_out,
-                            disk_list, peak_chart, line_chart, iostat_subfolders,
+                            disk_list, peak_chart, line_chart, iostat_subfolders, day_overlay,
                         )
 
                 if include_nfsiostat:
@@ -2938,14 +2961,23 @@ def mainline(
             if operating_system == "Windows":
                 chart_perfmon(
                     connection, _make_chart_dir(output_file_path_base, "perfmon"),
-                    output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart,
+                    output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay,
                 )
+
+            try:
+                row = connection.execute(
+                    "SELECT COUNT(DISTINCT RunDate) FROM mgstat"
+                ).fetchone()
+                is_long_period = row[0] is not None and row[0] > 1
+            except Exception:
+                is_long_period = False
 
         finally:
             close_connection(connection)
 
-        if not png_out:
+        if not png_out and (not is_long_period or day_overlay):
             yaspe_combined_overlay.run(sql_filename, output_file_path_base, smooth_minutes=smooth_minutes)
+
 
     return
 
@@ -3133,6 +3165,14 @@ if __name__ == "__main__":
         metavar="N",
     )
 
+    parser.add_argument(
+        "--day-overlay",
+        dest="day_overlay",
+        help="Create day-overlay charts for all metrics when data spans more than 25 hours. "
+             "Total CPU, Glorefs, and PhyRds always get day-overlay charts regardless of this flag.",
+        action="store_true",
+    )
+
     args = parser.parse_args()
 
     if args.compare_dir is not None:
@@ -3206,6 +3246,7 @@ if __name__ == "__main__":
             not args.dot_chart,  # line_chart is True by default (when dot_chart is False)
             args.iostat_subfolders,
             args.smooth_minutes,
+            args.day_overlay,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))

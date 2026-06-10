@@ -67,6 +67,7 @@ For local version:
 usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c]
              [-p] [-P] [--dots] [-s] [-m] [-D] [-d DISK_LIST [DISK_LIST ...]] [--iostat_no_subfolders]
              [-l "string to split on"] [--peak_chart] [--no_peak_chart] [-C "/path/to/directory"] [-B] [--smooth-minutes N]
+             [--day-overlay]
 
 Performance file review.
 
@@ -104,6 +105,8 @@ options:
                         Also runs automatically in default HTML and -P modes; combined_overlay.html is
                         written to {prefix}_metrics/.
   --smooth-minutes N    Rolling average window in minutes for --combined chart (default: 5, 0 = raw).
+  --day-overlay         Create day-overlay charts for all metrics when data spans more than 25 hours.
+                        Total CPU, Glorefs, and PhyRds always get day-overlay charts regardless of this flag.
 
 Be safe, "quote the path".
 ```
@@ -169,7 +172,7 @@ If the SystemPerformance files have a short sample period this can result in lon
 It may be a bit clunky to work with in the browser.
 I suggest you run over a week without iostat (`-x`), then use the method above to deep dive on a day or couple of days.
 
-When the combined database spans more than 25 hours, yaspe automatically generates additional supplementary charts for key metrics (see [Long-period charts](#long-period-charts-25-hours-of-data) above): 5-minute and 30-minute smoothed views, a daily 99th percentile bar chart, an hourly heatmap, and day-overlay charts (PNG and interactive HTML).
+When the combined database spans more than 25 hours, yaspe automatically generates additional supplementary charts for key metrics (see [Long-period charts](#long-period-charts-25-hours-of-data) below): 5-minute and 30-minute smoothed views, a daily 99th percentile bar chart, an hourly heatmap, and per-day business hours peak charts. Day-overlay charts are always produced for Total CPU, Glorefs, and PhyRds; use `--day-overlay` to produce them for all metrics.
 
 By default, output folders and files are prefixed with the html file name. 
 To keep all the metric data in a single database use the `-o` argument to override the output file prefix.
@@ -216,8 +219,8 @@ When data spans more than 25 hours (e.g. a week of appended SystemPerformance fi
 | 30-minute average | `z_{metric}.png` | Same layout smoothed to a 30-minute rolling mean — the main long-period PNG. |
 | Daily 99th pct bar chart | `z_{metric}_daily_summary.png` | One bar per calendar day, coloured red for the busiest day. |
 | Hourly heatmap | `z_{metric}_heatmap.png` | Hour-of-day × date grid, colour-coded by 99th percentile value. Shows consistent peak hours across days. |
-| Day-overlay PNG | `z_{metric}_day_overlay.png` | All days overlaid on a shared 00:00–24:00 x-axis, one colour per day. |
-| Day-overlay HTML | `z_{metric}_day_overlay.html` | Interactive version of the day-overlay chart (produced with `-P` or HTML-only mode). |
+| Day-overlay PNG | `z_{metric}_day_overlay.png` | All days overlaid on a shared 00:00–24:00 x-axis, one colour per day. Always produced for **Total CPU**, **Glorefs**, and **PhyRds**; produced for all other metrics only when `--day-overlay` is passed. |
+| Day-overlay HTML | `{metric}_day_overlay.html` | Interactive version of the day-overlay chart (produced with `-P` or HTML-only mode). Same conditions as the PNG above. |
 | Per-day business hours peak | `z_{metric}_bh_peak_{date}.png` | Business hours (08:00–18:00) peak 60-minute window for each day. |
 
 ### Business hours and peak charts (8–25 hours of data)
