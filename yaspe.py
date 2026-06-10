@@ -2527,11 +2527,11 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--iostat_subfolders",
+        "--iostat_no_subfolders",
         dest="iostat_subfolders",
-        help="Save iostat charts into separate subfolders, one per disk device name.",
-        action="store_true",
-        default=False,
+        help="Save all iostat charts flat (no per-device subfolders).",
+        action="store_false",
+        default=True,
     )
 
     parser.add_argument(
