@@ -126,7 +126,12 @@ def _get_collection_meta(connection) -> dict:
 
     start = df["dt"].min()
     end = df["dt"].max()
-    n_days = (end.date() - start.date()).days + 1
+    # If end timestamp is exactly midnight (00:00:00) it belongs to the previous
+    # day's collection window, not a new calendar day — avoid overcounting.
+    end_date = end.date()
+    if end.hour == 0 and end.minute == 0 and end.second == 0:
+        end_date = (end - timedelta(seconds=1)).date()
+    n_days = (end_date - start.date()).days + 1
     weekdays = sorted({ts.strftime("%A") for ts in df["dt"]})
 
     return {
@@ -266,30 +271,38 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
         vals = pd.to_numeric(df["wa"], errors="coerce").fillna(0)
         red_runs  = _find_breaches(vals, df["dt"], 20.0, ALERT_CONSECUTIVE)
         warn_runs = _find_breaches(vals, df["dt"], 10.0, WARN_CONSECUTIVE)
+        interval_secs_wa = df["dt"].diff().median().total_seconds()
         if red_runs:
             start, end, count = red_runs[0]
+            duration_s = count * interval_secs_wa
             findings.append(Finding(
                 metric="wa (I/O wait %)",
                 severity="Red",
-                observation=f"wa exceeded 20% (alert) for {count} consecutive samples "
-                            f"(≥ {count * df['dt'].diff().median().total_seconds():.0f}s). "
-                            f"Peak: {vals.max():.1f}%.",
+                observation=f"wa exceeded 20% (alert) for {count} consecutive samples (~{duration_s:.0f}s). "
+                            f"Peak: {vals.max():.1f}%. "
+                            f"iostat device latency is required to confirm storage-side cause.",
                 when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
-                hypotheses=["hypothesis: storage latency — check iostat await/svctm",
+                hypotheses=["hypothesis: storage latency — requires iostat await/svctm to confirm "
+                            "(database/journal writes target 1–2 ms; wa alone does not prove latency)",
                             "hypothesis: excessive write-back I/O from dirty page flush"],
-                next_step="Correlate with iostat await; check WDQsz and PhyWrs.",
+                next_step="Correlate with iostat await and queue depth. Check WDQsz and PhyWrs. "
+                          "wa > 20% is significant but requires device-level confirmation.",
                 chart_request=None,
             ))
         elif warn_runs:
             start, end, count = warn_runs[0]
+            duration_s = count * interval_secs_wa
             findings.append(Finding(
                 metric="wa (I/O wait %)",
                 severity="Yellow",
-                observation=f"wa exceeded 10% (warning) for {count} consecutive samples. "
-                            f"Peak: {vals.max():.1f}%.",
+                observation=f"wa exceeded 10% (warning) for {count} consecutive samples (~{duration_s:.0f}s). "
+                            f"Peak: {vals.max():.1f}%. "
+                            f"Possible intermittent I/O pressure — iostat needed to confirm.",
                 when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
-                hypotheses=["hypothesis: intermittent storage latency"],
-                next_step="Monitor; correlate with iostat.",
+                hypotheses=["hypothesis: possible intermittent storage latency — "
+                            "correlate with iostat await before concluding"],
+                next_step="Check iostat device latency and queue depth during this window. "
+                          "wa alone is insufficient to diagnose storage latency.",
                 chart_request=None,
             ))
 
@@ -299,29 +312,37 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                 pd.to_numeric(df["sy"], errors="coerce").fillna(0)
         red_runs  = _find_breaches(us_sy, df["dt"], 85.0, ALERT_CONSECUTIVE)
         warn_runs = _find_breaches(us_sy, df["dt"], 75.0, WARN_CONSECUTIVE)
+        interval_secs = df["dt"].diff().median().total_seconds()
         if red_runs:
             start, end, count = red_runs[0]
+            duration_s = count * interval_secs
             findings.append(Finding(
                 metric="us+sy (CPU %)",
                 severity="Red",
-                observation=f"us+sy exceeded 85% for {count} consecutive samples. "
-                            f"Peak: {us_sy.max():.1f}%.",
+                observation=f"us+sy exceeded 85% for {count} consecutive samples "
+                            f"(~{duration_s:.0f}s). Peak: {us_sy.max():.1f}%. "
+                            f"Verify duration and impact before treating as sustained pressure — "
+                            f"a short burst during batch or report generation may be expected.",
                 when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
-                hypotheses=["hypothesis: CPU-bound workload surge",
-                            "hypothesis: runaway process — check top"],
-                next_step="Correlate with Glorefs; if Glorefs is proportional this is normal scaling. "
-                          "If Glorefs is low, suspect a runaway process.",
+                hypotheses=["hypothesis: CPU-bound workload burst (batch, report, or SQL) — correlate with Glorefs",
+                            "hypothesis: runaway process — check run queue (r) and process list",
+                            "hypothesis: VM CPU ready/steal — check steal time (st) if virtualised"],
+                next_step="Correlate with Glorefs and run queue. If Glorefs is proportional: normal peak load. "
+                          "If Glorefs is low: suspect a runaway process or external CPU consumer. "
+                          "Check steal time (st) if virtualised. Use History Monitor for CPU/GloRefs trend.",
                 chart_request=None,
             ))
         elif warn_runs:
             start, end, count = warn_runs[0]
+            duration_s = count * interval_secs
             findings.append(Finding(
                 metric="us+sy (CPU %)",
                 severity="Yellow",
-                observation=f"us+sy exceeded 75% for {count} consecutive samples. Peak: {us_sy.max():.1f}%.",
+                observation=f"us+sy exceeded 75% for {count} consecutive samples (~{duration_s:.0f}s). "
+                            f"Peak: {us_sy.max():.1f}%.",
                 when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
-                hypotheses=["hypothesis: elevated workload"],
-                next_step="Monitor trend.",
+                hypotheses=["hypothesis: elevated workload — correlate with Glorefs and run queue"],
+                next_step="Monitor trend across collections. Check History Monitor CPU and GloRefs together.",
                 chart_request=None,
             ))
 
@@ -447,38 +468,66 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
         return warn_level, alert_level
 
     # --- WDQsz ---
+    # WDQsz is normally non-zero during a write daemon cycle and drains each cycle.
+    # A finding requires either (a) a growing trend across multiple cycles or
+    # (b) a sustained abnormally high level relative to the period baseline.
     if "WDQsz" in df.columns:
         vals = pd.to_numeric(df["WDQsz"], errors="coerce").fillna(0)
-        warn_runs = _find_breaches(vals, df["dt"], 0.0, WARN_CONSECUTIVE)
-        if warn_runs:
-            start, end, count = warn_runs[0]
-            findings.append(Finding(
-                metric="WDQsz (write daemon queue)",
-                severity="Yellow",
-                observation=f"WDQsz was non-zero for {count} consecutive samples "
-                            f"(max {vals.max():.0f}). Write daemon queue backing up between cycles.",
-                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
-                hypotheses=["hypothesis: write path (storage/WIJ/journal) latency causing WD queue growth"],
-                next_step="Correlate with wa and PhyWrs. If wa is elevated: storage write latency. "
-                          "Check WD cycle time; any cycle ≥ 90 s is critical.",
-                chart_request=None,
-            ))
+        nonzero = vals[vals > 0]
+        if len(nonzero) >= WARN_CONSECUTIVE:
+            # Check for growth: compare first-third vs last-third of non-zero values
+            nz_idx = nonzero.index.tolist()
+            third = max(1, len(nz_idx) // 3)
+            first_mean = nonzero.iloc[:third].mean()
+            last_mean  = nonzero.iloc[-third:].mean()
+            growing = last_mean > first_mean * 1.5 and last_mean > first_mean + 100
+
+            # Check for sustained abnormal level: mean > 2× p25 (persistently elevated)
+            p25 = float(np.percentile(nonzero, 25))
+            sustained = nonzero.mean() > p25 * 3 and p25 > 0
+
+            if growing or sustained:
+                peak = vals.max()
+                if growing:
+                    obs = (f"WDQsz grew from mean {first_mean:.0f} to {last_mean:.0f} across the window "
+                           f"(peak {peak:.0f}) — queue is not draining between write daemon cycles.")
+                else:
+                    obs = (f"WDQsz was persistently elevated (mean {nonzero.mean():.0f}, "
+                           f"peak {peak:.0f}) — not draining to zero between write daemon cycles.")
+                start_dt = df["dt"].iloc[nz_idx[0]]
+                end_dt   = df["dt"].iloc[nz_idx[-1]]
+                findings.append(Finding(
+                    metric="WDQsz (write daemon queue)",
+                    severity="Yellow",
+                    observation=obs,
+                    when=f"{_fmt_ts(start_dt)} – {_fmt_ts(end_dt)}",
+                    hypotheses=["hypothesis: write path (storage/WIJ/journal) latency preventing queue drain"],
+                    next_step="Correlate with wa and PhyWrs. Check WD cycle time; any cycle ≥ 90 s is critical.",
+                    chart_request=None,
+                ))
 
     # --- RouLaS (column name is capitalised S in pButtons schema) ---
+    # Only flag if it occurs during business hours (08:00–18:00) to avoid
+    # overnight/startup transients being misread as a sizing problem.
     roul_col = "RouLaS" if "RouLaS" in df.columns else "RouLas" if "RouLas" in df.columns else None
     if roul_col:
         vals = pd.to_numeric(df[roul_col], errors="coerce").fillna(0)
-        warn_runs = _find_breaches(vals, df["dt"], 0.0, WARN_CONSECUTIVE)
+        bh_mask = df["dt"].dt.hour.between(8, 17)
+        bh_vals = vals[bh_mask].reset_index(drop=True)
+        bh_dts  = df["dt"][bh_mask].reset_index(drop=True)
+        warn_runs = _find_breaches(bh_vals, bh_dts, 0.0, WARN_CONSECUTIVE) if not bh_vals.empty else []
         if warn_runs:
             start, end, count = warn_runs[0]
             findings.append(Finding(
                 metric="RouLaS (routine cache misses)",
                 severity="Yellow",
-                observation=f"RouLaS was non-zero for {count} consecutive samples (max {vals.max():.0f}). "
-                            f"Routine buffer cache is undersized.",
+                observation=f"RouLaS was non-zero during business hours for {count} consecutive samples "
+                            f"(max {bh_vals.max():.0f}). Routine cache misses during production workload — "
+                            f"may indicate routine buffer is undersized.",
                 when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
-                hypotheses=["hypothesis: routine buffer (routines= in CPF) too small for working set"],
-                next_step="Review routines= setting in CPF. Consider increasing.",
+                hypotheses=["hypothesis: routine buffer (routines= in CPF) too small for working set during peak"],
+                next_step="Review routines= setting in CPF. Only increase if misses persist across multiple "
+                          "business-hours collections — transient startup/batch activity is normal.",
                 chart_request=None,
             ))
 
@@ -1034,7 +1083,14 @@ def _write_report(
             all_metrics.update(p.keys())
         all_metrics = sorted(all_metrics)
 
-        header = "| Period | " + " | ".join(f"{m} mean / sigma / p95" for m in all_metrics) + " |"
+        lines += [
+            "Per-period mean / σ / p95 for baseline-relative metrics. "
+            "Where σ > mean the distribution is highly skewed — use p95 rather than mean for capacity assessment. "
+            "Rows marked † have σ > mean for at least one metric.",
+            "",
+        ]
+
+        header = "| Period | " + " | ".join(f"{m} mean / σ / p95" for m in all_metrics) + " |"
         sep    = "|---|" + "---|" * len(all_metrics)
         lines += [header, sep]
 
@@ -1042,7 +1098,12 @@ def _write_report(
             pname = period["name"]
             if pname not in baselines:
                 continue
-            row = f"| {pname} |"
+            high_var = any(
+                baselines[pname][m]["sigma"] > baselines[pname][m]["mean"]
+                for m in all_metrics
+                if m in baselines[pname] and baselines[pname][m]["mean"] > 0
+            )
+            row = f"| {pname}{'†' if high_var else ''} |"
             for m in all_metrics:
                 if m in baselines[pname]:
                     b = baselines[pname][m]

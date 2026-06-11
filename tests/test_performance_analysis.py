@@ -331,9 +331,20 @@ def test_analyse_mgstat_green_when_normal():
     assert non_green == []
 
 
-def test_analyse_mgstat_wdqsz_nonzero_is_yellow():
-    # WDQsz non-zero for 5+ consecutive samples = Yellow
+def test_analyse_mgstat_wdqsz_nonzero_no_finding():
+    # WDQsz merely non-zero (small constant value, no growth) should NOT trigger a finding.
     df = _make_mgstat_analysis_df(wdqsz=[1.0] * 5 + [0.0] * 5)
+    baselines = _compute_baselines(df, ["Glorefs", "PhyRds"])
+    findings = _analyse_mgstat(df, baselines)
+    wd_findings = [f for f in findings if "WDQsz" in f.metric or "write daemon" in f.metric.lower()]
+    assert not any(f.severity in ("Yellow", "Red") for f in wd_findings)
+
+
+def test_analyse_mgstat_wdqsz_growing_is_yellow():
+    # WDQsz growing strongly (last-third >> first-third) should trigger Yellow.
+    n = 15
+    wdqsz = [100.0 * (i + 1) for i in range(n)]  # steadily growing 100 → 1500
+    df = _make_mgstat_analysis_df(wdqsz=wdqsz, n=n)
     baselines = _compute_baselines(df, ["Glorefs", "PhyRds"])
     findings = _analyse_mgstat(df, baselines)
     wd_findings = [f for f in findings if "WDQsz" in f.metric or "write daemon" in f.metric.lower()]
@@ -341,7 +352,10 @@ def test_analyse_mgstat_wdqsz_nonzero_is_yellow():
 
 
 def test_analyse_mgstat_finding_text():
-    df = _make_mgstat_analysis_df(wdqsz=[2.0] * 5 + [0.0] * 5)
+    # Use a growing WDQsz to trigger a finding and verify observation text is populated.
+    n = 15
+    wdqsz = [100.0 * (i + 1) for i in range(n)]
+    df = _make_mgstat_analysis_df(wdqsz=wdqsz, n=n)
     baselines = _compute_baselines(df, ["Glorefs"])
     findings = _analyse_mgstat(df, baselines)
     for f in findings:
