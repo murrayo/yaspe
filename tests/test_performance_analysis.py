@@ -582,3 +582,17 @@ def test_run_analysis_returns_chart_requests_for_red_findings(tmp_path):
     conn.close()
 
     assert os.path.exists(md_path)
+
+
+import subprocess
+
+
+def test_yaspe_analysis_flag_exists():
+    """--analysis flag must be recognised by yaspe.py (no error on --help)."""
+    result = subprocess.run(
+        ["python", "yaspe.py", "--help"],
+        capture_output=True, text=True,
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    )
+    assert "--analysis" in result.stdout
+    assert "--context" in result.stdout
