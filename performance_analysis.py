@@ -7,9 +7,12 @@ Linux only.
 from __future__ import annotations
 
 import os
+import sqlite3
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 
 
@@ -78,3 +81,97 @@ class Finding:
     hypotheses: list = field(default_factory=list)
     next_step: str = ""
     chart_request: Optional[ChartRequest] = None
+
+
+def _get_collection_meta(connection) -> dict:
+    """
+    Establish collection window, median interval, and gaps > 3× interval.
+    Returns dict with keys: start, end, n_days, weekdays, interval_seconds, gaps.
+    gaps is a list of (gap_start, gap_end) datetime tuples.
+    """
+    try:
+        df = pd.read_sql_query(
+            "SELECT RunDate, RunTime FROM mgstat ORDER BY RunDate, RunTime",
+            connection,
+        )
+    except Exception:
+        return {"start": None, "end": None, "n_days": 0, "weekdays": [],
+                "interval_seconds": None, "gaps": []}
+
+    if df.empty:
+        return {"start": None, "end": None, "n_days": 0, "weekdays": [],
+                "interval_seconds": None, "gaps": []}
+
+    # Use the pre-computed 'datetime' column when available (yaspe stores it);
+    # fall back to combining RunDate + RunTime with flexible parsing.
+    if "datetime" in df.columns:
+        df["dt"] = pd.to_datetime(df["datetime"].str.strip(), errors="coerce")
+    else:
+        df["dt"] = pd.to_datetime(
+            df["RunDate"].str.strip() + " " + df["RunTime"].str.strip(),
+            errors="coerce",
+        )
+    df = df.dropna(subset=["dt"]).sort_values("dt").reset_index(drop=True)
+
+    diffs = df["dt"].diff()
+    interval_secs = diffs.median().total_seconds() if len(diffs) > 1 else None
+    gap_threshold = timedelta(seconds=interval_secs * 3) if interval_secs else None
+
+    gaps = []
+    if gap_threshold:
+        for i in range(1, len(df)):
+            if diffs.iloc[i] > gap_threshold:
+                gaps.append((df["dt"].iloc[i - 1], df["dt"].iloc[i]))
+
+    start = df["dt"].min()
+    end = df["dt"].max()
+    n_days = (end.date() - start.date()).days + 1
+    weekdays = sorted({ts.strftime("%A") for ts in df["dt"]})
+
+    return {
+        "start": start,
+        "end": end,
+        "n_days": n_days,
+        "weekdays": weekdays,
+        "interval_seconds": interval_secs,
+        "gaps": gaps,
+    }
+
+
+def _get_system_facts(sp_dict: dict) -> dict:
+    """
+    Extract system facts from sp_dict (populated by sp_check.system_check()).
+    Returns dict with: vcpus, ram_gb, iris_buffers_gb, customer, version, os.
+    Missing values are None; customer defaults to "Unknown".
+    """
+    vcpus = None
+    for key in ("number cpus",):
+        if key in sp_dict:
+            try:
+                vcpus = int(str(sp_dict[key]).strip().split()[0])
+            except (ValueError, IndexError):
+                pass
+            break
+
+    ram_gb = None
+    if "memory MB" in sp_dict:
+        try:
+            ram_gb = round(int(str(sp_dict["memory MB"]).strip()) / 1024)
+        except (ValueError, TypeError):
+            pass
+
+    iris_buffers_gb = None
+    if "globals total MB" in sp_dict:
+        try:
+            iris_buffers_gb = round(int(str(sp_dict["globals total MB"]).strip()) / 1024)
+        except (ValueError, TypeError):
+            pass
+
+    return {
+        "vcpus": vcpus,
+        "ram_gb": ram_gb,
+        "iris_buffers_gb": iris_buffers_gb,
+        "customer": sp_dict.get("customer", "Unknown"),
+        "version": sp_dict.get("version string"),
+        "os": sp_dict.get("operating system", "Linux"),
+    }
