@@ -1078,6 +1078,132 @@ def _write_report(
     return filepath
 
 
+def run_analysis(
+    connection,
+    sp_dict: dict,
+    output_prefix: str,
+    filepath: str,
+    context: Optional[str] = None,
+    png_out: bool = False,
+) -> tuple:
+    """
+    Public entry point. Run full performance analysis.
+
+    Returns (markdown_path, chart_requests) where:
+      markdown_path  — path to the written .md file
+      chart_requests — list[ChartRequest] for Yellow/Red findings (empty if all Green)
+    """
+    meta  = _get_collection_meta(connection)
+    facts = _get_system_facts(sp_dict)
+
+    # Load vmstat and mgstat DataFrames
+    try:
+        mg_raw = pd.read_sql_query("SELECT * FROM mgstat", connection)
+        mg_raw.dropna(inplace=True)
+        if "datetime" in mg_raw.columns:
+            mg_raw["dt"] = pd.to_datetime(mg_raw["datetime"].str.strip(), errors="coerce")
+        else:
+            mg_raw["dt"] = pd.to_datetime(
+                mg_raw["RunDate"].str.strip() + " " + mg_raw["RunTime"].str.strip(),
+                errors="coerce",
+            )
+        mg_df = mg_raw.dropna(subset=["dt"]).sort_values("dt").reset_index(drop=True)
+    except Exception:
+        mg_df = pd.DataFrame()
+
+    try:
+        vm_raw = pd.read_sql_query("SELECT * FROM vmstat", connection)
+        vm_raw.dropna(inplace=True)
+        if "datetime" in vm_raw.columns:
+            vm_raw["dt"] = pd.to_datetime(vm_raw["datetime"].str.strip(), errors="coerce")
+        else:
+            vm_raw["dt"] = pd.to_datetime(
+                vm_raw["RunDate"].str.strip() + " " + vm_raw["RunTime"].str.strip(),
+                errors="coerce",
+            )
+        vm_df = vm_raw.dropna(subset=["dt"]).sort_values("dt").reset_index(drop=True)
+    except Exception:
+        vm_df = pd.DataFrame()
+
+    # Compute baselines from mgstat
+    mgstat_metrics = [m for m in ("Glorefs","PhyRds","PhyWrs","Gloupds","Jrnwrts","Rdratio")
+                      if not mg_df.empty and m in mg_df.columns]
+    baselines = _compute_baselines(mg_df, mgstat_metrics) if not mg_df.empty else {}
+
+    # Per-metric analysis
+    vcpus = facts.get("vcpus")
+    all_findings = []
+
+    if not vm_df.empty:
+        all_findings.extend(_analyse_vmstat(vm_df, vcpus=vcpus))
+
+    if not mg_df.empty:
+        all_findings.extend(_analyse_mgstat(mg_df, baselines))
+
+    # Correlation tests
+    if not mg_df.empty and not vm_df.empty:
+        interval = meta.get("interval_seconds") or 30.0
+        joined = _nearest_join(mg_df, vm_df, interval)
+        for test_fn in (
+            _test_user_stall,
+            _test_buffer_pressure,
+            _test_write_daemon_strain,
+            _test_memory_danger,
+            _test_contention_vs_throughput,
+            _test_kernel_overhead,
+            _test_batch_window,
+        ):
+            try:
+                result = test_fn(joined)
+                if result is not None:
+                    all_findings.append(result)
+            except Exception:
+                pass
+    elif not mg_df.empty:
+        for test_fn in (_test_buffer_pressure, _test_write_daemon_strain,
+                        _test_contention_vs_throughput, _test_batch_window):
+            try:
+                result = test_fn(mg_df)
+                if result is not None:
+                    all_findings.append(result)
+            except Exception:
+                pass
+
+    # Build metric_df_map for chart attachment
+    metric_df_map = {}
+    if not vm_df.empty:
+        for col in ("wa", "r", "b", "si", "so"):
+            if col in vm_df.columns:
+                key = next((f.metric for f in all_findings if f.metric.startswith(col)), None)
+                if key:
+                    sub = vm_df[["dt", col]].rename(columns={col: "metric"})
+                    metric_df_map[key] = sub
+    if not mg_df.empty:
+        for col in ("WDQsz", "RouLaS", "Glorefs", "PhyRds", "PhyWrs", "Jrnwrts"):
+            if col in mg_df.columns:
+                key = next((f.metric for f in all_findings if col in f.metric), None)
+                if key:
+                    sub = mg_df[["dt", col]].rename(columns={col: "metric"})
+                    metric_df_map[key] = sub
+
+    analysis_dir = os.path.join(filepath, f"{output_prefix}analysis_metrics")
+    os.makedirs(analysis_dir, exist_ok=True)
+
+    all_findings = _attach_chart_requests(all_findings, metric_df_map, analysis_dir)
+
+    md_path = _write_report(
+        meta=meta,
+        facts=facts,
+        findings=all_findings,
+        baselines=baselines,
+        context=context,
+        output_dir=filepath,
+    )
+
+    chart_requests = [f.chart_request for f in all_findings if f.chart_request is not None]
+    return md_path, chart_requests
+
+
 def _test_batch_window(df: pd.DataFrame) -> Optional[Finding]:
     """
     Test 7: Identify overnight PhyWrs/Jrnwrts surge.

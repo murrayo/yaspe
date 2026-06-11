@@ -8,6 +8,7 @@ import pandas as pd
 from datetime import datetime
 
 from performance_analysis import IRIS_PERIODS, METRIC_THRESHOLDS, Finding, ChartRequest
+from performance_analysis import run_analysis
 from performance_analysis import _get_collection_meta, _get_system_facts
 from performance_analysis import _label_period, _compute_baselines, _find_breaches
 from performance_analysis import _analyse_vmstat
@@ -494,3 +495,90 @@ def test_write_report_filename_uses_dates(tmp_path):
     )
     assert "2026-01-05" in os.path.basename(path)
     assert "2026-01-07" in os.path.basename(path)
+
+
+def test_run_analysis_returns_markdown_path(tmp_path):
+    """run_analysis() must return a path to an existing .md file."""
+    rows = [
+        ("01/01/2026", "09:00:00", 1000,10,5,200,50,0,17,0,1000,10,"f.html"),
+        ("01/01/2026", "09:00:05", 1100,11,5,210,50,0,17,0,1000,10,"f.html"),
+        ("01/01/2026", "09:00:10",  900, 9,5,190,50,0,17,0,1000,10,"f.html"),
+        ("01/01/2026", "09:00:15", 1050,10,5,200,50,0,17,0,1000,10,"f.html"),
+        ("01/01/2026", "09:00:20",  950,10,5,195,50,0,17,0,1000,10,"f.html"),
+    ]
+    conn = _make_test_db(rows)
+    # Add vmstat table
+    conn.execute("""
+        CREATE TABLE vmstat (
+            id_key INTEGER PRIMARY KEY,
+            RunDate TEXT, RunTime TEXT,
+            r REAL, b REAL, swpd REAL, free REAL, buff REAL, cache REAL,
+            si REAL, so REAL, bi REAL, bo REAL, "in" REAL, cs REAL,
+            us REAL, sy REAL, id REAL, wa REAL, st REAL,
+            "html name" TEXT
+        )
+    """)
+    for i in range(5):
+        conn.execute(
+            "INSERT INTO vmstat (RunDate, RunTime, r, b, swpd, free, buff, cache, "
+            'si, so, bi, bo, "in", cs, us, sy, id, wa, st, "html name") '
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("01/01/2026", f"09:00:{i*5:02d}", 0,0,0,10000,0,5000, 0,0,0,0,100,200, 20,5,75,2,0,"f.html"),
+        )
+    conn.commit()
+
+    sp_dict = {
+        "operating system": "Linux",
+        "customer": "TestHospital",
+        "number cpus": "8",
+        "memory MB": "32768",
+        "globals total MB": "16384",
+    }
+
+    md_path, chart_requests = run_analysis(
+        connection=conn,
+        sp_dict=sp_dict,
+        output_prefix="test_",
+        filepath=str(tmp_path),
+        context="Integration test",
+    )
+    conn.close()
+
+    assert os.path.exists(md_path)
+    assert md_path.endswith(".md")
+    assert isinstance(chart_requests, list)
+
+
+def test_run_analysis_returns_chart_requests_for_red_findings(tmp_path):
+    """Red findings must produce ChartRequest objects."""
+    rows = []
+    for i in range(5):
+        rows.append(("01/01/2026", f"09:00:{i*5:02d}", 1000,10,5,200,50,0,17,0,1000,10,"f.html"))
+    conn = _make_test_db(rows)
+    conn.execute("""
+        CREATE TABLE vmstat (
+            id_key INTEGER PRIMARY KEY,
+            RunDate TEXT, RunTime TEXT,
+            r REAL, b REAL, swpd REAL, free REAL, buff REAL, cache REAL,
+            si REAL, so REAL, bi REAL, bo REAL, "in" REAL, cs REAL,
+            us REAL, sy REAL, id REAL, wa REAL, st REAL,
+            "html name" TEXT
+        )
+    """)
+    # 3 consecutive wa=25% rows → Red
+    for i in range(5):
+        wa = 25.0 if i < 3 else 2.0
+        conn.execute(
+            "INSERT INTO vmstat (RunDate, RunTime, r, b, swpd, free, buff, cache, "
+            'si, so, bi, bo, "in", cs, us, sy, id, wa, st, "html name") '
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("01/01/2026", f"09:00:{i*5:02d}", 0,0,0,10000,0,5000, 0,0,0,0,100,200, 20,5,75,wa,0,"f.html"),
+        )
+    conn.commit()
+
+    sp_dict = {"operating system": "Linux", "customer": "Test", "number cpus": "8",
+               "memory MB": "32768", "globals total MB": "16384"}
+    md_path, chart_requests = run_analysis(conn, sp_dict, "test_", str(tmp_path), context=None)
+    conn.close()
+
+    assert os.path.exists(md_path)
