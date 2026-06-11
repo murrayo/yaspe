@@ -58,6 +58,14 @@ ALERT_CONSECUTIVE = 3   # samples above alert threshold = Red
 WARN_CONSECUTIVE  = 5   # samples above warn threshold  = Yellow
 
 
+def _fmt_n(value) -> str:
+    """Format a number with thousands separator, no decimal places."""
+    try:
+        return f"{int(round(float(value))):,}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
 @dataclass
 class ChartRequest:
     metric: str
@@ -392,8 +400,8 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
             findings.append(Finding(
                 metric="r (run queue)",
                 severity="Red",
-                observation=f"Run queue exceeded {alert_thr:.0f} (2× vCPUs={vcpus}) for "
-                            f"{count} consecutive samples. Peak: {r_vals.max():.0f}.",
+                observation=f"Run queue exceeded {_fmt_n(alert_thr)} (2× vCPUs={vcpus}) for "
+                            f"{count} consecutive samples. Peak: {_fmt_n(r_vals.max())}.",
                 when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
                 hypotheses=["hypothesis: CPU saturation — more runnable threads than cores"],
                 next_step="Cross-reference with us+sy. If us+sy < 80%, suspect lock contention rather than CPU shortage.",
@@ -404,7 +412,7 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
             findings.append(Finding(
                 metric="r (run queue)",
                 severity="Yellow",
-                observation=f"Run queue exceeded {warn_thr:.0f} (1× vCPUs={vcpus}) for {count} consecutive samples.",
+                observation=f"Run queue exceeded {_fmt_n(warn_thr)} (1× vCPUs={vcpus}) for {count} consecutive samples.",
                 when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
                 hypotheses=["hypothesis: intermittent CPU pressure"],
                 next_step="Monitor trend.",
@@ -422,7 +430,7 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                     metric=label,
                     severity="Red",
                     observation=f"Sustained {col} > 0 for {count} consecutive samples — "
-                                f"IRIS shared memory segment is paging. Peak: {vals.max():.0f} KB/s.",
+                                f"IRIS shared memory segment is paging. Peak: {_fmt_n(vals.max())} KB/s.",
                     when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
                     hypotheses=["confirmed: memory pressure causing IRIS shared memory to page out"],
                     next_step="URGENT: Reduce global buffer allocation or add RAM. "
@@ -489,11 +497,11 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
             if growing or sustained:
                 peak = vals.max()
                 if growing:
-                    obs = (f"WDQsz grew from mean {first_mean:.0f} to {last_mean:.0f} across the window "
-                           f"(peak {peak:.0f}) — queue is not draining between write daemon cycles.")
+                    obs = (f"WDQsz grew from mean {_fmt_n(first_mean)} to {_fmt_n(last_mean)} across the window "
+                           f"(peak {_fmt_n(peak)}) — queue is not draining between write daemon cycles.")
                 else:
-                    obs = (f"WDQsz was persistently elevated (mean {nonzero.mean():.0f}, "
-                           f"peak {peak:.0f}) — not draining to zero between write daemon cycles.")
+                    obs = (f"WDQsz was persistently elevated (mean {_fmt_n(nonzero.mean())}, "
+                           f"peak {_fmt_n(peak)}) — not draining to zero between write daemon cycles.")
                 start_dt = df["dt"].iloc[nz_idx[0]]
                 end_dt   = df["dt"].iloc[nz_idx[-1]]
                 findings.append(Finding(
@@ -522,7 +530,7 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
                 metric="RouLaS (routine cache misses)",
                 severity="Yellow",
                 observation=f"RouLaS was non-zero during business hours for {count} consecutive samples "
-                            f"(max {bh_vals.max():.0f}). Routine cache misses during production workload — "
+                            f"(max {_fmt_n(bh_vals.max())}). Routine cache misses during production workload — "
                             f"may indicate routine buffer is undersized.",
                 when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
                 hypotheses=["hypothesis: routine buffer (routines= in CPF) too small for working set during peak"],
@@ -552,9 +560,9 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
                 period_findings.append(Finding(
                     metric=metric,
                     severity="Red",
-                    observation=f"{metric} exceeded alert level {alert_level:.0f} "
+                    observation=f"{metric} exceeded alert level {_fmt_n(alert_level)} "
                                 f"(2× period norm) for {count} consecutive samples. "
-                                f"Peak: {group_vals.max():.0f}.",
+                                f"Peak: {_fmt_n(group_vals.max())}.",
                     when=f"{_fmt_ts(start)} – {_fmt_ts(end)} ({period_name})",
                     hypotheses=[f"hypothesis: abnormal workload spike in {metric}"],
                     next_step=f"Correlate with vmstat and other mgstat metrics in the same window.",
@@ -565,9 +573,9 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
                 period_findings.append(Finding(
                     metric=metric,
                     severity="Yellow",
-                    observation=f"{metric} exceeded warning level {warn_level:.0f} "
+                    observation=f"{metric} exceeded warning level {_fmt_n(warn_level)} "
                                 f"(1.6× period norm) for {count} consecutive samples. "
-                                f"Peak: {group_vals.max():.0f}.",
+                                f"Peak: {_fmt_n(group_vals.max())}.",
                     when=f"{_fmt_ts(start)} – {_fmt_ts(end)} ({period_name})",
                     hypotheses=[f"hypothesis: elevated {metric} during {period_name}"],
                     next_step="Monitor trend across multiple days.",
@@ -644,7 +652,7 @@ def _test_user_stall(df: pd.DataFrame) -> Optional[Finding]:
     return Finding(
         metric="Glorefs (user stall)",
         severity="Red",
-        observation=f"Glorefs dropped to near zero (< 5% of mean {mean_g:.0f}) in business hours "
+        observation=f"Glorefs dropped to near zero (< 5% of mean {_fmt_n(mean_g)}) in business hours "
                     f"for {count} consecutive samples — potential user-visible stall.",
         when=f"{pd.Timestamp(start).strftime('%Y-%m-%d %H:%M:%S')} – "
              f"{pd.Timestamp(end).strftime('%Y-%m-%d %H:%M:%S')}",
@@ -774,7 +782,7 @@ def _test_memory_danger(df: pd.DataFrame) -> Optional[Finding]:
     return Finding(
         metric="free / cache / swap (memory danger)",
         severity=severity,
-        observation=f"Free memory declined {free.iloc[:third].mean():.0f} → {free.iloc[2*third:].mean():.0f} KB "
+        observation=f"Free memory declined {_fmt_n(free.iloc[:third].mean())} → {_fmt_n(free.iloc[2*third:].mean())} KB "
                     f"over the collection window" +
                     (" with concurrent swap activity." if any_swap else "."),
         when=f"{start_ts} – {end_ts}",
@@ -859,7 +867,7 @@ def _test_kernel_overhead(df: pd.DataFrame) -> Optional[Finding]:
         metric="sy/us ratio (kernel overhead)",
         severity="Yellow",
         observation=f"Kernel CPU fraction grew from {sf_first*100:.1f}% to {sf_last*100:.1f}% of total CPU "
-                    f"while Glorefs remained stable ({gl_first:.0f} → {gl_last:.0f}) — "
+                    f"while Glorefs remained stable ({_fmt_n(gl_first)} → {_fmt_n(gl_last)}) — "
                     f"increasing kernel overhead not explained by workload growth.",
         when=f"{start_ts} – {end_ts}",
         corroborating=["Glorefs stable — workload not increasing, so sy growth is not proportional"],
@@ -1024,8 +1032,8 @@ def _write_report(
             if pname in baselines:
                 gl = baselines[pname].get("Glorefs", {}).get("max", "-")
                 gu = baselines[pname].get("Gloupds", {}).get("max", "-")
-                gl_str = f"{gl:.0f}" if isinstance(gl, float) else str(gl)
-                gu_str = f"{gu:.0f}" if isinstance(gu, float) else str(gu)
+                gl_str = _fmt_n(gl) if isinstance(gl, float) else str(gl)
+                gu_str = _fmt_n(gu) if isinstance(gu, float) else str(gu)
                 lines.append(f"| {pname} | {gl_str} | {gu_str} |")
         lines.append("")
     else:
@@ -1107,7 +1115,7 @@ def _write_report(
             for m in all_metrics:
                 if m in baselines[pname]:
                     b = baselines[pname][m]
-                    row += f" {b['mean']:.1f} / {b['sigma']:.1f} / {b['p95']:.1f} |"
+                    row += f" {_fmt_n(b['mean'])} / {_fmt_n(b['sigma'])} / {_fmt_n(b['p95'])} |"
                 else:
                     row += " - |"
             lines.append(row)
@@ -1132,6 +1140,16 @@ def _write_report(
         '       si, so, bi, bo, "in", cs, us, sy, id, wa, st FROM vmstat',
         "ORDER BY RunDate, RunTime;",
         "```",
+        "",
+    ]
+
+    # Caveat
+    lines += [
+        "---",
+        "",
+        "> **Disclaimer:** These explanations are general guidance for InterSystems IRIS and Linux environments. "
+        "They are not universal recommendations. Validate changes against the application workload, "
+        "IRIS version, operating system, storage platform, and support requirements before implementation.",
         "",
     ]
 
@@ -1304,7 +1322,7 @@ def _test_batch_window(df: pd.DataFrame) -> Optional[Finding]:
     return Finding(
         metric="PhyWrs/Jrnwrts (batch/backup window)",
         severity=severity,
-        observation=f"Overnight PhyWrs averaged {overnight_pw:.0f}/s (vs overall mean {overall_pw:.0f}/s) "
+        observation=f"Overnight PhyWrs averaged {_fmt_n(overnight_pw)}/s (vs overall mean {_fmt_n(overall_pw)}/s) "
                     f"— batch/backup window identified.{note}",
         when=f"00:00–06:00 window",
         corroborating=[],
