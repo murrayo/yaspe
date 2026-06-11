@@ -247,3 +247,174 @@ def _find_breaches(
         else:
             i += 1
     return runs
+
+
+def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
+    """
+    Evaluate vmstat KPIs. Returns list[Finding] — one per metric that
+    triggers Yellow or Red (plus Green summary if all clear).
+    df must have columns: dt, wa, r, b, si, so, us, sy, id.
+    """
+    findings = []
+    df = df.copy().sort_values("dt").reset_index(drop=True)
+
+    def _fmt_ts(dt):
+        return pd.Timestamp(dt).strftime("%Y-%m-%d %H:%M:%S")
+
+    # --- wa (I/O wait) ---
+    if "wa" in df.columns:
+        vals = pd.to_numeric(df["wa"], errors="coerce").fillna(0)
+        red_runs  = _find_breaches(vals, df["dt"], 20.0, ALERT_CONSECUTIVE)
+        warn_runs = _find_breaches(vals, df["dt"], 10.0, WARN_CONSECUTIVE)
+        if red_runs:
+            start, end, count = red_runs[0]
+            findings.append(Finding(
+                metric="wa (I/O wait %)",
+                severity="Red",
+                observation=f"wa exceeded 20% (alert) for {count} consecutive samples "
+                            f"(≥ {count * df['dt'].diff().median().total_seconds():.0f}s). "
+                            f"Peak: {vals.max():.1f}%.",
+                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                hypotheses=["hypothesis: storage latency — check iostat await/svctm",
+                            "hypothesis: excessive write-back I/O from dirty page flush"],
+                next_step="Correlate with iostat await; check WDQsz and PhyWrs.",
+                chart_request=None,
+            ))
+        elif warn_runs:
+            start, end, count = warn_runs[0]
+            findings.append(Finding(
+                metric="wa (I/O wait %)",
+                severity="Yellow",
+                observation=f"wa exceeded 10% (warning) for {count} consecutive samples. "
+                            f"Peak: {vals.max():.1f}%.",
+                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                hypotheses=["hypothesis: intermittent storage latency"],
+                next_step="Monitor; correlate with iostat.",
+                chart_request=None,
+            ))
+
+    # --- us+sy (total CPU) ---
+    if "us" in df.columns and "sy" in df.columns:
+        us_sy = pd.to_numeric(df["us"], errors="coerce").fillna(0) + \
+                pd.to_numeric(df["sy"], errors="coerce").fillna(0)
+        red_runs  = _find_breaches(us_sy, df["dt"], 85.0, ALERT_CONSECUTIVE)
+        warn_runs = _find_breaches(us_sy, df["dt"], 75.0, WARN_CONSECUTIVE)
+        if red_runs:
+            start, end, count = red_runs[0]
+            findings.append(Finding(
+                metric="us+sy (CPU %)",
+                severity="Red",
+                observation=f"us+sy exceeded 85% for {count} consecutive samples. "
+                            f"Peak: {us_sy.max():.1f}%.",
+                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                hypotheses=["hypothesis: CPU-bound workload surge",
+                            "hypothesis: runaway process — check top"],
+                next_step="Correlate with Glorefs; if Glorefs is proportional this is normal scaling. "
+                          "If Glorefs is low, suspect a runaway process.",
+                chart_request=None,
+            ))
+        elif warn_runs:
+            start, end, count = warn_runs[0]
+            findings.append(Finding(
+                metric="us+sy (CPU %)",
+                severity="Yellow",
+                observation=f"us+sy exceeded 75% for {count} consecutive samples. Peak: {us_sy.max():.1f}%.",
+                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                hypotheses=["hypothesis: elevated workload"],
+                next_step="Monitor trend.",
+                chart_request=None,
+            ))
+
+    # --- sy as % of total CPU ---
+    if "us" in df.columns and "sy" in df.columns:
+        us_vals = pd.to_numeric(df["us"], errors="coerce").fillna(0)
+        sy_vals = pd.to_numeric(df["sy"], errors="coerce").fillna(0)
+        total = us_vals + sy_vals
+        sy_pct = sy_vals.where(total > 0, 0) / total.where(total > 0, 1) * 100
+        red_runs  = _find_breaches(sy_pct, df["dt"], 50.0, ALERT_CONSECUTIVE)
+        warn_runs = _find_breaches(sy_pct, df["dt"], 30.0, WARN_CONSECUTIVE)
+        if red_runs:
+            start, end, count = red_runs[0]
+            findings.append(Finding(
+                metric="sy (% of total CPU)",
+                severity="Red",
+                observation=f"Kernel CPU exceeded 50% of total CPU for {count} consecutive samples. "
+                            f"Peak sy fraction: {sy_pct.max():.1f}%.",
+                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                hypotheses=["hypothesis: HugePages not configured — IRIS managing own TLB",
+                            "hypothesis: NUMA cross-socket traffic",
+                            "hypothesis: high interrupt/softirq rate"],
+                next_step="Check HugePages configuration. Review /proc/interrupts during a repeat event.",
+                chart_request=None,
+            ))
+        elif warn_runs:
+            start, end, count = warn_runs[0]
+            findings.append(Finding(
+                metric="sy (% of total CPU)",
+                severity="Yellow",
+                observation=f"Kernel CPU exceeded 30% of total CPU for {count} consecutive samples.",
+                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                hypotheses=["hypothesis: elevated system-call rate or kernel overhead"],
+                next_step="Monitor; check HugePages setting.",
+                chart_request=None,
+            ))
+
+    # --- r (run queue) — vCPU-relative ---
+    if "r" in df.columns and vcpus is not None:
+        r_vals = pd.to_numeric(df["r"], errors="coerce").fillna(0)
+        alert_thr = vcpus * 2.0
+        warn_thr  = vcpus * 1.0
+        red_runs  = _find_breaches(r_vals, df["dt"], alert_thr, ALERT_CONSECUTIVE)
+        warn_runs = _find_breaches(r_vals, df["dt"], warn_thr,  WARN_CONSECUTIVE)
+        if red_runs:
+            start, end, count = red_runs[0]
+            findings.append(Finding(
+                metric="r (run queue)",
+                severity="Red",
+                observation=f"Run queue exceeded {alert_thr:.0f} (2× vCPUs={vcpus}) for "
+                            f"{count} consecutive samples. Peak: {r_vals.max():.0f}.",
+                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                hypotheses=["hypothesis: CPU saturation — more runnable threads than cores"],
+                next_step="Cross-reference with us+sy. If us+sy < 80%, suspect lock contention rather than CPU shortage.",
+                chart_request=None,
+            ))
+        elif warn_runs:
+            start, end, count = warn_runs[0]
+            findings.append(Finding(
+                metric="r (run queue)",
+                severity="Yellow",
+                observation=f"Run queue exceeded {warn_thr:.0f} (1× vCPUs={vcpus}) for {count} consecutive samples.",
+                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                hypotheses=["hypothesis: intermittent CPU pressure"],
+                next_step="Monitor trend.",
+                chart_request=None,
+            ))
+
+    # --- si / so (swap) — any sustained = Red ---
+    for col, label in (("si", "swap in (si)"), ("so", "swap out (so)")):
+        if col in df.columns:
+            vals = pd.to_numeric(df[col], errors="coerce").fillna(0)
+            red_runs = _find_breaches(vals, df["dt"], 0.0, ALERT_CONSECUTIVE)
+            if red_runs:
+                start, end, count = red_runs[0]
+                findings.append(Finding(
+                    metric=label,
+                    severity="Red",
+                    observation=f"Sustained {col} > 0 for {count} consecutive samples — "
+                                f"IRIS shared memory segment is paging. Peak: {vals.max():.0f} KB/s.",
+                    when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                    hypotheses=["confirmed: memory pressure causing IRIS shared memory to page out"],
+                    next_step="URGENT: Reduce global buffer allocation or add RAM. "
+                              "Any sustained swap on a dedicated IRIS server is critical.",
+                    chart_request=None,
+                ))
+
+    if not findings:
+        findings.append(Finding(
+            metric="vmstat (all)",
+            severity="Green",
+            observation="All vmstat metrics within normal thresholds for the collection window.",
+            when="entire window",
+        ))
+
+    return findings

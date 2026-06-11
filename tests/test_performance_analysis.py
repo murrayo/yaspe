@@ -10,6 +10,7 @@ from datetime import datetime
 from performance_analysis import IRIS_PERIODS, METRIC_THRESHOLDS, Finding, ChartRequest
 from performance_analysis import _get_collection_meta, _get_system_facts
 from performance_analysis import _label_period, _compute_baselines, _find_breaches
+from performance_analysis import _analyse_vmstat
 
 def test_iris_periods_count():
     assert len(IRIS_PERIODS) == 9
@@ -226,3 +227,70 @@ def test_find_breaches_returns_timestamps():
     start, end, count = runs[0]
     assert str(start) == "2026-01-01 09:00:00"
     assert str(end)   == "2026-01-01 09:00:10"
+
+
+# Task 5: _analyse_vmstat
+
+def _make_vmstat_df(wa_vals, r_vals=None, si_vals=None, so_vals=None, us_vals=None, sy_vals=None):
+    n = len(wa_vals)
+    base_dt = pd.date_range("2026-01-01 09:00:00", periods=n, freq="5s")
+    return pd.DataFrame({
+        "dt": base_dt,
+        "wa": wa_vals,
+        "r":  r_vals  if r_vals  is not None else [0.0] * n,
+        "si": si_vals if si_vals is not None else [0.0] * n,
+        "so": so_vals if so_vals is not None else [0.0] * n,
+        "us": us_vals if us_vals is not None else [20.0] * n,
+        "sy": sy_vals if sy_vals is not None else [5.0] * n,
+        "b":  [0.0] * n,
+        "id": [75.0] * n,
+    })
+
+
+def test_analyse_vmstat_green_when_normal():
+    df = _make_vmstat_df(wa_vals=[2.0] * 10)
+    findings = _analyse_vmstat(df, vcpus=8)
+    # All within thresholds — no Red or Yellow findings
+    non_green = [f for f in findings if f.severity != "Green"]
+    assert non_green == []
+
+
+def test_analyse_vmstat_yellow_wa():
+    # 5 consecutive samples of wa=12% → Yellow (warn threshold 10%, 5 consecutive)
+    df = _make_vmstat_df(wa_vals=[12.0] * 5 + [2.0] * 5)
+    findings = _analyse_vmstat(df, vcpus=8)
+    wa_findings = [f for f in findings if "wa" in f.metric]
+    assert any(f.severity in ("Yellow", "Red") for f in wa_findings)
+
+
+def test_analyse_vmstat_red_wa():
+    # 3 consecutive samples of wa=25% → Red (alert threshold 20%, 3 consecutive)
+    df = _make_vmstat_df(wa_vals=[25.0] * 3 + [2.0] * 7)
+    findings = _analyse_vmstat(df, vcpus=8)
+    wa_findings = [f for f in findings if "wa" in f.metric]
+    assert any(f.severity == "Red" for f in wa_findings)
+
+
+def test_analyse_vmstat_swap_is_always_red():
+    # Any sustained so > 0 is Red
+    df = _make_vmstat_df(wa_vals=[2.0] * 10, so_vals=[1.0] * 3 + [0.0] * 7)
+    findings = _analyse_vmstat(df, vcpus=8)
+    so_findings = [f for f in findings if "so" in f.metric or "swap" in f.metric.lower()]
+    assert any(f.severity == "Red" for f in so_findings)
+
+
+def test_analyse_vmstat_run_queue_vcpu_relative():
+    # r > 2 × 2 vCPUs = 4 → alert; use 3 consec samples of r=5 on 2-vCPU system
+    df = _make_vmstat_df(wa_vals=[2.0] * 10, r_vals=[5.0] * 3 + [0.0] * 7)
+    findings = _analyse_vmstat(df, vcpus=2)
+    r_findings = [f for f in findings if "run queue" in f.metric.lower() or f.metric == "r"]
+    assert any(f.severity == "Red" for f in r_findings)
+
+
+def test_analyse_vmstat_finding_has_observation_text():
+    df = _make_vmstat_df(wa_vals=[25.0] * 3 + [2.0] * 7)
+    findings = _analyse_vmstat(df, vcpus=8)
+    for f in findings:
+        if f.severity in ("Yellow", "Red"):
+            assert len(f.observation) > 0
+            assert len(f.when) > 0
