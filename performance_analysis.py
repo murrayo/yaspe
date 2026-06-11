@@ -1014,7 +1014,9 @@ def _write_report(
             if f.next_step:
                 lines += [f"**Next step:** {f.next_step}", ""]
             if f.chart_request:
-                lines += [f"![{f.metric} chart]({f.chart_request.filename}.png)", ""]
+                chart_path = os.path.join(f.chart_request.output_dir, f"{f.chart_request.filename}.png")
+                rel_path = os.path.relpath(chart_path, output_dir)
+                lines += [f"![{f.metric} chart]({rel_path})", ""]
 
     # 5. Explainable anomalies
     batch = next((f for f in findings if "batch" in f.metric.lower() and f.severity == "Green"), None)
@@ -1099,7 +1101,7 @@ def run_analysis(
     # Load vmstat and mgstat DataFrames
     try:
         mg_raw = pd.read_sql_query("SELECT * FROM mgstat", connection)
-        mg_raw.dropna(inplace=True)
+        mg_raw.dropna(subset=["RunDate", "RunTime"], inplace=True)
         if "datetime" in mg_raw.columns:
             mg_raw["dt"] = pd.to_datetime(mg_raw["datetime"].str.strip(), errors="coerce")
         else:
@@ -1113,7 +1115,7 @@ def run_analysis(
 
     try:
         vm_raw = pd.read_sql_query("SELECT * FROM vmstat", connection)
-        vm_raw.dropna(inplace=True)
+        vm_raw.dropna(subset=["RunDate", "RunTime"], inplace=True)
         if "datetime" in vm_raw.columns:
             vm_raw["dt"] = pd.to_datetime(vm_raw["datetime"].str.strip(), errors="coerce")
         else:
