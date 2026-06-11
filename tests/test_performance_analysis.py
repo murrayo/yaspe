@@ -12,6 +12,11 @@ from performance_analysis import _get_collection_meta, _get_system_facts
 from performance_analysis import _label_period, _compute_baselines, _find_breaches
 from performance_analysis import _analyse_vmstat
 from performance_analysis import _analyse_mgstat
+from performance_analysis import (
+    _test_user_stall, _test_buffer_pressure, _test_write_daemon_strain,
+    _test_memory_danger, _test_contention_vs_throughput,
+    _test_kernel_overhead, _test_batch_window,
+)
 
 def test_iris_periods_count():
     assert len(IRIS_PERIODS) == 9
@@ -340,3 +345,86 @@ def test_analyse_mgstat_finding_text():
     for f in findings:
         if f.severity in ("Yellow", "Red"):
             assert len(f.observation) > 10
+
+
+# Task 7: correlation test functions
+
+def _make_joined_df(n=20, **kwargs):
+    """
+    Build a merged vmstat+mgstat DataFrame. Callers override specific columns.
+    Default: healthy values throughout.
+    """
+    base_dt = pd.date_range("2026-01-01 09:00:00", periods=n, freq="5s")
+    defaults = {
+        "dt": base_dt,
+        "Glorefs": [1000.0] * n,
+        "WDQsz":   [0.0] * n,
+        "PhyRds":  [10.0] * n,
+        "PhyWrs":  [5.0] * n,
+        "Jrnwrts": [17.0] * n,
+        "Rdratio": [50.0] * n,
+        "Seize":   [1000.0] * n,
+        "ASeize":  [10.0] * n,
+        "RouLaS":  [0.0] * n,
+        "wa":  [2.0] * n,
+        "b":   [0.0] * n,
+        "us":  [20.0] * n,
+        "sy":  [5.0] * n,
+        "si":  [0.0] * n,
+        "so":  [0.0] * n,
+        "free":  [10000.0] * n,
+        "cache": [5000.0] * n,
+    }
+    defaults.update(kwargs)
+    return pd.DataFrame(defaults)
+
+
+def test_user_stall_no_finding_when_healthy():
+    df = _make_joined_df()
+    result = _test_user_stall(df)
+    assert result is None
+
+
+def test_user_stall_detects_drop_with_wa():
+    # Glorefs drops to near 0 during business hours (09:xx), wa rises
+    n = 20
+    glorefs = [1000.0] * 5 + [20.0] * 5 + [1000.0] * 10
+    wa      = [2.0] * 5 + [25.0] * 5 + [2.0] * 10
+    wdqsz   = [0.0] * 5 + [5.0] * 5 + [0.0] * 10
+    df = _make_joined_df(Glorefs=glorefs, wa=wa, WDQsz=wdqsz)
+    result = _test_user_stall(df)
+    assert result is not None
+    assert result.severity in ("Yellow", "Red")
+
+
+def test_buffer_pressure_no_finding_when_healthy():
+    df = _make_joined_df()
+    result = _test_buffer_pressure(df)
+    assert result is None
+
+
+def test_buffer_pressure_detects_trend():
+    n = 20
+    # Rdratio declining, PhyRds rising
+    rdratio = [50.0 - i * 2 for i in range(n)]
+    phyrds  = [10.0 + i * 1 for i in range(n)]
+    df = _make_joined_df(Rdratio=rdratio, PhyRds=phyrds)
+    result = _test_buffer_pressure(df)
+    assert result is not None
+
+
+def test_memory_danger_no_finding_when_healthy():
+    df = _make_joined_df()
+    result = _test_memory_danger(df)
+    assert result is None
+
+
+def test_memory_danger_detects_free_declining_with_swap():
+    n = 20
+    free  = [10000.0 - i * 400 for i in range(n)]
+    cache = [5000.0  - i * 200 for i in range(n)]
+    si    = [0.0] * 10 + [1.0] * 10
+    df = _make_joined_df(free=free, cache=cache, si=si)
+    result = _test_memory_danger(df)
+    assert result is not None
+    assert result.severity == "Red"

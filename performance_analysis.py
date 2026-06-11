@@ -535,3 +535,338 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
         ))
 
     return findings
+
+
+# ---------------------------------------------------------------------------
+# Task 7: cross-signal correlation tests
+# ---------------------------------------------------------------------------
+
+def _nearest_join(mgstat_df: pd.DataFrame, vmstat_df: pd.DataFrame,
+                  interval_secs: float) -> pd.DataFrame:
+    """Merge mgstat and vmstat on nearest timestamp within 1.5× interval."""
+    tolerance = pd.Timedelta(seconds=interval_secs * 1.5)
+    mg = mgstat_df.sort_values("dt").reset_index(drop=True)
+    vm = vmstat_df.sort_values("dt").reset_index(drop=True)
+    merged = pd.merge_asof(mg, vm, on="dt", tolerance=tolerance,
+                           direction="nearest", suffixes=("", "_vm"))
+    return merged
+
+
+def _test_user_stall(df: pd.DataFrame) -> Optional[Finding]:
+    """
+    Test 1: Glorefs drops sharply in business hours.
+    df is a merged vmstat+mgstat DataFrame with 'dt', 'Glorefs', 'WDQsz', 'b', 'wa'.
+    Business hours = 08:00–18:00.
+    """
+    bh = df[df["dt"].dt.hour.between(8, 17)].copy()
+    if bh.empty or "Glorefs" not in bh.columns:
+        return None
+
+    glorefs = pd.to_numeric(bh["Glorefs"], errors="coerce").dropna()
+    if glorefs.empty:
+        return None
+
+    mean_g = glorefs.mean()
+    # A stall = at least 3 consecutive samples below 5% of mean
+    stall_threshold = mean_g * 0.05
+    if stall_threshold < 1:
+        return None
+
+    stall_runs = _find_breaches(-glorefs, bh["dt"].reset_index(drop=True),
+                                threshold=-stall_threshold, min_consecutive=ALERT_CONSECUTIVE)
+
+    if not stall_runs:
+        return None
+
+    start, end, count = stall_runs[0]
+    # Check corroborating evidence
+    window = bh[(bh["dt"] >= start) & (bh["dt"] <= end)]
+    wa_elevated = "wa" in window.columns and pd.to_numeric(window["wa"], errors="coerce").mean() > 10
+    wdqsz_elevated = "WDQsz" in window.columns and pd.to_numeric(window["WDQsz"], errors="coerce").max() > 0
+
+    corroborating = []
+    if wa_elevated:
+        corroborating.append(f"wa elevated ({pd.to_numeric(window['wa'], errors='coerce').mean():.1f}%) during stall — storage-side cause likely")
+    if wdqsz_elevated:
+        corroborating.append(f"WDQsz non-zero during stall — write daemon queue backing up")
+    if not corroborating:
+        corroborating.append("wa and WDQsz within normal range — upstream/application-side cause possible")
+
+    return Finding(
+        metric="Glorefs (user stall)",
+        severity="Red",
+        observation=f"Glorefs dropped to near zero (< 5% of mean {mean_g:.0f}) in business hours "
+                    f"for {count} consecutive samples — potential user-visible stall.",
+        when=f"{pd.Timestamp(start).strftime('%Y-%m-%d %H:%M:%S')} – "
+             f"{pd.Timestamp(end).strftime('%Y-%m-%d %H:%M:%S')}",
+        corroborating=corroborating,
+        hypotheses=(["confirmed: storage-side stall (wa + WDQsz corroborate)"]
+                    if wa_elevated or wdqsz_elevated
+                    else ["hypothesis: application-side stall (no storage indicators)"]),
+        next_step="Capture ^SystemPerformance during a recurrence. "
+                  "Check storage latency with iostat -x during the window.",
+        chart_request=None,
+    )
+
+
+def _test_buffer_pressure(df: pd.DataFrame) -> Optional[Finding]:
+    """
+    Test 2: Rdratio trending down while PhyRds trends up.
+    Quantify first-third vs last-third of window.
+    """
+    if "Rdratio" not in df.columns or "PhyRds" not in df.columns:
+        return None
+
+    df = df.sort_values("dt").reset_index(drop=True)
+    n = len(df)
+    if n < 9:
+        return None
+
+    third = n // 3
+    rdratio = pd.to_numeric(df["Rdratio"], errors="coerce").fillna(0)
+    phyrds  = pd.to_numeric(df["PhyRds"],  errors="coerce").fillna(0)
+
+    rd_first = rdratio.iloc[:third].mean()
+    rd_last  = rdratio.iloc[2*third:].mean()
+    ph_first = phyrds.iloc[:third].mean()
+    ph_last  = phyrds.iloc[2*third:].mean()
+
+    rdratio_declined = rd_last < rd_first * 0.85   # > 15% decline
+    phyrds_increased = ph_last > ph_first * 1.20   # > 20% increase
+
+    if not (rdratio_declined and phyrds_increased):
+        return None
+
+    start_ts = df["dt"].iloc[0].strftime("%Y-%m-%d %H:%M:%S")
+    end_ts   = df["dt"].iloc[-1].strftime("%Y-%m-%d %H:%M:%S")
+
+    return Finding(
+        metric="Rdratio / PhyRds (buffer pool pressure)",
+        severity="Yellow",
+        observation=f"Rdratio declined from {rd_first:.1f}% to {rd_last:.1f}% "
+                    f"({(rd_last - rd_first) / rd_first * 100:.1f}% change) while PhyRds "
+                    f"increased from {ph_first:.1f} to {ph_last:.1f} over the collection window.",
+        when=f"{start_ts} – {end_ts}",
+        corroborating=["Rdratio decline and PhyRds increase are anti-correlated, consistent with buffer pressure"],
+        hypotheses=["hypothesis: global buffer working set is growing beyond allocated size — "
+                    "buffers are undersized for current workload"],
+        next_step="Review globals= setting in CPF. If Rdratio trend continues across multiple "
+                  "collections, increase global buffers (if RAM allows).",
+        chart_request=None,
+    )
+
+
+def _test_write_daemon_strain(df: pd.DataFrame) -> Optional[Finding]:
+    """Test 3: WDQsz non-zero between cycles + rising wa."""
+    if "WDQsz" not in df.columns:
+        return None
+
+    df = df.sort_values("dt").reset_index(drop=True)
+    wdqsz = pd.to_numeric(df["WDQsz"], errors="coerce").fillna(0)
+    warn_runs = _find_breaches(wdqsz, df["dt"], 0.0, WARN_CONSECUTIVE)
+    if not warn_runs:
+        return None
+
+    start, end, count = warn_runs[0]
+    window = df[(df["dt"] >= start) & (df["dt"] <= end)]
+    wa_mean = pd.to_numeric(window.get("wa", pd.Series([0])), errors="coerce").mean()
+
+    if wa_mean < 5.0:
+        return None
+
+    return Finding(
+        metric="WDQsz + wa (write daemon strain)",
+        severity="Yellow",
+        observation=f"WDQsz non-zero for {count} consecutive samples with concurrent wa={wa_mean:.1f}% — "
+                    f"write path under strain.",
+        when=f"{pd.Timestamp(start).strftime('%Y-%m-%d %H:%M:%S')} – "
+             f"{pd.Timestamp(end).strftime('%Y-%m-%d %H:%M:%S')}",
+        corroborating=[f"wa averaged {wa_mean:.1f}% during WDQsz event"],
+        hypotheses=["hypothesis: storage write latency causing write daemon queue growth",
+                    "hypothesis: WIJ or journal device saturated"],
+        next_step="Check iostat await on WIJ and journal devices during recurrence.",
+        chart_request=None,
+    )
+
+
+def _test_memory_danger(df: pd.DataFrame) -> Optional[Finding]:
+    """Test 4: free trending down + cache shrinking + any si/so."""
+    if "free" not in df.columns:
+        return None
+
+    df = df.sort_values("dt").reset_index(drop=True)
+    n = len(df)
+    if n < 6:
+        return None
+
+    free  = pd.to_numeric(df["free"],  errors="coerce").fillna(0)
+    cache = pd.to_numeric(df.get("cache", pd.Series([float("nan")] * n)), errors="coerce")
+    si    = pd.to_numeric(df.get("si",    pd.Series([0.0] * n)),           errors="coerce").fillna(0)
+    so    = pd.to_numeric(df.get("so",    pd.Series([0.0] * n)),           errors="coerce").fillna(0)
+
+    third = n // 3
+    free_declining  = free.iloc[2*third:].mean() < free.iloc[:third].mean() * 0.80
+    cache_shrinking = (not cache.isna().all()) and cache.iloc[2*third:].mean() < cache.iloc[:third].mean() * 0.85
+    any_swap = (si > 0).any() or (so > 0).any()
+
+    if not (free_declining and any_swap):
+        return None
+
+    severity = "Red" if any_swap else "Yellow"
+    start_ts = df["dt"].iloc[0].strftime("%Y-%m-%d %H:%M:%S")
+    end_ts   = df["dt"].iloc[-1].strftime("%Y-%m-%d %H:%M:%S")
+
+    corroborating = []
+    if cache_shrinking:
+        corroborating.append("Page cache is also shrinking — kernel reclaiming memory")
+    if any_swap:
+        corroborating.append("Swap activity detected — memory pressure is confirmed")
+
+    return Finding(
+        metric="free / cache / swap (memory danger)",
+        severity=severity,
+        observation=f"Free memory declined {free.iloc[:third].mean():.0f} → {free.iloc[2*third:].mean():.0f} KB "
+                    f"over the collection window" +
+                    (" with concurrent swap activity." if any_swap else "."),
+        when=f"{start_ts} – {end_ts}",
+        corroborating=corroborating,
+        hypotheses=["hypothesis: memory leak or growing resident set in IRIS or companion processes",
+                    "hypothesis: insufficient RAM for configured IRIS global buffers + OS overhead"],
+        next_step="URGENT if swap is active: reduce global buffers or add RAM. "
+                  "Monitor free memory trend across collections.",
+        chart_request=None,
+    )
+
+
+def _test_contention_vs_throughput(df: pd.DataFrame) -> Optional[Finding]:
+    """Test 5: ASeize fraction rising relative to Seizes."""
+    if "Seize" not in df.columns or "ASeize" not in df.columns:
+        return None
+
+    df = df.sort_values("dt").reset_index(drop=True)
+    n = len(df)
+    if n < 9:
+        return None
+
+    seize  = pd.to_numeric(df["Seize"],  errors="coerce").fillna(0)
+    aseize = pd.to_numeric(df["ASeize"], errors="coerce").fillna(0)
+
+    fraction = aseize.where(seize > 0, 0) / seize.where(seize > 0, 1) * 100
+    third = n // 3
+    frac_first = fraction.iloc[:third].mean()
+    frac_last  = fraction.iloc[2*third:].mean()
+
+    if frac_last < 5.0 or frac_last < frac_first * 1.5:
+        return None
+
+    start_ts = df["dt"].iloc[0].strftime("%Y-%m-%d %H:%M:%S")
+    end_ts   = df["dt"].iloc[-1].strftime("%Y-%m-%d %H:%M:%S")
+
+    return Finding(
+        metric="ASeize/Seize (lock contention)",
+        severity="Yellow",
+        observation=f"ASeize fraction rose from {frac_first:.1f}% to {frac_last:.1f}% of Seizes — "
+                    f"genuine lock contention increasing, not just throughput scaling.",
+        when=f"{start_ts} – {end_ts}",
+        corroborating=["Seize is rising in proportion but ASeize fraction is also rising — contention, not scaling"],
+        hypotheses=["hypothesis: lock table pressure — review locksiz in CPF",
+                    "hypothesis: application-level contention on a shared resource"],
+        next_step="Review locksiz setting. Capture ^SystemPerformance lock analysis during peak.",
+        chart_request=None,
+    )
+
+
+def _test_kernel_overhead(df: pd.DataFrame) -> Optional[Finding]:
+    """Test 6: sy growing relative to us at similar Glorefs."""
+    if "us" not in df.columns or "sy" not in df.columns:
+        return None
+
+    df = df.sort_values("dt").reset_index(drop=True)
+    n = len(df)
+    if n < 9:
+        return None
+
+    us = pd.to_numeric(df["us"], errors="coerce").fillna(0)
+    sy = pd.to_numeric(df["sy"], errors="coerce").fillna(0)
+    total = us + sy
+    sy_frac = sy.where(total > 0, 0) / total.where(total > 0, 1)
+
+    third = n // 3
+    sf_first = sy_frac.iloc[:third].mean()
+    sf_last  = sy_frac.iloc[2*third:].mean()
+
+    glorefs = pd.to_numeric(df.get("Glorefs", pd.Series([1.0] * n)), errors="coerce").fillna(1)
+    gl_first = glorefs.iloc[:third].mean()
+    gl_last  = glorefs.iloc[2*third:].mean()
+    glorefs_stable = abs(gl_last - gl_first) / (gl_first + 1) < 0.20
+
+    if not (glorefs_stable and sf_last > sf_first * 1.5 and sf_last > 0.30):
+        return None
+
+    start_ts = df["dt"].iloc[0].strftime("%Y-%m-%d %H:%M:%S")
+    end_ts   = df["dt"].iloc[-1].strftime("%Y-%m-%d %H:%M:%S")
+
+    return Finding(
+        metric="sy/us ratio (kernel overhead)",
+        severity="Yellow",
+        observation=f"Kernel CPU fraction grew from {sf_first*100:.1f}% to {sf_last*100:.1f}% of total CPU "
+                    f"while Glorefs remained stable ({gl_first:.0f} → {gl_last:.0f}) — "
+                    f"increasing kernel overhead not explained by workload growth.",
+        when=f"{start_ts} – {end_ts}",
+        corroborating=["Glorefs stable — workload not increasing, so sy growth is not proportional"],
+        hypotheses=["hypothesis: HugePages not configured — IRIS managing its own TLB misses",
+                    "hypothesis: NUMA cross-socket memory traffic",
+                    "hypothesis: growing interrupt or softirq load (network/storage driver)"],
+        next_step="Verify HugePages configuration. Check /proc/interrupts for growth on specific IRQs.",
+        chart_request=None,
+    )
+
+
+def _test_batch_window(df: pd.DataFrame) -> Optional[Finding]:
+    """
+    Test 7: Identify overnight PhyWrs/Jrnwrts surge.
+    Alert if it overlaps with business hours (08:00+).
+    """
+    if "PhyWrs" not in df.columns and "Jrnwrts" not in df.columns:
+        return None
+
+    df = df.sort_values("dt").reset_index(drop=True)
+
+    overnight = df[df["dt"].dt.hour.between(0, 6)].copy()
+    business  = df[df["dt"].dt.hour.between(8, 9)].copy()
+
+    if overnight.empty:
+        return None
+
+    phywrs  = pd.to_numeric(df.get("PhyWrs",  pd.Series([0.0]*len(df))), errors="coerce").fillna(0)
+    jrnwrts = pd.to_numeric(df.get("Jrnwrts", pd.Series([0.0]*len(df))), errors="coerce").fillna(0)
+
+    overnight_pw  = pd.to_numeric(overnight.get("PhyWrs",  pd.Series([0.0])), errors="coerce").mean()
+    business_pw   = pd.to_numeric(business.get("PhyWrs",   pd.Series([0.0])), errors="coerce").mean() if not business.empty else 0
+    overall_pw    = phywrs.mean()
+
+    # Batch window exists if overnight writes are >2× overall mean
+    if overnight_pw < overall_pw * 2.0:
+        return None
+
+    # Only a finding if it overlaps business hours
+    overlap = business_pw > overnight_pw * 0.5
+
+    severity = "Yellow" if overlap else "Green"
+    note = (" Batch window overlaps business hours — I/O contention risk." if overlap
+            else " Batch window ends before business hours ramp — normal.")
+
+    return Finding(
+        metric="PhyWrs/Jrnwrts (batch/backup window)",
+        severity=severity,
+        observation=f"Overnight PhyWrs averaged {overnight_pw:.0f}/s (vs overall mean {overall_pw:.0f}/s) "
+                    f"— batch/backup window identified.{note}",
+        when=f"00:00–06:00 window",
+        corroborating=[],
+        hypotheses=(["confirmed: batch/backup I/O overlapping morning ramp — monitor for user impact"]
+                    if overlap
+                    else ["confirmed: batch window clears before business hours — acceptable"]),
+        next_step=("Review backup schedule; aim to complete before 07:00." if overlap
+                   else "No action required."),
+        chart_request=None,
+    )
