@@ -418,3 +418,120 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
         ))
 
     return findings
+
+
+def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
+    """
+    Evaluate mgstat KPIs. Returns list[Finding].
+    df must have columns: dt, Glorefs, PhyRds, PhyWrs, Gloupds, Jrnwrts, WDQsz, Rdratio, RouLaS.
+    Seize and ASeize are optional (not present in all pButtons files).
+    baselines: output of _compute_baselines() for mgstat metrics.
+    """
+    findings = []
+    df = df.copy().sort_values("dt").reset_index(drop=True)
+
+    def _fmt_ts(dt):
+        return pd.Timestamp(dt).strftime("%Y-%m-%d %H:%M:%S")
+
+    def _dynamic_thresholds(metric, period_name):
+        """Return (warn_level, alert_level) for a baseline-relative metric."""
+        if period_name not in baselines or metric not in baselines.get(period_name, {}):
+            return None, None
+        b = baselines[period_name][metric]
+        mean, sigma, highest = b["mean"], b["sigma"], b["max"]
+        cfg = METRIC_THRESHOLDS.get(metric, {})
+        warn_mult = cfg.get("warn_mult", 1.6)
+        max_mult  = cfg.get("max_mult", 2.0)
+        warn_level  = warn_mult  * max(mean, mean + 2 * sigma, highest)
+        alert_level = max_mult   * max(mean + 3 * sigma, highest + sigma)
+        return warn_level, alert_level
+
+    # --- WDQsz ---
+    if "WDQsz" in df.columns:
+        vals = pd.to_numeric(df["WDQsz"], errors="coerce").fillna(0)
+        warn_runs = _find_breaches(vals, df["dt"], 0.0, WARN_CONSECUTIVE)
+        if warn_runs:
+            start, end, count = warn_runs[0]
+            findings.append(Finding(
+                metric="WDQsz (write daemon queue)",
+                severity="Yellow",
+                observation=f"WDQsz was non-zero for {count} consecutive samples "
+                            f"(max {vals.max():.0f}). Write daemon queue backing up between cycles.",
+                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                hypotheses=["hypothesis: write path (storage/WIJ/journal) latency causing WD queue growth"],
+                next_step="Correlate with wa and PhyWrs. If wa is elevated: storage write latency. "
+                          "Check WD cycle time; any cycle ≥ 90 s is critical.",
+                chart_request=None,
+            ))
+
+    # --- RouLaS (column name is capitalised S in pButtons schema) ---
+    roul_col = "RouLaS" if "RouLaS" in df.columns else "RouLas" if "RouLas" in df.columns else None
+    if roul_col:
+        vals = pd.to_numeric(df[roul_col], errors="coerce").fillna(0)
+        warn_runs = _find_breaches(vals, df["dt"], 0.0, WARN_CONSECUTIVE)
+        if warn_runs:
+            start, end, count = warn_runs[0]
+            findings.append(Finding(
+                metric="RouLaS (routine cache misses)",
+                severity="Yellow",
+                observation=f"RouLaS was non-zero for {count} consecutive samples (max {vals.max():.0f}). "
+                            f"Routine buffer cache is undersized.",
+                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                hypotheses=["hypothesis: routine buffer (routines= in CPF) too small for working set"],
+                next_step="Review routines= setting in CPF. Consider increasing.",
+                chart_request=None,
+            ))
+
+    # --- Baseline-relative metrics: Glorefs, PhyRds, PhyWrs, Gloupds, Jrnwrts ---
+    for metric in ("Glorefs", "PhyRds", "PhyWrs", "Gloupds", "Jrnwrts"):
+        if metric not in df.columns:
+            continue
+        vals = pd.to_numeric(df[metric], errors="coerce").fillna(0)
+        df["_period_tmp"] = df["dt"].dt.strftime("%H:%M").apply(_label_period)
+
+        period_findings = []
+        for period_name, group_idx in df.groupby("_period_tmp").groups.items():
+            group_vals = vals.iloc[group_idx]
+            group_dts  = df["dt"].iloc[group_idx]
+            warn_level, alert_level = _dynamic_thresholds(metric, period_name)
+            if warn_level is None:
+                continue
+            red_runs  = _find_breaches(group_vals, group_dts, alert_level, ALERT_CONSECUTIVE)
+            warn_runs = _find_breaches(group_vals, group_dts, warn_level,  WARN_CONSECUTIVE)
+            if red_runs:
+                start, end, count = red_runs[0]
+                period_findings.append(Finding(
+                    metric=metric,
+                    severity="Red",
+                    observation=f"{metric} exceeded alert level {alert_level:.0f} "
+                                f"(2× period norm) for {count} consecutive samples. "
+                                f"Peak: {group_vals.max():.0f}.",
+                    when=f"{_fmt_ts(start)} – {_fmt_ts(end)} ({period_name})",
+                    hypotheses=[f"hypothesis: abnormal workload spike in {metric}"],
+                    next_step=f"Correlate with vmstat and other mgstat metrics in the same window.",
+                    chart_request=None,
+                ))
+            elif warn_runs:
+                start, end, count = warn_runs[0]
+                period_findings.append(Finding(
+                    metric=metric,
+                    severity="Yellow",
+                    observation=f"{metric} exceeded warning level {warn_level:.0f} "
+                                f"(1.6× period norm) for {count} consecutive samples. "
+                                f"Peak: {group_vals.max():.0f}.",
+                    when=f"{_fmt_ts(start)} – {_fmt_ts(end)} ({period_name})",
+                    hypotheses=[f"hypothesis: elevated {metric} during {period_name}"],
+                    next_step="Monitor trend across multiple days.",
+                    chart_request=None,
+                ))
+        findings.extend(period_findings)
+
+    if not findings:
+        findings.append(Finding(
+            metric="mgstat (all)",
+            severity="Green",
+            observation="All mgstat metrics within normal thresholds for the collection window.",
+            when="entire window",
+        ))
+
+    return findings

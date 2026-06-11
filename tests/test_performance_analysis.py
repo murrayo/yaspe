@@ -11,6 +11,7 @@ from performance_analysis import IRIS_PERIODS, METRIC_THRESHOLDS, Finding, Chart
 from performance_analysis import _get_collection_meta, _get_system_facts
 from performance_analysis import _label_period, _compute_baselines, _find_breaches
 from performance_analysis import _analyse_vmstat
+from performance_analysis import _analyse_mgstat
 
 def test_iris_periods_count():
     assert len(IRIS_PERIODS) == 9
@@ -294,3 +295,48 @@ def test_analyse_vmstat_finding_has_observation_text():
         if f.severity in ("Yellow", "Red"):
             assert len(f.observation) > 0
             assert len(f.when) > 0
+
+
+# Task 6: _analyse_mgstat
+
+def _make_mgstat_analysis_df(glorefs=None, phyrds=None, wdqsz=None, rdratio=None, n=10):
+    base_dt = pd.date_range("2026-01-01 09:00:00", periods=n, freq="5s")
+    return pd.DataFrame({
+        "dt":      base_dt,
+        "Glorefs": glorefs  if glorefs  is not None else [1000.0] * n,
+        "PhyRds":  phyrds   if phyrds   is not None else [10.0] * n,
+        "PhyWrs":  [5.0] * n,
+        "Gloupds": [200.0] * n,
+        "Jrnwrts": [17.0] * n,
+        "WDQsz":   wdqsz   if wdqsz   is not None else [0.0] * n,
+        "Rdratio": rdratio  if rdratio  is not None else [50.0] * n,
+        "RouLaS":  [0.0] * n,
+        "Seize":   [1000.0] * n,   # optional; not present in all files
+        "ASeize":  [10.0] * n,     # optional; not present in all files
+    })
+
+
+def test_analyse_mgstat_green_when_normal():
+    df = _make_mgstat_analysis_df()
+    baselines = _compute_baselines(df, ["Glorefs", "PhyRds", "PhyWrs", "Gloupds", "Jrnwrts", "Rdratio"])
+    findings = _analyse_mgstat(df, baselines)
+    non_green = [f for f in findings if f.severity != "Green"]
+    assert non_green == []
+
+
+def test_analyse_mgstat_wdqsz_nonzero_is_yellow():
+    # WDQsz non-zero for 5+ consecutive samples = Yellow
+    df = _make_mgstat_analysis_df(wdqsz=[1.0] * 5 + [0.0] * 5)
+    baselines = _compute_baselines(df, ["Glorefs", "PhyRds"])
+    findings = _analyse_mgstat(df, baselines)
+    wd_findings = [f for f in findings if "WDQsz" in f.metric or "write daemon" in f.metric.lower()]
+    assert any(f.severity in ("Yellow", "Red") for f in wd_findings)
+
+
+def test_analyse_mgstat_finding_text():
+    df = _make_mgstat_analysis_df(wdqsz=[2.0] * 5 + [0.0] * 5)
+    baselines = _compute_baselines(df, ["Glorefs"])
+    findings = _analyse_mgstat(df, baselines)
+    for f in findings:
+        if f.severity in ("Yellow", "Red"):
+            assert len(f.observation) > 10
