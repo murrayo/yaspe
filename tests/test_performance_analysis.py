@@ -17,6 +17,7 @@ from performance_analysis import (
     _test_memory_danger, _test_contention_vs_throughput,
     _test_kernel_overhead, _test_batch_window,
 )
+from performance_analysis import _attach_chart_requests, _write_report
 
 def test_iris_periods_count():
     assert len(IRIS_PERIODS) == 9
@@ -428,3 +429,68 @@ def test_memory_danger_detects_free_declining_with_swap():
     result = _test_memory_danger(df)
     assert result is not None
     assert result.severity == "Red"
+
+
+# Task 8: _attach_chart_requests and _write_report
+
+def test_attach_chart_requests_only_nongreen():
+    n = 5
+    base_dt = pd.date_range("2026-01-01 09:00:00", periods=n, freq="5s")
+    df = pd.DataFrame({"dt": base_dt, "wa": [25.0]*n, "metric": [25.0]*n})
+    red_finding = Finding(
+        metric="wa (I/O wait %)", severity="Red",
+        observation="wa exceeded 20%", when="09:00:00",
+        chart_request=None,
+    )
+    green_finding = Finding(
+        metric="vmstat (all)", severity="Green",
+        observation="All clear", when="entire window",
+        chart_request=None,
+    )
+    findings = [red_finding, green_finding]
+    metric_df_map = {"wa (I/O wait %)": df}
+    result = _attach_chart_requests(findings, metric_df_map, output_dir="/tmp")
+    assert result[0].chart_request is not None   # Red gets chart
+    assert result[1].chart_request is None        # Green does not
+
+
+def test_write_report_creates_file(tmp_path):
+    meta = {
+        "start": pd.Timestamp("2026-01-01 09:00:00"),
+        "end":   pd.Timestamp("2026-01-01 17:00:00"),
+        "n_days": 1, "weekdays": ["Thursday"],
+        "interval_seconds": 5, "gaps": [],
+    }
+    facts = {"vcpus": 8, "ram_gb": 32, "iris_buffers_gb": 16,
+             "customer": "TestHospital", "version": "IRIS 2024.1", "os": "Linux"}
+    findings = [Finding(
+        metric="vmstat (all)", severity="Green",
+        observation="All clear", when="entire window",
+    )]
+    baselines = {}
+    path = _write_report(
+        meta=meta, facts=facts, findings=findings, baselines=baselines,
+        context="Routine health check", output_dir=str(tmp_path),
+    )
+    assert os.path.exists(path)
+    content = open(path).read()
+    assert "Executive Summary" in content
+    assert "TestHospital" in content
+    assert "Green" in content
+
+
+def test_write_report_filename_uses_dates(tmp_path):
+    meta = {
+        "start": pd.Timestamp("2026-01-05 09:00:00"),
+        "end":   pd.Timestamp("2026-01-07 17:00:00"),
+        "n_days": 3, "weekdays": ["Monday", "Tuesday", "Wednesday"],
+        "interval_seconds": 30, "gaps": [],
+    }
+    facts = {"vcpus": None, "ram_gb": None, "iris_buffers_gb": None,
+             "customer": "Unknown", "version": None, "os": "Linux"}
+    path = _write_report(
+        meta=meta, facts=facts, findings=[], baselines={},
+        context=None, output_dir=str(tmp_path),
+    )
+    assert "2026-01-05" in os.path.basename(path)
+    assert "2026-01-07" in os.path.basename(path)
