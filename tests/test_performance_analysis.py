@@ -9,6 +9,7 @@ from datetime import datetime
 
 from performance_analysis import IRIS_PERIODS, METRIC_THRESHOLDS, Finding, ChartRequest
 from performance_analysis import _get_collection_meta, _get_system_facts
+from performance_analysis import _label_period, _compute_baselines, _find_breaches
 
 def test_iris_periods_count():
     assert len(IRIS_PERIODS) == 9
@@ -140,3 +141,88 @@ def test_get_system_facts_missing_keys():
     assert facts["ram_gb"] is None
     assert facts["iris_buffers_gb"] is None
     assert facts["customer"] == "Unknown"
+
+
+# Task 3: _label_period and _compute_baselines
+def test_label_period_morning():
+    assert _label_period("09:30") == "09:00–11:30"
+
+
+def test_label_period_overnight():
+    assert _label_period("01:00") == "00:15–02:45"
+
+
+def test_label_period_outside_all():
+    # 00:00–00:14 falls outside all defined periods
+    assert _label_period("00:05") is None
+
+
+def _make_mgstat_df():
+    """Three rows in 09:00–11:30 period on same day."""
+    return pd.DataFrame({
+        "dt": pd.to_datetime([
+            "2026-01-01 09:00:05",
+            "2026-01-01 09:00:10",
+            "2026-01-01 09:00:15",
+        ]),
+        "Glorefs": [1000.0, 1200.0, 800.0],
+        "PhyRds":  [10.0, 12.0, 8.0],
+    })
+
+
+def test_compute_baselines_returns_expected_keys():
+    df = _make_mgstat_df()
+    baselines = _compute_baselines(df, ["Glorefs", "PhyRds"])
+    assert "09:00–11:30" in baselines
+    period = baselines["09:00–11:30"]
+    assert "Glorefs" in period
+    assert "mean" in period["Glorefs"]
+    assert "sigma" in period["Glorefs"]
+    assert "p95" in period["Glorefs"]
+    assert "max" in period["Glorefs"]
+
+
+def test_compute_baselines_values():
+    df = _make_mgstat_df()
+    baselines = _compute_baselines(df, ["Glorefs"])
+    g = baselines["09:00–11:30"]["Glorefs"]
+    assert abs(g["mean"] - 1000.0) < 1.0
+    assert g["max"] == 1200.0
+
+
+# Task 4: _find_breaches
+def test_find_breaches_no_breach():
+    vals = pd.Series([5.0, 6.0, 4.0, 3.0])
+    dts  = pd.to_datetime(["2026-01-01 09:00:00","2026-01-01 09:00:05",
+                           "2026-01-01 09:00:10","2026-01-01 09:00:15"])
+    runs = _find_breaches(vals, dts, threshold=10.0, min_consecutive=3)
+    assert runs == []
+
+
+def test_find_breaches_single_spike_ignored():
+    vals = pd.Series([5.0, 25.0, 4.0, 3.0])
+    dts  = pd.to_datetime(["2026-01-01 09:00:00","2026-01-01 09:00:05",
+                           "2026-01-01 09:00:10","2026-01-01 09:00:15"])
+    runs = _find_breaches(vals, dts, threshold=10.0, min_consecutive=3)
+    assert runs == []
+
+
+def test_find_breaches_detects_run():
+    vals = pd.Series([5.0, 25.0, 30.0, 22.0, 4.0])
+    dts  = pd.to_datetime(["2026-01-01 09:00:00","2026-01-01 09:00:05",
+                           "2026-01-01 09:00:10","2026-01-01 09:00:15",
+                           "2026-01-01 09:00:20"])
+    runs = _find_breaches(vals, dts, threshold=10.0, min_consecutive=3)
+    assert len(runs) == 1
+    start, end, count = runs[0]
+    assert count == 3
+
+
+def test_find_breaches_returns_timestamps():
+    vals = pd.Series([15.0, 15.0, 15.0])
+    dts  = pd.to_datetime(["2026-01-01 09:00:00","2026-01-01 09:00:05","2026-01-01 09:00:10"])
+    runs = _find_breaches(vals, dts, threshold=10.0, min_consecutive=3)
+    assert len(runs) == 1
+    start, end, count = runs[0]
+    assert str(start) == "2026-01-01 09:00:00"
+    assert str(end)   == "2026-01-01 09:00:10"

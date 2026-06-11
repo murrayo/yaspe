@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from dataclasses import dataclass, field
+from datetime import time as dtime
 from datetime import timedelta
 from typing import Optional
 
@@ -175,3 +176,74 @@ def _get_system_facts(sp_dict: dict) -> dict:
         "version": sp_dict.get("version string"),
         "os": sp_dict.get("operating system", "Linux"),
     }
+
+
+def _label_period(time_str: str) -> Optional[str]:
+    """
+    Map an HH:MM string to the matching IRIS Health Monitor period name.
+    Returns None if outside all defined periods (e.g. 00:00–00:14).
+    """
+    h, m = int(time_str[:2]), int(time_str[3:5])
+    t = dtime(h, m)
+    for p in IRIS_PERIODS:
+        sh, sm = int(p["start"][:2]), int(p["start"][3:])
+        eh, em = int(p["end"][:2]), int(p["end"][3:])
+        if dtime(sh, sm) <= t <= dtime(eh, em):
+            return p["name"]
+    return None
+
+
+def _compute_baselines(df: pd.DataFrame, metrics: list) -> dict:
+    """
+    Compute per-period mean/σ/p95/max for each metric column in df.
+    df must have a 'dt' column of datetime64.
+    Returns: {period_name: {metric: {mean, sigma, p95, max}}}
+    """
+    df = df.copy()
+    df["_period"] = df["dt"].dt.strftime("%H:%M").apply(_label_period)
+    df = df.dropna(subset=["_period"])
+
+    result = {}
+    for period_name, group in df.groupby("_period"):
+        result[period_name] = {}
+        for metric in metrics:
+            if metric not in group.columns:
+                continue
+            vals = pd.to_numeric(group[metric], errors="coerce").dropna()
+            if vals.empty:
+                continue
+            result[period_name][metric] = {
+                "mean":  float(vals.mean()),
+                "sigma": float(vals.std(ddof=1)) if len(vals) > 1 else 0.0,
+                "p95":   float(np.percentile(vals, 95)),
+                "max":   float(vals.max()),
+            }
+    return result
+
+
+def _find_breaches(
+    values: pd.Series,
+    datetimes: pd.Series,
+    threshold: float,
+    min_consecutive: int,
+) -> list:
+    """
+    Find runs of consecutive samples above threshold.
+    Returns list of (run_start, run_end, count) tuples.
+    Only returns runs with length >= min_consecutive.
+    """
+    above = (values > threshold).values
+    runs = []
+    i = 0
+    while i < len(above):
+        if above[i]:
+            j = i
+            while j < len(above) and above[j]:
+                j += 1
+            run_len = j - i
+            if run_len >= min_consecutive:
+                runs.append((datetimes[i], datetimes[j - 1], run_len))
+            i = j
+        else:
+            i += 1
+    return runs
