@@ -2813,6 +2813,7 @@ def mainline(
     context=None,
 ):
     input_error = False
+    sp_dict = None
 
     # What are we doing?
     if append_to_database:
@@ -2938,21 +2939,33 @@ def mainline(
                     csv_date_format,
                 )
 
-                if analysis and sp_dict:
-                    import performance_analysis
-                    md_path, chart_requests = performance_analysis.run_analysis(
-                        connection=connection,
-                        sp_dict=sp_dict,
-                        output_prefix=output_prefix,
-                        filepath=filepath,
-                        context=context,
-                    )
-                    print(f"Analysis report: {md_path}")
-                    for cr in chart_requests:
-                        _render_analysis_chart(cr, output_prefix)
-
         close_connection(connection)
         connection = None
+
+    # Performance analysis — runs for all modes: -i, -e, append
+    if analysis and not input_error and not mgstat_file:
+        analysis_conn = create_connection(sql_filename)
+        try:
+            # sp_dict may be None when using -e (no HTML parsed); build a minimal one from the DB
+            if not sp_dict:
+                try:
+                    rows = execute_read_query(analysis_conn, "SELECT field, value FROM overview")
+                    sp_dict = {r[0]: r[1] for r in rows} if rows else {}
+                except Exception:
+                    sp_dict = {}
+            import performance_analysis
+            md_path, chart_requests = performance_analysis.run_analysis(
+                connection=analysis_conn,
+                sp_dict=sp_dict,
+                output_prefix=output_prefix,
+                filepath=filepath,
+                context=context,
+            )
+            print(f"Analysis report: {md_path}")
+            for cr in chart_requests:
+                _render_analysis_chart(cr, output_prefix)
+        finally:
+            close_connection(analysis_conn)
 
     # Charting is separate
     if "Chart" in database_action and not input_error:
