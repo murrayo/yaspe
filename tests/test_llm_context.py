@@ -123,3 +123,142 @@ def test_merge_timeseries_sorted():
           {"timestamp": "2024-01-15 09:00:00", "Glorefs": 10000.0}]
     merged = _merge_timeseries(mg, [])
     assert merged[0]["timestamp"] < merged[1]["timestamp"]
+
+
+# ---- Task 2 additions ----
+import sqlite3
+import tempfile
+import json
+from performance_analysis import Finding
+from llm_context import _serialise_finding, build_llm_context
+
+
+def _make_sqlite_with_data():
+    """In-memory SQLite with minimal mgstat + vmstat rows."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("""
+        CREATE TABLE mgstat (
+            RunDate TEXT, RunTime TEXT,
+            Glorefs REAL, PhyRds REAL, PhyWrs REAL, Gloupds REAL,
+            Jrnwrts REAL, WDQsz REAL, Rdratio REAL, RouLaS REAL,
+            Seize REAL, ASeize REAL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE vmstat (
+            RunDate TEXT, RunTime TEXT,
+            r REAL, b REAL, swpd REAL, free REAL, buff REAL, cache REAL,
+            si REAL, so REAL, bi REAL, bo REAL, "in" REAL, cs REAL,
+            us REAL, sy REAL, id REAL, wa REAL, st REAL
+        )
+    """)
+    # Insert 20 rows at 30s intervals
+    from datetime import datetime, timedelta
+    base = datetime(2024, 1, 15, 9, 0, 0)
+    for i in range(20):
+        ts = base + timedelta(seconds=30 * i)
+        conn.execute(
+            "INSERT INTO mgstat VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (ts.strftime("%Y/%m/%d"), ts.strftime("%H:%M:%S"),
+             10000 + i*100, 50, 20, 500, 30, i*5, 95.0, 0, 100, 5)
+        )
+        conn.execute(
+            "INSERT INTO vmstat VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (ts.strftime("%Y/%m/%d"), ts.strftime("%H:%M:%S"),
+             1, 0, 0, 8000000, 0, 2000000, 0, 0, 0, 0, 0, 0,
+             30.0, 10.0, 60.0, 2.0, 0.0)
+        )
+    conn.commit()
+    return conn
+
+
+def test_serialise_finding_drops_chart_request():
+    f = Finding(
+        metric="wa",
+        severity="Yellow",
+        observation="wa exceeded 10%",
+        when="09:00",
+        corroborating=["WDQsz elevated"],
+        hypotheses=["storage latency"],
+        next_step="Check iostat",
+        chart_request=None,
+    )
+    d = _serialise_finding(f)
+    assert "chart_request" not in d
+    assert d["metric"] == "wa"
+    assert d["severity"] == "Yellow"
+    assert d["observation"] == "wa exceeded 10%"
+    assert d["corroborating"] == ["WDQsz elevated"]
+    assert d["hypotheses"] == ["storage latency"]
+    assert d["next_step"] == "Check iostat"
+
+
+def test_build_llm_context_top_level_keys():
+    conn = _make_sqlite_with_data()
+    sp_dict = {"number cpus": "4", "memory MB": "16384", "globals total MB": "8192"}
+    result = build_llm_context(conn, sp_dict)
+    assert result["schema_version"] == "1.0"
+    assert "system" in result
+    assert "collection" in result
+    assert "baselines" in result
+    assert "findings" in result
+    assert "timeseries" in result
+    conn.close()
+
+
+def test_build_llm_context_system_facts():
+    conn = _make_sqlite_with_data()
+    sp_dict = {"number cpus": "4", "memory MB": "16384", "globals total MB": "8192"}
+    result = build_llm_context(conn, sp_dict)
+    assert result["system"]["vcpus"] == 4
+    assert result["system"]["ram_gb"] == 16
+    assert result["system"]["iris_buffers_gb"] == 8
+    conn.close()
+
+
+def test_build_llm_context_timeseries_has_records():
+    conn = _make_sqlite_with_data()
+    result = build_llm_context(conn, {}, resample_interval="5min")
+    ts = result["timeseries"]
+    assert ts["resample_interval"] == "5min"
+    assert isinstance(ts["records"], list)
+    assert len(ts["records"]) > 0
+    conn.close()
+
+
+def test_build_llm_context_timeseries_record_has_timestamp():
+    conn = _make_sqlite_with_data()
+    result = build_llm_context(conn, {})
+    rec = result["timeseries"]["records"][0]
+    assert "timestamp" in rec
+    from datetime import datetime
+    datetime.strptime(rec["timestamp"], "%Y-%m-%d %H:%M:%S")
+    conn.close()
+
+
+def test_build_llm_context_findings_are_dicts():
+    conn = _make_sqlite_with_data()
+    result = build_llm_context(conn, {})
+    assert isinstance(result["findings"], list)
+    if result["findings"]:
+        f = result["findings"][0]
+        assert "metric" in f
+        assert "severity" in f
+        assert "chart_request" not in f
+    conn.close()
+
+
+def test_build_llm_context_with_context_string():
+    conn = _make_sqlite_with_data()
+    result = build_llm_context(conn, {}, context="users reported slowness")
+    assert result["context"] == "users reported slowness"
+    conn.close()
+
+
+def test_build_llm_context_json_serialisable():
+    conn = _make_sqlite_with_data()
+    result = build_llm_context(conn, {})
+    # Must not raise
+    json_str = json.dumps(result, default=str)
+    assert len(json_str) > 100
+    conn.close()
