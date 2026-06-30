@@ -338,6 +338,67 @@ The JSON contains:
 
 > **NOTE:** `--llm-context` currently supports Linux only (mgstat + vmstat).
 
+### Sample LLM prompts
+
+Paste (or attach) the JSON as context, then use a prompt like one of these:
+
+**General analysis**
+```
+Here is a performance context file from an InterSystems IRIS system.
+Review the findings, baselines, and timeseries and give me a prioritised
+summary of what is happening and what to investigate first.
+```
+
+**Correlating a user complaint**
+```
+Users reported slowness between 14:00 and 15:00. The context file covers
+that period. What does the data show during that window, and what is the
+most likely cause?
+```
+
+**Explaining findings to a non-technical audience**
+```
+Translate the findings in this context file into plain English for a
+manager. Focus on business impact and what action is needed, not
+technical metrics.
+```
+
+**Hypothesis testing**
+```
+The findings flag elevated WDQsz and wa. Is the evidence consistent with
+a storage throughput bottleneck, or could this be something else?
+Walk through the timeseries and tell me what would confirm or rule out
+each hypothesis.
+```
+
+**Capacity planning**
+```
+Based on the baselines and timeseries in this file, at what point will
+this system run out of headroom on CPU, memory, and IO if current growth
+continues? What metrics are closest to their limits now?
+```
+
+**Batch window detection**
+```
+Is there evidence of a batch or maintenance window in this data?
+If so, when does it run, how long does it last, and does it overlap
+with business hours?
+```
+
+**Comparing two periods**
+```
+I have two context files: one from a normal week and one from a problem
+week. Compare the baselines and findings and tell me what changed.
+```
+*(attach both JSON files as context)*
+
+Tip: use `--context` to embed a note directly in the JSON so the LLM sees it alongside the data:
+
+``` commandline
+./yaspe.py -e yaspe_SystemPerformance.sqlite --llm-context \
+    --context "users reported slowness at 14:00" -o yaspe
+```
+
 # My workflow
 
 - First I create the system check and create the SQLite file (for later processing):
