@@ -9,6 +9,7 @@ import os
 from typing import Optional
 
 import pandas as pd
+import performance_analysis as _pa
 
 
 # mgstat columns included in timeseries (mean aggregation)
@@ -103,9 +104,6 @@ def _merge_timeseries(mg_records: list, vm_records: list) -> list:
             row.update({k: v for k, v in vm_map[ts].items() if k != "timestamp"})
         merged.append(row)
     return merged
-
-
-import performance_analysis as _pa
 
 
 def _serialise_finding(f) -> dict:
@@ -275,6 +273,14 @@ def export_llm_context(
     Filename: {filepath}/{output_prefix}performance_context_{start}_{end}.json
     Returns the path of the written file.
     """
+    try:
+        pd.tseries.frequencies.to_offset(resample_interval)
+    except ValueError:
+        raise ValueError(
+            f"Invalid resample interval: {resample_interval!r}. "
+            "Examples: '5min', '10min', '1min'."
+        )
+
     ctx = build_llm_context(connection, sp_dict, resample_interval, context)
 
     start_str = (ctx["collection"].get("start") or "unknown")[:10]

@@ -259,7 +259,7 @@ def test_build_llm_context_json_serialisable():
     conn = _make_sqlite_with_data()
     result = build_llm_context(conn, {})
     # Must not raise
-    json_str = json.dumps(result, default=str)
+    json_str = json.dumps(result)
     assert len(json_str) > 100
     conn.close()
 
@@ -294,4 +294,12 @@ def test_export_llm_context_filename_contains_dates():
         assert fname.endswith(".json")
         # filename should contain a date like 2024-01-15
         assert "2024-01-15" in fname
+    conn.close()
+
+
+def test_export_llm_context_invalid_interval_raises():
+    conn = _make_sqlite_with_data()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with pytest.raises(ValueError, match="Invalid resample interval"):
+            export_llm_context(conn, {}, output_prefix="", filepath=tmpdir, resample_interval="garbage")
     conn.close()
