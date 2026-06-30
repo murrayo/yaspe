@@ -262,3 +262,36 @@ def test_build_llm_context_json_serialisable():
     json_str = json.dumps(result, default=str)
     assert len(json_str) > 100
     conn.close()
+
+
+# ---- Task 3 additions ----
+from llm_context import export_llm_context
+
+
+def test_export_llm_context_writes_file():
+    conn = _make_sqlite_with_data()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = export_llm_context(
+            connection=conn,
+            sp_dict={"number cpus": "4"},
+            output_prefix="test_",
+            filepath=tmpdir,
+        )
+        assert os.path.isfile(path)
+        assert path.endswith(".json")
+        with open(path) as fh:
+            data = json.load(fh)
+        assert data["schema_version"] == "1.0"
+    conn.close()
+
+
+def test_export_llm_context_filename_contains_dates():
+    conn = _make_sqlite_with_data()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = export_llm_context(conn, {}, output_prefix="", filepath=tmpdir)
+        fname = os.path.basename(path)
+        assert fname.startswith("performance_context_")
+        assert fname.endswith(".json")
+        # filename should contain a date like 2024-01-15
+        assert "2024-01-15" in fname
+    conn.close()

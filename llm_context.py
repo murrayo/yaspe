@@ -260,3 +260,30 @@ def build_llm_context(
             "records": merged_records,
         },
     }
+
+
+def export_llm_context(
+    connection,
+    sp_dict: dict,
+    output_prefix: str,
+    filepath: str,
+    resample_interval: str = "5min",
+    context: Optional[str] = None,
+) -> str:
+    """
+    Build and write LLM context JSON to filepath.
+    Filename: {filepath}/{output_prefix}performance_context_{start}_{end}.json
+    Returns the path of the written file.
+    """
+    ctx = build_llm_context(connection, sp_dict, resample_interval, context)
+
+    start_str = (ctx["collection"].get("start") or "unknown")[:10]
+    end_str   = (ctx["collection"].get("end")   or "unknown")[:10]
+
+    filename  = f"{output_prefix}performance_context_{start_str}_{end_str}.json"
+    out_path  = os.path.join(filepath, filename)
+
+    with open(out_path, "w", encoding="utf-8") as fh:
+        json.dump(ctx, fh, indent=2, default=str)
+
+    return out_path
