@@ -288,6 +288,56 @@ All instances on this host:
 - >SHADOW            2018.1.4.505.1.a  56772  /cachesys
 ```
 
+# Performance Analysis
+
+## Rule-based analysis (`--analysis`)
+
+`--analysis` runs a rule-based check against mgstat and vmstat data and writes a Markdown report to the output directory. It runs for all modes (`-i`, `-e`, append).
+
+``` commandline
+./yaspe.py -e yaspe_SystemPerformance.sqlite --analysis -o yaspe
+```
+
+Output: `yaspe_performance_analysis_YYYY-MM-DD_YYYY-MM-DD.md`
+
+Use `--context` to add a free-text note (e.g. "users reported slowness at 14:00") that appears at the top of the report:
+
+``` commandline
+./yaspe.py -e yaspe_SystemPerformance.sqlite --analysis --context "batch job runs 02:00-04:00" -o yaspe
+```
+
+> **NOTE:** `--analysis` currently supports Linux only (mgstat + vmstat).
+
+## LLM context export (`--llm-context`)
+
+`--llm-context` exports a compact JSON file containing resampled timeseries, pre-computed findings, baselines, and system facts. The file is intended as input for an LLM to deepen the performance analysis beyond what the rule-based checks cover.
+
+``` commandline
+./yaspe.py -e yaspe_SystemPerformance.sqlite --llm-context -o yaspe
+```
+
+Output: `yaspe_performance_context_YYYY-MM-DD_YYYY-MM-DD.json`
+
+Can be combined with `--analysis` in a single run:
+
+``` commandline
+./yaspe.py -e yaspe_SystemPerformance.sqlite --analysis --llm-context -o yaspe
+```
+
+Use `--resample` to change the timeseries aggregation interval (default `5min`):
+
+``` commandline
+./yaspe.py -e yaspe_SystemPerformance.sqlite --llm-context --resample 10min -o yaspe
+```
+
+The JSON contains:
+- `schema_version`, `system` (vCPUs, RAM, IRIS buffer size), `collection` (date range, sample interval, gaps)
+- `baselines` — per-metric statistical baselines computed from the full collection
+- `findings` — rule-based findings (severity, observation, hypotheses, next steps)
+- `timeseries` — resampled records outer-joining mgstat and vmstat; throughput metrics as mean, queue/saturation metrics (`WDQsz`, `r`, `b`) as max
+
+> **NOTE:** `--llm-context` currently supports Linux only (mgstat + vmstat).
+
 # My workflow
 
 - First I create the system check and create the SQLite file (for later processing):
