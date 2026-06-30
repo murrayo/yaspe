@@ -2922,6 +2922,8 @@ def mainline(
     long_period_smooth=5,
     analysis=False,
     context=None,
+    llm_context=False,
+    resample_interval="5min",
 ):
     input_error = False
     sp_dict = None
@@ -3102,6 +3104,29 @@ def mainline(
                 _render_analysis_chart(cr, output_prefix)
         finally:
             close_connection(analysis_conn)
+
+    # LLM context export
+    if llm_context and not input_error and not mgstat_file:
+        llm_conn = create_connection(sql_filename)
+        try:
+            if not sp_dict:
+                try:
+                    rows = execute_read_query(llm_conn, "SELECT field, value FROM overview")
+                    sp_dict = {r[0]: r[1] for r in rows} if rows else {}
+                except Exception:
+                    sp_dict = {}
+            import llm_context as _llm_context
+            ctx_path = _llm_context.export_llm_context(
+                connection=llm_conn,
+                sp_dict=sp_dict,
+                output_prefix=output_prefix,
+                filepath=filepath,
+                resample_interval=resample_interval,
+                context=context,
+            )
+            print(f"LLM context: {ctx_path}")
+        finally:
+            close_connection(llm_conn)
 
     # Charting is separate
     if "Chart" in database_action and not input_error:
@@ -3455,6 +3480,24 @@ if __name__ == "__main__":
         metavar='"context string"',
     )
 
+    parser.add_argument(
+        "--llm-context",
+        dest="llm_context",
+        help="Export a compact JSON context file for LLM-based performance analysis. "
+             "Can be used with or without --analysis.",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--resample",
+        dest="resample_interval",
+        help="Resample interval for timeseries in --llm-context output (default: 5min). "
+             "Examples: 5min, 10min, 1min.",
+        action="store",
+        default="5min",
+        metavar="INTERVAL",
+    )
+
     args = parser.parse_args()
 
     if args.compare_dir is not None:
@@ -3536,6 +3579,8 @@ if __name__ == "__main__":
             args.long_period_smooth,
             args.analysis,
             args.context,
+            args.llm_context,
+            args.resample_interval,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
