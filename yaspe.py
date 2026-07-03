@@ -2339,10 +2339,26 @@ def chart_iostat(
     day_overlay=False,
     bh_charts=False,
     long_period_smooth=5,
+    device_labels=None,
 ):
     # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+
+    import re as _re
+
+    def _device_slug(device):
+        label = (device_labels or {}).get(device, "")
+        if not label:
+            return device
+        slug = _re.sub(r"[^a-z0-9_-]", "_", label.lower())
+        # Collapse runs of underscores introduced by punctuation
+        slug = _re.sub(r"_+", "_", slug).strip("_")
+        return f"{device}_{slug}"
+
+    def _device_title_prefix(device):
+        label = (device_labels or {}).get(device, "")
+        return label  # empty string → no prefix
 
     # Read in to dataframe, drop any bad rows
     try:
@@ -2390,7 +2406,8 @@ def chart_iostat(
             device_df = iostat_df.loc[iostat_df["Device"] == device]
 
             if iostat_subfolders:
-                device_filepath = f"{filepath}{device}/"
+                device_dirname = _device_slug(device)
+                device_filepath = f"{filepath}{device_dirname}/"
                 if not os.path.isdir(device_filepath):
                     os.mkdir(device_filepath)
             else:
@@ -2400,18 +2417,21 @@ def chart_iostat(
 
             # Create stacked read write chart if columns exist
             if png_out or png_html_out:
+                _prefix = _device_title_prefix(device)
                 if operating_system == "AIX":
                     # Something wrong with the way stacked charts come out base is not zero and a fake base rises l-r
 
                     if "read rps" in device_df.columns and "write wps" in device_df.columns:
-                        title = f"{device} : Total IOPS - {customer}"
+                        _stacked_base = f"{device} : Total IOPS - {customer}"
+                        title = f"{_prefix}\n{_stacked_base}" if _prefix else _stacked_base
                         columns_to_stack = {"read rps": "Reads per sec", "write wps": "Writes per sec"}
                         simple_chart_stacked_iostat(
                             device_df, columns_to_stack, device, title, 0, dev_png_fp, output_prefix
                         )
 
                         if "read avg serv" in device_df.columns and "write avg serv" in device_df.columns:
-                            title = f"{device} : Latency - {customer}"
+                            _lat_base = f"{device} : Latency - {customer}"
+                            title = f"{_prefix}\n{_lat_base}" if _prefix else _lat_base
                             columns_to_histogram = {"read avg serv": "read rps", "write avg serv": "write wps"}
                             simple_chart_histogram_iostat(
                                 device_df, columns_to_histogram, device, title, dev_png_fp, output_prefix
@@ -2419,18 +2439,20 @@ def chart_iostat(
 
                 else:
                     if "r/s" in device_df.columns and "w/s" in device_df.columns:
-                        title = f"{device} : Total IOPS - {customer}"
+                        _stacked_base = f"{device} : Total IOPS - {customer}"
+                        _stacked_title = f"{_prefix}\n{_stacked_base}" if _prefix else _stacked_base
                         columns_to_stack = {"r/s": "Reads per sec", "w/s": "Writes per sec"}
                         simple_chart_stacked_iostat(
-                            device_df, columns_to_stack, device, title, 0, dev_png_fp, output_prefix
+                            device_df, columns_to_stack, device, _stacked_title, 0, dev_png_fp, output_prefix
                         )
 
                         if "r_await" in device_df.columns and "w_await" in device_df.columns:
-                            title = f"{device} : Latency - {customer}"
+                            _lat_base = f"{device} : Latency - {customer}"
+                            _lat_title = f"{_prefix}\n{_lat_base}" if _prefix else _lat_base
                             # Column name : check for non-zero column
                             columns_to_histogram = {"r_await": "r/s", "w_await": "w/s"}
                             simple_chart_histogram_iostat(
-                                device_df, columns_to_histogram, device, title, dev_png_fp, output_prefix
+                                device_df, columns_to_histogram, device, _lat_title, dev_png_fp, output_prefix
                             )
 
             # unpivot the dataframe; include both datetime and datetime_parsed as id_vars
@@ -2443,7 +2465,10 @@ def chart_iostat(
                 if column_name in ["datetime", "Device"]:
                     pass
                 else:
-                    title = f"{device} : {column_name} - {customer}"
+                    _prefix = _device_title_prefix(device)
+                    base_title = f"{device} : {column_name} - {customer}"
+                    png_title = f"{_prefix}\n{base_title}" if _prefix else base_title
+                    html_title = f"{_prefix}<br>{base_title}" if _prefix else base_title
 
                     to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
@@ -2466,7 +2491,7 @@ def chart_iostat(
                         simple_chart(
                             data,
                             column_name,
-                            title,
+                            png_title,
                             max_y,
                             dev_png_fp,
                             output_prefix,
@@ -2482,11 +2507,11 @@ def chart_iostat(
                             long_period_smooth=long_period_smooth,
                         )
                         if png_html_out:
-                            linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
+                            linked_chart(data, column_name, html_title, max_y, dev_html_fp, output_prefix,
                                          file_prefix=device, min_max=min_max, threshold=threshold,
                                          day_overlay=day_overlay)
                     else:
-                        linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
+                        linked_chart(data, column_name, html_title, max_y, device_filepath, output_prefix,
                                      file_prefix=device, min_max=min_max, threshold=threshold,
                                      day_overlay=day_overlay)
 
@@ -2512,7 +2537,8 @@ def chart_iostat(
             device_df = iostat_df.loc[iostat_df["Device"] == device]
 
             if iostat_subfolders:
-                device_filepath = f"{filepath}{device}/"
+                device_dirname = _device_slug(device)
+                device_filepath = f"{filepath}{device_dirname}/"
                 if not os.path.isdir(device_filepath):
                     os.mkdir(device_filepath)
             else:
@@ -2526,7 +2552,10 @@ def chart_iostat(
             # For each column create a chart
             for column_name in columns_to_chart:
                 if not column_name == "Device":
-                    title = f"{device} : {column_name} - {customer}"
+                    _prefix = _device_title_prefix(device)
+                    base_title = f"{device} : {column_name} - {customer}"
+                    png_title = f"{_prefix}\n{base_title}" if _prefix else base_title
+                    html_title = f"{_prefix}<br>{base_title}" if _prefix else base_title
 
                     to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
@@ -2538,17 +2567,17 @@ def chart_iostat(
 
                     if png_out:
                         simple_chart_no_time(
-                            data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device
+                            data, column_name, png_title, max_y, device_filepath, output_prefix, file_prefix=device
                         )
                     elif png_html_out:
                         simple_chart_no_time(
-                            data, column_name, title, max_y, dev_png_fp, output_prefix, file_prefix=device
+                            data, column_name, png_title, max_y, dev_png_fp, output_prefix, file_prefix=device
                         )
                         linked_chart_no_time(
-                            data, column_name, title, max_y, dev_html_fp, output_prefix, file_prefix=device
+                            data, column_name, html_title, max_y, dev_html_fp, output_prefix, file_prefix=device
                         )
                     else:
-                        linked_chart_no_time(data, column_name, title, max_y,
+                        linked_chart_no_time(data, column_name, html_title, max_y,
                                              device_filepath, output_prefix, file_prefix=device)
 
 
@@ -3051,9 +3080,9 @@ def mainline(
             is_unix = operating_system in ("Linux", "Ubuntu", "AIX")
             is_linux = operating_system in ("Linux", "Ubuntu")
 
+            device_labels = {}
             # Auto-detect disk list from CPF roles if none was supplied
             if is_linux and not disk_list:
-                device_labels = {}
                 auto_devices = []
 
                 # Database devices (may be multiple)
@@ -3112,6 +3141,7 @@ def mainline(
                         connection, _make_chart_dir(output_file_path_base, "iostat"),
                         output_prefix, operating_system, png_out, png_html_out,
                         disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders, day_overlay, bh_charts, long_period_smooth,
+                        device_labels=device_labels,
                     )
 
                     if operating_system == "AIX":

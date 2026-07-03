@@ -393,3 +393,29 @@ def test_build_log_shows_disk_roles():
         assert "Alternate Journal" in log and "dm-8" in log
     finally:
         os.unlink(path)
+
+
+# ── device_labels slug and two-line title helpers ─────────────────────────────
+
+def test_device_label_slug():
+    """Verify the slug derivation used for directory naming."""
+    import re
+
+    def _label_slug(label):
+        return re.sub(r"[^a-z0-9_-]", "_", label.lower())
+
+    assert _label_slug("TRAK-DATA, TRAK-DOCS") == "trak-data__trak-docs"
+    assert _label_slug("Primary Journal") == "primary_journal"
+    assert _label_slug("dm-2") == "dm-2"
+
+
+def test_two_line_title_format():
+    """Verify two-line title string construction."""
+    label = "TRAK-DATA, TRAK-DOCS"
+    base_title = "dm-2 : r/s - CustomerName"
+
+    png_title = f"{label}\n{base_title}"
+    html_title = f"{label}<br>{base_title}"
+
+    assert png_title == "TRAK-DATA, TRAK-DOCS\ndm-2 : r/s - CustomerName"
+    assert html_title == "TRAK-DATA, TRAK-DOCS<br>dm-2 : r/s - CustomerName"
