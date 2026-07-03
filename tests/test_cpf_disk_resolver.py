@@ -177,6 +177,10 @@ Version String: IRIS for UNIX (RHEL 8 for x86-64) 2024.1
 Profile run 2026-06-15
 up >TESTIRIS on machine testhost
 [ConfigFile]
+DaysBeforePurge=3
+globals=1024
+routines=256
+gmheap=307200
 [Databases]
 {databases_block}
 [Namespaces]
@@ -217,5 +221,32 @@ def test_sp_check_cpf_databases_empty_when_no_section():
     try:
         sp_dict = sp_check.system_check(path)
         assert sp_dict.get("cpf_databases", []) == []
+    finally:
+        os.unlink(path)
+
+
+def test_build_log_shows_disk_roles():
+    html = _make_html(
+        "TRAK-DATA=/trak/live/tc/db/data/,,1\n",
+        journal_current="/trak/live/tc/prijrn/",
+        journal_alt="/trak/live/tc/altjrn/",
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8") as f:
+        f.write(html)
+        path = f.name
+    try:
+        sp_dict = sp_check.system_check(path)
+        # Simulate what yaspe.py will add after calling the resolver
+        sp_dict["iris disk role Database"] = "dm-2"
+        sp_dict["iris disk role Primary Journal"] = "dm-6"
+        sp_dict["iris disk role Alternate Journal"] = "dm-8"
+        sp_dict["iris_disk_role_mount Database"] = "/trak/live/tc"
+        sp_dict["iris_disk_role_mount Primary Journal"] = "/trak/live/tc/prijrn"
+        sp_dict["iris_disk_role_mount Alternate Journal"] = "/trak/live/tc/altjrn"
+        log, _ = sp_check.build_log(sp_dict)
+        assert "IRIS disk roles" in log
+        assert "Database" in log and "dm-2" in log
+        assert "Primary Journal" in log and "dm-6" in log
+        assert "Alternate Journal" in log and "dm-8" in log
     finally:
         os.unlink(path)
