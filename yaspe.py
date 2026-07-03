@@ -1266,6 +1266,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     write_html = kwargs.get("write_html", True)
     png_path = kwargs.get("png_path", filepath)
     day_overlay = kwargs.get("day_overlay", False)
+    chart_label = kwargs.get("chart_label", [])  # List of strings for right-side annotation
 
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
@@ -1331,6 +1332,21 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     _apply_ref_lines(fig, data, min_max, threshold, row=1)
 
+    _annotations = []
+    if chart_label:
+        _annotations.append(dict(
+            text="<br>".join(chart_label),
+            xref="paper", yref="paper",
+            x=1.01, y=0.5,
+            xanchor="left", yanchor="middle",
+            showarrow=False,
+            font=dict(size=11),
+            bgcolor="#f0f0f0",
+            bordercolor="gray",
+            borderwidth=1,
+            borderpad=4,
+        ))
+
     fig.update_layout(
         title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
         xaxis=dict(title="", tickfont=dict(size=13)),
@@ -1341,6 +1357,8 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         height=650,
         hovermode="x",
         template="plotly_white",
+        annotations=_annotations,
+        margin=dict(r=160) if chart_label else {},
     )
 
     if write_html:
@@ -1512,6 +1530,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     business_hours_chart = kwargs.get("business_hours_chart", False)  # Generate business-hours peak chart
     bh_charts = kwargs.get("bh_charts", False)  # Generate per-day BH peak charts for multi-day data
     long_period_smooth = kwargs.get("long_period_smooth", 30)
+    chart_label = kwargs.get("chart_label", [])  # List of strings for right-side annotation
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -1691,6 +1710,11 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
 
     output_name = column_name.replace("/", "_")
+    if chart_label:
+        label_text = "\n".join(chart_label)
+        fig.text(1.01, 0.5, label_text, transform=ax.transAxes,
+                 fontsize=10, va="center", ha="left",
+                 bbox=dict(boxstyle="round,pad=0.3", facecolor="#f0f0f0", edgecolor="gray", alpha=0.8))
     plt.tight_layout()
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
@@ -2356,9 +2380,12 @@ def chart_iostat(
         slug = _re.sub(r"_+", "_", slug).strip("_")
         return f"{device}_{slug}"
 
-    def _device_title_prefix(device):
+    def _device_chart_label(device):
+        """Return list of label strings for side annotation, or [] if no label."""
         label = (device_labels or {}).get(device, "")
-        return label  # empty string → no prefix
+        if not label:
+            return []
+        return [s.strip() for s in label.split(",")]
 
     # Read in to dataframe, drop any bad rows
     try:
@@ -2417,21 +2444,19 @@ def chart_iostat(
 
             # Create stacked read write chart if columns exist
             if png_out or png_html_out:
-                _prefix = _device_title_prefix(device)
+                _chart_label = _device_chart_label(device)
                 if operating_system == "AIX":
                     # Something wrong with the way stacked charts come out base is not zero and a fake base rises l-r
 
                     if "read rps" in device_df.columns and "write wps" in device_df.columns:
-                        _stacked_base = f"{device} : Total IOPS - {customer}"
-                        title = f"{_prefix}\n{_stacked_base}" if _prefix else _stacked_base
+                        title = f"{device} : Total IOPS - {customer}"
                         columns_to_stack = {"read rps": "Reads per sec", "write wps": "Writes per sec"}
                         simple_chart_stacked_iostat(
                             device_df, columns_to_stack, device, title, 0, dev_png_fp, output_prefix
                         )
 
                         if "read avg serv" in device_df.columns and "write avg serv" in device_df.columns:
-                            _lat_base = f"{device} : Latency - {customer}"
-                            title = f"{_prefix}\n{_lat_base}" if _prefix else _lat_base
+                            title = f"{device} : Latency - {customer}"
                             columns_to_histogram = {"read avg serv": "read rps", "write avg serv": "write wps"}
                             simple_chart_histogram_iostat(
                                 device_df, columns_to_histogram, device, title, dev_png_fp, output_prefix
@@ -2439,16 +2464,14 @@ def chart_iostat(
 
                 else:
                     if "r/s" in device_df.columns and "w/s" in device_df.columns:
-                        _stacked_base = f"{device} : Total IOPS - {customer}"
-                        _stacked_title = f"{_prefix}\n{_stacked_base}" if _prefix else _stacked_base
+                        _stacked_title = f"{device} : Total IOPS - {customer}"
                         columns_to_stack = {"r/s": "Reads per sec", "w/s": "Writes per sec"}
                         simple_chart_stacked_iostat(
                             device_df, columns_to_stack, device, _stacked_title, 0, dev_png_fp, output_prefix
                         )
 
                         if "r_await" in device_df.columns and "w_await" in device_df.columns:
-                            _lat_base = f"{device} : Latency - {customer}"
-                            _lat_title = f"{_prefix}\n{_lat_base}" if _prefix else _lat_base
+                            _lat_title = f"{device} : Latency - {customer}"
                             # Column name : check for non-zero column
                             columns_to_histogram = {"r_await": "r/s", "w_await": "w/s"}
                             simple_chart_histogram_iostat(
@@ -2465,10 +2488,8 @@ def chart_iostat(
                 if column_name in ["datetime", "Device"]:
                     pass
                 else:
-                    _prefix = _device_title_prefix(device)
-                    base_title = f"{device} : {column_name} - {customer}"
-                    png_title = f"{_prefix}\n{base_title}" if _prefix else base_title
-                    html_title = f"{_prefix}<br>{base_title}" if _prefix else base_title
+                    _chart_label = _device_chart_label(device)
+                    title = f"{device} : {column_name} - {customer}"
 
                     to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
@@ -2491,7 +2512,7 @@ def chart_iostat(
                         simple_chart(
                             data,
                             column_name,
-                            png_title,
+                            title,
                             max_y,
                             dev_png_fp,
                             output_prefix,
@@ -2505,15 +2526,16 @@ def chart_iostat(
                             day_overlay=day_overlay,
                             bh_charts=bh_charts,
                             long_period_smooth=long_period_smooth,
+                            chart_label=_chart_label,
                         )
                         if png_html_out:
-                            linked_chart(data, column_name, html_title, max_y, dev_html_fp, output_prefix,
+                            linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
                                          file_prefix=device, min_max=min_max, threshold=threshold,
-                                         day_overlay=day_overlay)
+                                         day_overlay=day_overlay, chart_label=_chart_label)
                     else:
-                        linked_chart(data, column_name, html_title, max_y, device_filepath, output_prefix,
+                        linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
                                      file_prefix=device, min_max=min_max, threshold=threshold,
-                                     day_overlay=day_overlay)
+                                     day_overlay=day_overlay, chart_label=_chart_label)
 
     else:
         # No date or time, chart all columns, index is x axis
@@ -2552,10 +2574,8 @@ def chart_iostat(
             # For each column create a chart
             for column_name in columns_to_chart:
                 if not column_name == "Device":
-                    _prefix = _device_title_prefix(device)
-                    base_title = f"{device} : {column_name} - {customer}"
-                    png_title = f"{_prefix}\n{base_title}" if _prefix else base_title
-                    html_title = f"{_prefix}<br>{base_title}" if _prefix else base_title
+                    _chart_label = _device_chart_label(device)
+                    title = f"{device} : {column_name} - {customer}"
 
                     to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
@@ -2567,17 +2587,17 @@ def chart_iostat(
 
                     if png_out:
                         simple_chart_no_time(
-                            data, column_name, png_title, max_y, device_filepath, output_prefix, file_prefix=device
+                            data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device
                         )
                     elif png_html_out:
                         simple_chart_no_time(
-                            data, column_name, png_title, max_y, dev_png_fp, output_prefix, file_prefix=device
+                            data, column_name, title, max_y, dev_png_fp, output_prefix, file_prefix=device
                         )
                         linked_chart_no_time(
-                            data, column_name, html_title, max_y, dev_html_fp, output_prefix, file_prefix=device
+                            data, column_name, title, max_y, dev_html_fp, output_prefix, file_prefix=device
                         )
                     else:
-                        linked_chart_no_time(data, column_name, html_title, max_y,
+                        linked_chart_no_time(data, column_name, title, max_y,
                                              device_filepath, output_prefix, file_prefix=device)
 
 
