@@ -1337,8 +1337,8 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         _annotations.append(dict(
             text="<br>".join(chart_label),
             xref="paper", yref="paper",
-            x=1.01, y=0.5,
-            xanchor="left", yanchor="middle",
+            x=1.01, y=0.0,
+            xanchor="left", yanchor="bottom",
             showarrow=False,
             font=dict(size=11),
             bgcolor="#f0f0f0",
@@ -1712,8 +1712,8 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     output_name = column_name.replace("/", "_")
     if chart_label:
         label_text = "\n".join(chart_label)
-        fig.text(1.01, 0.5, label_text, transform=ax.transAxes,
-                 fontsize=10, va="center", ha="left",
+        fig.text(1.01, 0.0, label_text, transform=ax.transAxes,
+                 fontsize=10, va="bottom", ha="left",
                  bbox=dict(boxstyle="round,pad=0.3", facecolor="#f0f0f0", edgecolor="gray", alpha=0.8))
     plt.tight_layout()
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150, bbox_inches="tight")
