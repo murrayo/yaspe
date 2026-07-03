@@ -5,6 +5,7 @@ Chart the results
 """
 
 import sp_check
+import cpf_disk_resolver
 import split_large_file
 import argparse
 import os
@@ -330,9 +331,12 @@ def create_overview(connection, sp_dict):
 
     execute_simple_query(connection, create_overview_table)
 
-    # Create the insert query string
+    # Create the insert query string; skip non-scalar values (e.g. lists)
     for key in sp_dict:
-        cursor.execute("INSERT INTO overview (field, value) VALUES (?, ?)", (key, sp_dict[key]))
+        value = sp_dict[key]
+        if not isinstance(value, (str, int, float, type(None))):
+            continue
+        cursor.execute("INSERT INTO overview (field, value) VALUES (?, ?)", (key, value))
         connection.commit()
 
     return
@@ -2941,6 +2945,18 @@ def mainline(
             else:
                 # Create a system summary
                 sp_dict = sp_check.system_check(input_file)
+
+                # Resolve IRIS storage roles from CPF + filesystem info
+                iris_roles = cpf_disk_resolver.resolve_iris_disk_roles(sp_dict)
+                # Build mount map to get device→mount annotations
+                mount_map = cpf_disk_resolver._build_mount_map(sp_dict, sp_dict)
+                # Invert mount_map to get device → mount for annotation
+                device_to_mount = {v: k for k, v in mount_map.items()}
+                for role, device in iris_roles.items():
+                    if device:
+                        sp_dict[f"iris disk role {role}"] = device
+                        sp_dict[f"iris_disk_role_mount {role}"] = device_to_mount.get(device, "")
+
                 if system_out:
                     output_log, yaspe_yaml = sp_check.build_log(sp_dict)
 
@@ -3027,6 +3043,24 @@ def mainline(
 
             is_unix = operating_system in ("Linux", "Ubuntu", "AIX")
             is_linux = operating_system in ("Linux", "Ubuntu")
+
+            # Auto-detect disk list from CPF roles if none was supplied
+            if is_linux and not disk_list:
+                role_order = ["Database", "Primary Journal", "Alternate Journal", "WIJ"]
+                auto_devices = []
+                for role in role_order:
+                    row = execute_single_read_query(
+                        connection,
+                        f"SELECT * FROM overview WHERE field = 'iris disk role {role}';"
+                    )
+                    if row and row[2]:
+                        auto_devices.append(row[2])
+                # Deduplicate preserving order
+                seen = set()
+                resolved = [d for d in auto_devices if not (d in seen or seen.add(d))]
+                if resolved:
+                    disk_list = resolved
+                    print(f"  Auto disk list from CPF: {disk_list}")
 
             if is_unix:
                 if extended_charts:
