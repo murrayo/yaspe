@@ -1,6 +1,5 @@
 # cpf_disk_resolver.py
 import re
-from collections import Counter
 
 
 def _build_mapper_map(sp_dict):
