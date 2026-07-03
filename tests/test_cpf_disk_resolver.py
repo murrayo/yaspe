@@ -162,3 +162,60 @@ def test_resolve_bare_sdb_device():
 def test_path_to_device_no_false_prefix_match():
     mount_map = {"/data": "dm-1"}
     assert cdr._path_to_device("/data2/file/", mount_map) is None
+
+
+# ── sp_check integration tests ─────────────────────────────────────────────────
+
+import tempfile
+import sp_check
+
+
+def _make_html(databases_block, journal_current="/jrn/pri/", journal_alt="/jrn/alt/", wijdir=""):
+    """Minimal HTML that looks like a SystemPerformance file to sp_check."""
+    return f"""Customer: TestSite
+Version String: IRIS for UNIX (RHEL 8 for x86-64) 2024.1
+Profile run 2026-06-15
+up >TESTIRIS on machine testhost
+[ConfigFile]
+[Databases]
+{databases_block}
+[Namespaces]
+[Journal]
+AlternateDirectory={journal_alt}
+CurrentDirectory={journal_current}
+[config]
+wijdir={wijdir}
+!-- beg_mgstat --
+"""
+
+
+def test_sp_check_parses_cpf_databases():
+    html = _make_html(
+        "IRISSYS=/trak/live/tc/hs/trak/mgr/\n"
+        "TRAK-DATA=/trak/live/tc/db/data/,,1\n"
+        "TRAK-LABDATA=:mirror:PRDLAB:TRAK-LABDATA,PRDLAB\n"
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8") as f:
+        f.write(html)
+        path = f.name
+    try:
+        sp_dict = sp_check.system_check(path)
+        assert "cpf_databases" in sp_dict
+        names = [name for name, _ in sp_dict["cpf_databases"]]
+        assert "IRISSYS" in names
+        assert "TRAK-DATA" in names
+        assert "TRAK-LABDATA" in names
+    finally:
+        os.unlink(path)
+
+
+def test_sp_check_cpf_databases_empty_when_no_section():
+    html = _make_html("")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8") as f:
+        f.write(html)
+        path = f.name
+    try:
+        sp_dict = sp_check.system_check(path)
+        assert sp_dict.get("cpf_databases", []) == []
+    finally:
+        os.unlink(path)

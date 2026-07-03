@@ -52,6 +52,8 @@ def system_check(input_file):
     sp_dict = {}
     operating_system = ""
     cpf_section = False
+    databases_section = False
+    cpf_databases = []
 
     linux_info_available = False
     SS_info_available = False
@@ -177,6 +179,15 @@ def system_check(input_file):
             # CPF file
 
             if cpf_section:
+                if line.startswith("[Databases]"):
+                    databases_section = True
+                elif line.startswith("[") and databases_section:
+                    databases_section = False
+                elif databases_section and "=" in line and not line.startswith(";"):
+                    name, _, path_raw = line.strip().partition("=")
+                    if name and path_raw:
+                        cpf_databases.append((name, path_raw))
+
                 if line.startswith("AlternateDirectory="):
                     sp_dict["alternate journal"] = (line.split("=")[1]).strip()
                 if "CurrentDirectory=" in line and not line[0] == ";":
@@ -418,6 +429,8 @@ def system_check(input_file):
             sp_dict["memory MB"] = int("".join(i for i in sp_dict["windows total memory"] if i.isdigit()))
         else:
             sp_dict["memory MB"] = 0
+
+    sp_dict["cpf_databases"] = cpf_databases
 
     return sp_dict
 
