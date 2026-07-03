@@ -2978,7 +2978,10 @@ def mainline(
                 # Resolve IRIS storage roles from CPF + filesystem info
                 iris_roles = cpf_disk_resolver.resolve_iris_disk_roles(sp_dict)
                 mount_map = cpf_disk_resolver._build_mount_map(sp_dict, sp_dict)
-                device_to_mount = {v: k for k, v in mount_map.items()}
+                device_to_mount = {}
+                for mount_point, device in mount_map.items():
+                    if device not in device_to_mount or len(mount_point) < len(device_to_mount[device]):
+                        device_to_mount[device] = mount_point
 
                 # Store database devices: one key per device, indexed
                 for i, (device, names) in enumerate(iris_roles["Database"]):
@@ -3002,8 +3005,11 @@ def mainline(
                         print("", file=text_file)
                         print(yaspe_yaml, file=text_file)
 
-                    # Simple dump of all data in overview
-                    overview_df = pd.DataFrame(list(sp_dict.items()), columns=["key", "value"])
+                    # Simple dump of all data in overview (scalar values only)
+                    overview_df = pd.DataFrame(
+                        [(k, v) for k, v in sp_dict.items() if isinstance(v, (str, int, float, type(None)))],
+                        columns=["key", "value"]
+                    )
                     overview_df.to_csv(
                         f"{output_filepath_prefix}overview_all.csv", header=True, index=False, sep=",", mode="w"
                     )
@@ -3115,7 +3121,7 @@ def mainline(
                         device = row[2]
                         if device not in device_labels:
                             auto_devices.append(device)
-                        device_labels[device] = role
+                            device_labels[device] = role
 
                 if auto_devices:
                     disk_list = auto_devices

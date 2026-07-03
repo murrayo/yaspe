@@ -54,7 +54,8 @@ def _build_mount_map(sp_dict, mapper_sp_dict):
                 # NVMe partition suffix is pN; strip it but keep nN namespace
                 bare = re.sub(r"p\d+$", "", bare)
             else:
-                bare = re.sub(r"\d+$", "", bare)
+                if not bare.startswith("dm-"):
+                    bare = re.sub(r"\d+$", "", bare)
             if bare:
                 mount_map[mount_point] = bare
     return mount_map

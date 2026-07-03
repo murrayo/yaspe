@@ -240,6 +240,16 @@ def test_build_mount_map_nvme_no_partition():
     assert result.get("/data") == "nvme0n1"
 
 
+def test_build_mount_map_dm_device_not_mangled():
+    """Bare /dev/dm-2 in df output should resolve to dm-2, not dm-."""
+    sp_dict = {
+        "filesystem df 0": "Filesystem  1M-blocks  Used Available Use% Mounted on",
+        "filesystem df 1": "/dev/dm-2  1024000  51200  972800  5% /data",
+    }
+    result = cdr._build_mount_map(sp_dict, {})
+    assert result.get("/data") == "dm-2"
+
+
 # ── sp_check integration tests ─────────────────────────────────────────────────
 
 import tempfile
