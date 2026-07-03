@@ -371,6 +371,11 @@ def _find_peak_60_window(png_data, datetime_column):
     return peak_start_time, peak_end_time
 
 
+def _ordinal(n):
+    suffix = "th" if 11 <= n % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
 def _create_peak_60_chart(
     png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True
 ):
@@ -781,14 +786,14 @@ def _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output
         date_range = pd.date_range(start=start_date.date(), end=end_date.date(), freq="D")
     tick_positions = [pd.Timestamp(date) + timedelta(hours=12) for date in date_range]
     ax.set_xticks(tick_positions)
-    ax.set_xticklabels([tick.strftime("%a 12:00") for tick in tick_positions])
-    plt.setp(ax.get_xticklabels(), rotation=0, ha="center")
+    ax.set_xticklabels([f"{tick.strftime('%a')} {_ordinal(tick.day)}" for tick in tick_positions])
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", fontsize=7)
 
     ax.set_ylabel(column_name, fontsize=14)
     ax.tick_params(labelsize=14)
     ax.grid(which="major", axis="both", linestyle="--")
     ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
-    plt.subplots_adjust(bottom=0.15)
+    plt.subplots_adjust(bottom=0.2)
 
     output_name = column_name.replace("/", "_")
     plt.tight_layout()
@@ -1629,10 +1634,9 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         tick_positions = [pd.Timestamp(date) + timedelta(hours=12) for date in date_range]
 
         ax.set_xticks(tick_positions)
-        ax.set_xticklabels([tick.strftime("%a 12:00") for tick in tick_positions])
+        ax.set_xticklabels([f"{tick.strftime('%a')} {_ordinal(tick.day)}" for tick in tick_positions])
 
-        # Remove rotation for day labels
-        plt.setp(ax.get_xticklabels(), rotation=0, ha="center")
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right", fontsize=7)
     else:
         # For short periods, add date to title in DD-MMM-YY format, use only time on x-axis
         start_date = png_data[datetime_column].min()
@@ -1647,7 +1651,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     ax.set_ylabel(column_name, fontsize=14)
     ax.tick_params(labelsize=14)
-    plt.subplots_adjust(bottom=0.15)
+    plt.subplots_adjust(bottom=0.2)
     ax.set_ylim(bottom=0)  # Always zero start
     if max_y != 0:
         ax.set_ylim(top=max_y)
