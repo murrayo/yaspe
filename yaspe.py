@@ -1507,6 +1507,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     threshold = kwargs.get("threshold")  # Optional (value, label) tuple for a reference line
     business_hours_chart = kwargs.get("business_hours_chart", False)  # Generate business-hours peak chart
     bh_charts = kwargs.get("bh_charts", False)  # Generate per-day BH peak charts for multi-day data
+    long_period_smooth = kwargs.get("long_period_smooth", 30)
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -1545,7 +1546,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         time_diffs = sorted_for_smooth.index.to_series().diff().dropna()
         if len(time_diffs) > 0:
             interval_secs = time_diffs.median().total_seconds()
-            window = max(2, int(30 * 60 / interval_secs)) if interval_secs > 0 else 60
+            window = max(2, int(long_period_smooth * 60 / interval_secs)) if interval_secs > 0 else 60
         else:
             interval_secs = 0
             window = 60
@@ -1560,7 +1561,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         ax.plot(sorted_for_smooth.index, sorted_for_smooth.values,
                 color=color, alpha=0.15, linewidth=0.5, label="_raw")
         ax.plot(smoothed.index, smoothed.values,
-                color=color, alpha=0.85, linewidth=1.5, label=f"{column_name} ({sample_label}, 30 min avg)")
+                color=color, alpha=0.85, linewidth=1.5, label=f"{column_name} ({sample_label}, {long_period_smooth} min avg)")
     # Choose plot style based on line_chart option
     elif line_chart:
         ax.plot(
@@ -1990,6 +1991,7 @@ def chart_vmstat(
     line_chart=True,
     day_overlay=False,
     bh_charts=False,
+    long_period_smooth=5,
 ):
     # print(f"vmstat...")
     # Get useful
@@ -2091,6 +2093,7 @@ def chart_vmstat(
                     business_hours_chart=min_max,
                     day_overlay=day_overlay,
                     bh_charts=bh_charts,
+                    long_period_smooth=long_period_smooth,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
@@ -2101,7 +2104,7 @@ def chart_vmstat(
 
 
 def chart_mgstat(
-    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=True, day_overlay=False, bh_charts=False,
+    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=True, day_overlay=False, bh_charts=False, long_period_smooth=5,
 ):
     """
     Chart mgstat data. Returns the Glorefs peak window (start, end) if available, otherwise (None, None).
@@ -2199,6 +2202,7 @@ def chart_mgstat(
                     business_hours_chart=min_max,
                     day_overlay=day_overlay,
                     bh_charts=bh_charts,
+                    long_period_smooth=long_period_smooth,
                 )
                 # Capture Glorefs peak window
                 if column_name == "Glorefs" and peak_start is not None:
@@ -2306,7 +2310,7 @@ def chart_perfmon(
                     data, column_name, title, max_y, png_filepath, output_prefix,
                     min_max=min_max, peak_chart=peak_chart, glorefs_peak_window=glorefs_peak_window,
                     line_chart=line_chart, business_hours_chart=min_max, day_overlay=day_overlay,
-                    bh_charts=bh_charts,
+                    bh_charts=bh_charts, long_period_smooth=long_period_smooth,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
@@ -2330,6 +2334,7 @@ def chart_iostat(
     iostat_subfolders=False,
     day_overlay=False,
     bh_charts=False,
+    long_period_smooth=5,
 ):
     # print(f"iostat...")
 
@@ -2470,6 +2475,7 @@ def chart_iostat(
                             business_hours_chart=min_max,
                             day_overlay=day_overlay,
                             bh_charts=bh_charts,
+                            long_period_smooth=long_period_smooth,
                         )
                         if png_html_out:
                             linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
@@ -2686,7 +2692,7 @@ def chart_aix_sar_d(
                     simple_chart(data, column_name, title, max_y, dev_png_fp, output_prefix,
                                  file_prefix=pfx, peak_chart=peak_chart, line_chart=line_chart,
                                  min_max=min_max, business_hours_chart=min_max, day_overlay=day_overlay,
-                                 bh_charts=bh_charts)
+                                 bh_charts=bh_charts, long_period_smooth=long_period_smooth)
                     if png_html_out:
                         linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
                                      file_prefix=pfx, min_max=min_max, day_overlay=day_overlay)
@@ -2836,6 +2842,7 @@ def mainline(
     smooth_minutes=5,
     day_overlay=False,
     bh_charts=False,
+    long_period_smooth=5,
     analysis=False,
     context=None,
 ):
@@ -3011,7 +3018,7 @@ def mainline(
 
             glorefs_peak_window = chart_mgstat(
                 connection, _make_chart_dir(output_file_path_base, "mgstat"),
-                output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart, day_overlay, bh_charts,
+                output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart, day_overlay, bh_charts, long_period_smooth,
             )
 
             # No need to go further for .mgst file
@@ -3027,7 +3034,7 @@ def mainline(
 
                 chart_vmstat(
                     connection, _make_chart_dir(output_file_path_base, "vmstat"),
-                    output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay, bh_charts,
+                    output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay, bh_charts, long_period_smooth,
                 )
 
                 if is_linux:
@@ -3040,7 +3047,7 @@ def mainline(
                     chart_iostat(
                         connection, _make_chart_dir(output_file_path_base, "iostat"),
                         output_prefix, operating_system, png_out, png_html_out,
-                        disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders, day_overlay, bh_charts,
+                        disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders, day_overlay, bh_charts, long_period_smooth,
                     )
 
                     if operating_system == "AIX":
@@ -3280,6 +3287,15 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--long-period-smooth",
+        dest="long_period_smooth",
+        help="Rolling average window in minutes for multi-day charts (default: 5).",
+        type=int,
+        default=5,
+        metavar="N",
+    )
+
+    parser.add_argument(
         "--analysis",
         dest="analysis",
         help="Run performance analysis report (implies -s). Writes a narrative markdown summary.",
@@ -3373,6 +3389,7 @@ if __name__ == "__main__":
             args.smooth_minutes,
             args.day_overlay,
             args.bh_charts,
+            args.long_period_smooth,
             args.analysis,
             args.context,
         )
