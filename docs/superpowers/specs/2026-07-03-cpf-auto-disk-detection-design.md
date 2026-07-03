@@ -17,9 +17,10 @@ When charting iostat for a single-day SystemPerformance file, automatically iden
 ```
 CPF [Databases] path (e.g. /trak/live/tc/db/data/)
   → longest-prefix match in df -m output
-  → /dev/mapper/<name>  (e.g. /dev/mapper/vgdb-lvdb)
-  → /dev/mapper symlink table: vgdb-lvdb -> ../dm-2
-  → iostat device name: dm-2
+  → device column (e.g. /dev/mapper/vgdb-lvdb  OR  /dev/sdb)
+  → if /dev/mapper/<name>: look up in dev/mapper symlink table → dm-N
+  → if /dev/sdb[N]: strip /dev/ and trailing partition digit(s) → sdb
+  → iostat device name: dm-2  or  sdb
 ```
 
 Journal and WIJ follow the same chain using their paths from `sp_dict`.
@@ -49,11 +50,14 @@ def resolve_iris_disk_roles(sp_dict) -> dict[str, str | None]:
 
 **Internal steps:**
 
-1. **Build mount-point map** from `filesystem df *` keys in `sp_dict`. Skip the header row (key `filesystem df 0`). Parse each line by splitting on whitespace; take `parts[0]` as device, `parts[-1]` as mount point. Only include entries where the device starts with `/dev/mapper/` (ignore NFS mounts, tmpfs, loopback, etc.).
+1. **Build mount-point map** from `filesystem df *` keys in `sp_dict`. Skip the header row (key `filesystem df 0`). Parse each line by splitting on whitespace; take `parts[0]` as device, `parts[-1]` as mount point. Include entries where the device starts with `/dev/` (exclude NFS, tmpfs, loopback, etc. — those don't start with `/dev/`).
 
 2. **Build mapper→dm map** from `dev mapper *` keys. Each line looks like `lrwxrwxrwx ... <name> -> ../dm-N`. Extract the symlink name (the word before `->`) and the dm device (the word after `../`).
 
-3. **`_path_to_device(path, mount_map, mapper_map)`** — find the longest mount point that is a prefix of `path`. Extract the `/dev/mapper/<name>` device, strip the `/dev/mapper/` prefix, look up in `mapper_map`. Return `dm-N` or `None`.
+3. **`_path_to_device(path, mount_map, mapper_map)`** — find the longest mount point that is a prefix of `path`. Then convert the device string to an iostat device name:
+   - `/dev/mapper/<name>` → strip `/dev/mapper/`, look up in `mapper_map` → `dm-N`
+   - `/dev/<name>` (e.g. `/dev/sdb`, `/dev/sdb1`) → strip `/dev/`, then strip any trailing digits (partition suffix) → `sdb`
+   - Return `None` if no mount point matches or device format is unrecognised.
 
 4. **Database role** — filter `cpf_databases` to local paths (not `:mirror:`). Resolve each path. Collect all non-None results, deduplicate. If only one unique device: use it. If multiple: use the most frequent (covers installations where app databases share one LV and system databases are on another). Log a note if multiple devices are found.
 
@@ -120,7 +124,7 @@ Add `cpf_disk_resolver.py` to `ENGINE_FILES`. It is imported by `yaspe.py` and m
 | Situation | Behaviour |
 |-----------|-----------|
 | Database path not under any df mount point | Role resolves to `None`; omitted from auto disk list |
-| Device not in `/dev/mapper` (e.g. bare `/dev/sdb`) | `_path_to_device` returns `None`; role omitted |
+| Device not in `/dev/mapper` (e.g. bare `/dev/sdb`, `/dev/sdb1`) | Strip `/dev/` and trailing partition digits → `sdb`; valid iostat device name, role included |
 | All databases on the same device as the journal | Both roles still present in dict; disk list deduplicates |
 | `wijdir` is empty string | WIJ role is `None`; overview.txt says "not configured" |
 | `:mirror:` database entries | Skipped entirely (no local path to resolve) |
