@@ -301,6 +301,40 @@ def test_sp_check_cpf_databases_empty_when_no_section():
         os.unlink(path)
 
 
+def test_yaspe_stores_multi_device_database_roles():
+    """Verify that sp_dict keys for multi-device databases are structured correctly."""
+    # Simulate what yaspe.py does after calling resolve_iris_disk_roles
+    iris_roles = {
+        "Database": [("dm-2", ["TRAK-DATA", "TRAK-DOCS"]), ("dm-1", ["IRISSYS"])],
+        "Primary Journal": "dm-6",
+        "Alternate Journal": "dm-8",
+        "WIJ": None,
+    }
+    sp_dict = {}
+    device_to_mount = {"dm-2": "/trak/live/tc", "dm-1": "/", "dm-6": "/prijrn", "dm-8": "/altjrn"}
+
+    # Apply the same logic as yaspe.py will use
+    db_pairs = iris_roles["Database"]
+    for i, (device, names) in enumerate(db_pairs):
+        sp_dict[f"iris disk role Database {i}"] = device
+        sp_dict[f"iris disk role Database {i} names"] = ",".join(names)
+        sp_dict[f"iris_disk_role_mount Database {i}"] = device_to_mount.get(device, "")
+
+    for role in ("Primary Journal", "Alternate Journal", "WIJ"):
+        device = iris_roles[role]
+        if device:
+            sp_dict[f"iris disk role {role}"] = device
+            sp_dict[f"iris_disk_role_mount {role}"] = device_to_mount.get(device, "")
+
+    # Verify expected keys
+    assert sp_dict["iris disk role Database 0"] == "dm-2"
+    assert sp_dict["iris disk role Database 0 names"] == "TRAK-DATA,TRAK-DOCS"
+    assert sp_dict["iris disk role Database 1"] == "dm-1"
+    assert sp_dict["iris disk role Database 1 names"] == "IRISSYS"
+    assert sp_dict["iris disk role Primary Journal"] == "dm-6"
+    assert "iris disk role Database" not in sp_dict  # old single-device key gone
+
+
 def test_build_log_shows_disk_roles():
     html = _make_html(
         "TRAK-DATA=/trak/live/tc/db/data/,,1\n",

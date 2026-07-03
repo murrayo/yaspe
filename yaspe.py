@@ -2948,11 +2948,18 @@ def mainline(
 
                 # Resolve IRIS storage roles from CPF + filesystem info
                 iris_roles = cpf_disk_resolver.resolve_iris_disk_roles(sp_dict)
-                # Build mount map to get device→mount annotations
                 mount_map = cpf_disk_resolver._build_mount_map(sp_dict, sp_dict)
-                # Invert mount_map to get device → mount for annotation
                 device_to_mount = {v: k for k, v in mount_map.items()}
-                for role, device in iris_roles.items():
+
+                # Store database devices: one key per device, indexed
+                for i, (device, names) in enumerate(iris_roles["Database"]):
+                    sp_dict[f"iris disk role Database {i}"] = device
+                    sp_dict[f"iris disk role Database {i} names"] = ",".join(names)
+                    sp_dict[f"iris_disk_role_mount Database {i}"] = device_to_mount.get(device, "")
+
+                # Store single-device roles
+                for role in ("Primary Journal", "Alternate Journal", "WIJ"):
+                    device = iris_roles[role]
                     if device:
                         sp_dict[f"iris disk role {role}"] = device
                         sp_dict[f"iris_disk_role_mount {role}"] = device_to_mount.get(device, "")
@@ -3046,20 +3053,43 @@ def mainline(
 
             # Auto-detect disk list from CPF roles if none was supplied
             if is_linux and not disk_list:
-                role_order = ["Database", "Primary Journal", "Alternate Journal", "WIJ"]
+                device_labels = {}
                 auto_devices = []
-                for role in role_order:
+
+                # Database devices (may be multiple)
+                i = 0
+                while True:
+                    row = execute_single_read_query(
+                        connection,
+                        f"SELECT * FROM overview WHERE field = 'iris disk role Database {i}';"
+                    )
+                    if not row or not row[2]:
+                        break
+                    device = row[2]
+                    names_row = execute_single_read_query(
+                        connection,
+                        f"SELECT * FROM overview WHERE field = 'iris disk role Database {i} names';"
+                    )
+                    label = names_row[2].replace(",", ", ") if names_row and names_row[2] else f"Database {i}"
+                    if device not in device_labels:
+                        auto_devices.append(device)
+                        device_labels[device] = label
+                    i += 1
+
+                # Single-device roles
+                for role in ("Primary Journal", "Alternate Journal", "WIJ"):
                     row = execute_single_read_query(
                         connection,
                         f"SELECT * FROM overview WHERE field = 'iris disk role {role}';"
                     )
                     if row and row[2]:
-                        auto_devices.append(row[2])
-                # Deduplicate preserving order
-                seen = set()
-                resolved = [d for d in auto_devices if not (d in seen or seen.add(d))]
-                if resolved:
-                    disk_list = resolved
+                        device = row[2]
+                        if device not in device_labels:
+                            auto_devices.append(device)
+                        device_labels[device] = role
+
+                if auto_devices:
+                    disk_list = auto_devices
                     print(f"  Auto disk list from CPF: {disk_list}")
 
             if is_unix:
