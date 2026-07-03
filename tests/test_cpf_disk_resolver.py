@@ -100,9 +100,66 @@ def _full_sp_dict():
     return d
 
 
+def test_resolve_database_role_returns_list():
+    result = cdr.resolve_iris_disk_roles(_full_sp_dict())
+    # Database is now a list of (device, [names]) tuples
+    assert isinstance(result["Database"], list)
+    assert len(result["Database"]) == 1
+    device, names = result["Database"][0]
+    assert device == "dm-2"
+    assert "TRAK-DATA" in names
+    assert "TRAK-DOCS" in names
+
+
+def test_resolve_database_role_multi_device():
+    # Two databases on different devices
+    sp = {}
+    sp.update(_mapper_sp_dict())
+    # Add an extra mount: /boot is already on sdb (bare device)
+    sp.update(_df_sp_dict())
+    sp["cpf_databases"] = [
+        ("APP-DATA", "/trak/live/tc/db/data/,,1"),   # → dm-2
+        ("BOOT-DB", "/boot/,,1"),                     # → sdb
+    ]
+    sp["current journal"] = "/trak/live/tc/prijrn/"
+    sp["alternate journal"] = "/trak/live/tc/altjrn/"
+    sp["wijdir"] = ""
+    result = cdr.resolve_iris_disk_roles(sp)
+    devices = [d for d, _ in result["Database"]]
+    assert "dm-2" in devices
+    assert "sdb" in devices
+    # names grouped by device
+    by_device = dict(result["Database"])
+    assert "APP-DATA" in by_device["dm-2"]
+    assert "BOOT-DB" in by_device["sdb"]
+
+
+def test_resolve_database_empty_list_when_no_databases():
+    sp = {}
+    sp.update(_mapper_sp_dict())
+    sp.update(_df_sp_dict())
+    sp["cpf_databases"] = []
+    sp["current journal"] = "/trak/live/tc/prijrn/"
+    sp["alternate journal"] = "/trak/live/tc/altjrn/"
+    sp["wijdir"] = ""
+    result = cdr.resolve_iris_disk_roles(sp)
+    assert result["Database"] == []
+
+
+def test_resolve_journal_roles_still_strings():
+    result = cdr.resolve_iris_disk_roles(_full_sp_dict())
+    assert result["Primary Journal"] == "dm-6"
+    assert result["Alternate Journal"] == "dm-8"
+    assert result["WIJ"] is None
+
+
 def test_resolve_database_role():
     result = cdr.resolve_iris_disk_roles(_full_sp_dict())
-    assert result["Database"] == "dm-2"
+    # _full_sp_dict has TRAK-DATA and TRAK-DOCS both on /trak/live/tc → dm-2
+    assert len(result["Database"]) == 1
+    device, names = result["Database"][0]
+    assert device == "dm-2"
+    assert "TRAK-DATA" in names
 
 
 def test_resolve_primary_journal():
@@ -121,7 +178,6 @@ def test_resolve_wij_empty_is_none():
 
 
 def test_resolve_mirror_databases_skipped():
-    # Only mirror databases → Database role is None
     sp = {}
     sp.update(_mapper_sp_dict())
     sp.update(_df_sp_dict())
@@ -130,7 +186,7 @@ def test_resolve_mirror_databases_skipped():
     sp["alternate journal"] = "/trak/live/tc/altjrn/"
     sp["wijdir"] = ""
     result = cdr.resolve_iris_disk_roles(sp)
-    assert result["Database"] is None
+    assert result["Database"] == []
 
 
 def test_resolve_no_cpf_databases_key():
@@ -141,7 +197,7 @@ def test_resolve_no_cpf_databases_key():
     sp["alternate journal"] = "/trak/live/tc/altjrn/"
     sp["wijdir"] = ""
     result = cdr.resolve_iris_disk_roles(sp)
-    assert result["Database"] is None
+    assert result["Database"] == []
 
 
 def test_resolve_wij_configured():

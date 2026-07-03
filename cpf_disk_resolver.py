@@ -84,36 +84,37 @@ def resolve_iris_disk_roles(sp_dict):
     Resolve IRIS storage roles to iostat device names.
 
     Returns dict with keys "Database", "Primary Journal",
-    "Alternate Journal", "WIJ". Values are iostat device name strings
-    (e.g. "dm-2", "sdb") or None if the role could not be resolved.
+    "Alternate Journal", "WIJ".
+    - "Database" is list[tuple[str, list[str]]] — list of (device, db_names) pairs, empty if none.
+    - Other roles are iostat device name strings (e.g. "dm-2", "sdb") or None if unresolved.
     """
     mount_map = _build_mount_map(sp_dict, sp_dict)
 
     roles = {
-        "Database": None,
+        "Database": [],          # list[tuple[str, list[str]]]
         "Primary Journal": None,
         "Alternate Journal": None,
         "WIJ": None,
     }
 
-    # Database: collect local (non-mirror) database paths
+    # Database: group local (non-mirror) paths by device, preserving insertion order
     cpf_databases = sp_dict.get("cpf_databases", [])
-    local_devices = []
-    for _name, path in cpf_databases:
-        # Strip optional ",,N" suffix from path
+    # ordered dict: device → [db_names]
+    device_names_map = {}
+    for name, path in cpf_databases:
         clean_path = path.split(",,")[0]
         if clean_path.startswith(":mirror:"):
             continue
         device = _path_to_device(clean_path, mount_map)
         if device:
-            local_devices.append(device)
+            if device not in device_names_map:
+                device_names_map[device] = []
+            device_names_map[device].append(name)
 
-    if local_devices:
-        # Use most-frequent device; deduplicated list preserves one entry
-        most_common = Counter(local_devices).most_common(1)[0][0]
-        roles["Database"] = most_common
-        if len(set(local_devices)) > 1:
-            print(f"  Note: databases span multiple devices {set(local_devices)}, using {most_common}")
+    if len(device_names_map) > 1:
+        print(f"  Note: databases span multiple devices: {list(device_names_map.keys())}")
+
+    roles["Database"] = list(device_names_map.items())  # [(device, [names]), ...]
 
     # Journal roles
     roles["Primary Journal"] = _path_to_device(
