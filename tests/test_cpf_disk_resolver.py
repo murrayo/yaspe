@@ -164,6 +164,26 @@ def test_path_to_device_no_false_prefix_match():
     assert cdr._path_to_device("/data2/file/", mount_map) is None
 
 
+def test_build_mount_map_nvme_partition():
+    """NVMe partition /dev/nvme0n1p1 should resolve to nvme0n1 not nvme0."""
+    sp_dict = {
+        "filesystem df 0": "Filesystem  1M-blocks  Used Available Use% Mounted on",
+        "filesystem df 1": "/dev/nvme0n1p1  512000  12345  499655  3% /data",
+    }
+    result = cdr._build_mount_map(sp_dict, {})
+    assert result.get("/data") == "nvme0n1"
+
+
+def test_build_mount_map_nvme_no_partition():
+    """Whole NVMe device /dev/nvme0n1 should resolve to nvme0n1 unchanged."""
+    sp_dict = {
+        "filesystem df 0": "Filesystem  1M-blocks  Used Available Use% Mounted on",
+        "filesystem df 1": "/dev/nvme0n1  512000  12345  499655  3% /data",
+    }
+    result = cdr._build_mount_map(sp_dict, {})
+    assert result.get("/data") == "nvme0n1"
+
+
 # ── sp_check integration tests ─────────────────────────────────────────────────
 
 import tempfile

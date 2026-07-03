@@ -49,9 +49,13 @@ def _build_mount_map(sp_dict, mapper_sp_dict):
             if dm_device:
                 mount_map[mount_point] = dm_device
         else:
-            # e.g. /dev/sdb1 → sdb, /dev/sda → sda
+            # e.g. /dev/sdb1 → sdb, /dev/nvme0n1p1 → nvme0n1
             bare = device_field[len("/dev/"):]
-            bare = bare.rstrip("0123456789")
+            if bare.startswith("nvme"):
+                # NVMe partition suffix is pN; strip it but keep nN namespace
+                bare = re.sub(r"p\d+$", "", bare)
+            else:
+                bare = re.sub(r"\d+$", "", bare)
             if bare:
                 mount_map[mount_point] = bare
     return mount_map
