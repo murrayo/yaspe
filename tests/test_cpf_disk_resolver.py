@@ -157,3 +157,8 @@ def test_resolve_bare_sdb_device():
     sp["current journal"] = "/boot/"
     result = cdr.resolve_iris_disk_roles(sp)
     assert result["Primary Journal"] == "sdb"
+
+
+def test_path_to_device_no_false_prefix_match():
+    mount_map = {"/data": "dm-1"}
+    assert cdr._path_to_device("/data2/file/", mount_map) is None

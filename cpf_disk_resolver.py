@@ -67,7 +67,7 @@ def _path_to_device(path, mount_map):
     best_mount = None
     best_len = -1
     for mount_point in mount_map:
-        if path.startswith(mount_point) and len(mount_point) > best_len:
+        if (path == mount_point or path.startswith(mount_point.rstrip("/") + "/")) and len(mount_point) > best_len:
             best_mount = mount_point
             best_len = len(mount_point)
     if best_mount is None:
