@@ -1461,8 +1461,24 @@ def build_log(sp_dict):
     if "wijdir" in sp_dict:
         log += f"WIJ directory          : {sp_dict['wijdir']}\n"
 
-    role_order = ["Database", "Primary Journal", "Alternate Journal", "WIJ"]
+    role_order = ["Primary Journal", "Alternate Journal", "WIJ"]
     role_lines = []
+
+    # Database devices (indexed, may be multiple)
+    i = 0
+    while True:
+        key = f"iris disk role Database {i}"
+        if key not in sp_dict:
+            break
+        device = sp_dict[key]
+        names = sp_dict.get(f"iris disk role Database {i} names", "")
+        mount = sp_dict.get(f"iris_disk_role_mount Database {i}", "")
+        mount_str = f"  ({mount})" if mount else ""
+        names_str = f"  [{names}]" if names else ""
+        role_lines.append(f"  {'Database':<22}: {device}{mount_str}{names_str}")
+        i += 1
+
+    # Single-device roles
     for role in role_order:
         key = f"iris disk role {role}"
         if key in sp_dict:
@@ -1473,7 +1489,10 @@ def build_log(sp_dict):
         else:
             if role == "WIJ":
                 role_lines.append(f"  {role:<22}: not configured (installation directory)")
-    if any(f"iris disk role {r}" in sp_dict for r in role_order):
+
+    has_db = any(f"iris disk role Database {j}" in sp_dict for j in range(10))
+    has_role = any(f"iris disk role {r}" in sp_dict for r in role_order)
+    if has_db or has_role:
         log += "\nIRIS disk roles (auto-detected):\n"
         log += "\n".join(role_lines) + "\n"
 

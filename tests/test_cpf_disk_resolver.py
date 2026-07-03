@@ -335,6 +335,39 @@ def test_yaspe_stores_multi_device_database_roles():
     assert "iris disk role Database" not in sp_dict  # old single-device key gone
 
 
+def test_build_log_shows_multi_device_database_roles():
+    import tempfile, os
+    html = _make_html(
+        "TRAK-DATA=/trak/live/tc/db/data/,,1\n",
+        journal_current="/trak/live/tc/prijrn/",
+        journal_alt="/trak/live/tc/altjrn/",
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8") as f:
+        f.write(html)
+        path = f.name
+    try:
+        sp_dict = sp_check.system_check(path)
+        # Simulate multi-device database storage (Task 2 output)
+        sp_dict["iris disk role Database 0"] = "dm-2"
+        sp_dict["iris disk role Database 0 names"] = "TRAK-DATA,TRAK-DOCS"
+        sp_dict["iris_disk_role_mount Database 0"] = "/trak/live/tc"
+        sp_dict["iris disk role Database 1"] = "dm-1"
+        sp_dict["iris disk role Database 1 names"] = "IRISSYS"
+        sp_dict["iris_disk_role_mount Database 1"] = "/"
+        sp_dict["iris disk role Primary Journal"] = "dm-6"
+        sp_dict["iris disk role Alternate Journal"] = "dm-8"
+        sp_dict["iris_disk_role_mount Primary Journal"] = "/trak/live/tc/prijrn"
+        sp_dict["iris_disk_role_mount Alternate Journal"] = "/trak/live/tc/altjrn"
+        log, _ = sp_check.build_log(sp_dict)
+        assert "IRIS disk roles" in log
+        assert "dm-2" in log and "TRAK-DATA" in log
+        assert "dm-1" in log and "IRISSYS" in log
+        assert "Primary Journal" in log and "dm-6" in log
+        assert "Alternate Journal" in log and "dm-8" in log
+    finally:
+        os.unlink(path)
+
+
 def test_build_log_shows_disk_roles():
     html = _make_html(
         "TRAK-DATA=/trak/live/tc/db/data/,,1\n",
@@ -346,11 +379,11 @@ def test_build_log_shows_disk_roles():
         path = f.name
     try:
         sp_dict = sp_check.system_check(path)
-        # Simulate what yaspe.py will add after calling the resolver
-        sp_dict["iris disk role Database"] = "dm-2"
+        sp_dict["iris disk role Database 0"] = "dm-2"
+        sp_dict["iris disk role Database 0 names"] = "TRAK-DATA"
+        sp_dict["iris_disk_role_mount Database 0"] = "/trak/live/tc"
         sp_dict["iris disk role Primary Journal"] = "dm-6"
         sp_dict["iris disk role Alternate Journal"] = "dm-8"
-        sp_dict["iris_disk_role_mount Database"] = "/trak/live/tc"
         sp_dict["iris_disk_role_mount Primary Journal"] = "/trak/live/tc/prijrn"
         sp_dict["iris_disk_role_mount Alternate Journal"] = "/trak/live/tc/altjrn"
         log, _ = sp_check.build_log(sp_dict)
