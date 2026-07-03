@@ -779,19 +779,21 @@ def _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output
     end_str = end_date.strftime("%d-%b-%y")
     ax.set_title(f"{title} - {start_str} to {end_str} ({avg_minutes} min avg)", fontsize=16)
 
-    data_end_hour = end_date.hour
-    if data_end_hour <= 2:
-        date_range = pd.date_range(start=start_date.date(), end=end_date.date() - timedelta(days=1), freq="D")
-    else:
-        date_range = pd.date_range(start=start_date.date(), end=end_date.date(), freq="D")
-    tick_positions = [pd.Timestamp(date) + timedelta(hours=12) for date in date_range]
-    ax.set_xticks(tick_positions)
-    ax.set_xticklabels([f"{tick.strftime('%a')} {_ordinal(tick.day)}" for tick in tick_positions])
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", fontsize=7)
+    _shade_days(ax, start_date, end_date)
+
+    ax.xaxis.set_major_locator(plt_dates.HourLocator(byhour=[12]))
+    ax.xaxis.set_major_formatter(mpl.ticker.FuncFormatter(
+        lambda x, pos: f"{plt_dates.num2date(x).strftime('%a')} {_ordinal(plt_dates.num2date(x).day)}"
+    ))
+    ax.xaxis.set_minor_locator(plt_dates.HourLocator(byhour=[0]))
+    ax.tick_params(axis="x", which="major", length=4, grid_linewidth=0)
+    ax.tick_params(axis="x", which="minor", length=6, labelsize=0, grid_linewidth=0)
 
     ax.set_ylabel(column_name, fontsize=14)
     ax.tick_params(labelsize=14)
-    ax.grid(which="major", axis="both", linestyle="--")
+    ax.tick_params(axis="x", which="major", labelsize=6)
+    ax.grid(which="major", axis="y", linestyle="--")
+    ax.xaxis.grid(False)
     ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
     plt.subplots_adjust(bottom=0.2)
 
@@ -1471,6 +1473,21 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
 
 
+def _shade_days(ax, start_date, end_date):
+    """Shade alternate days with a faint blue band so day boundaries are visible on multi-day charts."""
+    from datetime import timedelta
+    day = start_date.date()
+    end_day = end_date.date()
+    idx = 0
+    while day <= end_day:
+        day_start = pd.Timestamp(day)
+        day_end = day_start + timedelta(days=1)
+        if idx % 2 == 0:
+            ax.axvspan(day_start, day_end, facecolor="#d6eaf8", alpha=0.25, zorder=0)
+        day += timedelta(days=1)
+        idx += 1
+
+
 def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
     """
     Create a simple chart. Returns (peak_start, peak_end) if this is a Glorefs chart with peak enabled,
@@ -1489,6 +1506,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     line_chart = kwargs.get("line_chart", True)  # Use line charts by default
     threshold = kwargs.get("threshold")  # Optional (value, label) tuple for a reference line
     business_hours_chart = kwargs.get("business_hours_chart", False)  # Generate business-hours peak chart
+    bh_charts = kwargs.get("bh_charts", False)  # Generate per-day BH peak charts for multi-day data
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -1617,26 +1635,18 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         end_str = end_date.strftime("%d-%b-%y")
         ax.set_title(f"{title} - {start_str} to {end_str}", fontsize=16)
 
-        # Create custom tick positions at noon of each day (center of 24-hour period)
+        _shade_days(ax, start_date, end_date)
+
         from datetime import timedelta
-        import numpy as np
-
-        # Get date range - exclude last day if data ends near midnight to avoid blank space
-        data_end_hour = end_date.hour
-        if data_end_hour <= 2:  # If data ends at midnight or just after (0-2 AM)
-            # Don't include the last day to avoid blank space
-            date_range = pd.date_range(start=start_date.date(), end=end_date.date() - timedelta(days=1), freq="D")
-        else:
-            # Include all days if data goes well into the last day
-            date_range = pd.date_range(start=start_date.date(), end=end_date.date(), freq="D")
-
-        # Position ticks at noon (center of each day) with time shown
-        tick_positions = [pd.Timestamp(date) + timedelta(hours=12) for date in date_range]
-
-        ax.set_xticks(tick_positions)
-        ax.set_xticklabels([f"{tick.strftime('%a')} {_ordinal(tick.day)}" for tick in tick_positions])
-
-        plt.setp(ax.get_xticklabels(), rotation=45, ha="right", fontsize=7)
+        # Major ticks at noon: label centred in each day band, no grid line
+        ax.xaxis.set_major_locator(plt_dates.HourLocator(byhour=[12]))
+        ax.xaxis.set_major_formatter(mpl.ticker.FuncFormatter(
+            lambda x, pos: f"{plt_dates.num2date(x).strftime('%a')} {_ordinal(plt_dates.num2date(x).day)}"
+        ))
+        # Minor ticks at midnight: short boundary marks, no label, no grid line
+        ax.xaxis.set_minor_locator(plt_dates.HourLocator(byhour=[0]))
+        ax.tick_params(axis="x", which="major", length=4, grid_linewidth=0)
+        ax.tick_params(axis="x", which="minor", length=6, labelsize=0, grid_linewidth=0)
     else:
         # For short periods, add date to title in DD-MMM-YY format, use only time on x-axis
         start_date = png_data[datetime_column].min()
@@ -1651,6 +1661,10 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     ax.set_ylabel(column_name, fontsize=14)
     ax.tick_params(labelsize=14)
+    if is_long_period:
+        # Restore small label size and suppress x-axis grid lines (shading handles day separation)
+        ax.tick_params(axis="x", which="major", labelsize=6)
+        ax.xaxis.grid(False)
     plt.subplots_adjust(bottom=0.2)
     ax.set_ylim(bottom=0)  # Always zero start
     if max_y != 0:
@@ -1724,7 +1738,8 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         if day_overlay or column_name in _DAY_OVERLAY_ALWAYS:
             _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
         # day_overlay HTML is handled by linked_chart via _maybe_day_overlay_html
-        _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
+        if bh_charts:
+            _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
 
     # Return peak times (useful for Glorefs to pass to other charts)
     return peak_start_time, peak_end_time
@@ -1974,6 +1989,7 @@ def chart_vmstat(
     glorefs_peak_window=None,
     line_chart=True,
     day_overlay=False,
+    bh_charts=False,
 ):
     # print(f"vmstat...")
     # Get useful
@@ -2074,6 +2090,7 @@ def chart_vmstat(
                     threshold=threshold,
                     business_hours_chart=min_max,
                     day_overlay=day_overlay,
+                    bh_charts=bh_charts,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
@@ -2084,7 +2101,7 @@ def chart_vmstat(
 
 
 def chart_mgstat(
-    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=True, day_overlay=False,
+    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=True, day_overlay=False, bh_charts=False,
 ):
     """
     Chart mgstat data. Returns the Glorefs peak window (start, end) if available, otherwise (None, None).
@@ -2181,6 +2198,7 @@ def chart_mgstat(
                     line_chart=line_chart,
                     business_hours_chart=min_max,
                     day_overlay=day_overlay,
+                    bh_charts=bh_charts,
                 )
                 # Capture Glorefs peak window
                 if column_name == "Glorefs" and peak_start is not None:
@@ -2288,6 +2306,7 @@ def chart_perfmon(
                     data, column_name, title, max_y, png_filepath, output_prefix,
                     min_max=min_max, peak_chart=peak_chart, glorefs_peak_window=glorefs_peak_window,
                     line_chart=line_chart, business_hours_chart=min_max, day_overlay=day_overlay,
+                    bh_charts=bh_charts,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
@@ -2310,6 +2329,7 @@ def chart_iostat(
     line_chart=True,
     iostat_subfolders=False,
     day_overlay=False,
+    bh_charts=False,
 ):
     # print(f"iostat...")
 
@@ -2449,6 +2469,7 @@ def chart_iostat(
                             threshold=threshold,
                             business_hours_chart=min_max,
                             day_overlay=day_overlay,
+                            bh_charts=bh_charts,
                         )
                         if png_html_out:
                             linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
@@ -2664,7 +2685,8 @@ def chart_aix_sar_d(
                 if png_out or png_html_out:
                     simple_chart(data, column_name, title, max_y, dev_png_fp, output_prefix,
                                  file_prefix=pfx, peak_chart=peak_chart, line_chart=line_chart,
-                                 min_max=min_max, business_hours_chart=min_max, day_overlay=day_overlay)
+                                 min_max=min_max, business_hours_chart=min_max, day_overlay=day_overlay,
+                                 bh_charts=bh_charts)
                     if png_html_out:
                         linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
                                      file_prefix=pfx, min_max=min_max, day_overlay=day_overlay)
@@ -2813,6 +2835,7 @@ def mainline(
     iostat_subfolders=True,
     smooth_minutes=5,
     day_overlay=False,
+    bh_charts=False,
     analysis=False,
     context=None,
 ):
@@ -2988,7 +3011,7 @@ def mainline(
 
             glorefs_peak_window = chart_mgstat(
                 connection, _make_chart_dir(output_file_path_base, "mgstat"),
-                output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart, day_overlay,
+                output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart, day_overlay, bh_charts,
             )
 
             # No need to go further for .mgst file
@@ -3004,7 +3027,7 @@ def mainline(
 
                 chart_vmstat(
                     connection, _make_chart_dir(output_file_path_base, "vmstat"),
-                    output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay,
+                    output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay, bh_charts,
                 )
 
                 if is_linux:
@@ -3017,7 +3040,7 @@ def mainline(
                     chart_iostat(
                         connection, _make_chart_dir(output_file_path_base, "iostat"),
                         output_prefix, operating_system, png_out, png_html_out,
-                        disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders, day_overlay,
+                        disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders, day_overlay, bh_charts,
                     )
 
                     if operating_system == "AIX":
@@ -3250,6 +3273,13 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--bh-charts",
+        dest="bh_charts",
+        help="Create per-day business-hours peak charts for multi-day data (slow; off by default).",
+        action="store_true",
+    )
+
+    parser.add_argument(
         "--analysis",
         dest="analysis",
         help="Run performance analysis report (implies -s). Writes a narrative markdown summary.",
@@ -3342,6 +3372,7 @@ if __name__ == "__main__":
             args.iostat_subfolders,
             args.smooth_minutes,
             args.day_overlay,
+            args.bh_charts,
             args.analysis,
             args.context,
         )
