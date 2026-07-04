@@ -52,6 +52,8 @@ def system_check(input_file):
     sp_dict = {}
     operating_system = ""
     cpf_section = False
+    databases_section = False
+    cpf_databases = []
 
     linux_info_available = False
     SS_info_available = False
@@ -177,6 +179,15 @@ def system_check(input_file):
             # CPF file
 
             if cpf_section:
+                if line.startswith("[Databases]"):
+                    databases_section = True
+                elif line.startswith("[") and databases_section:
+                    databases_section = False
+                elif databases_section and "=" in line and not line.startswith(";"):
+                    name, _, path_raw = line.strip().partition("=")
+                    if name and path_raw:
+                        cpf_databases.append((name, path_raw))
+
                 if line.startswith("AlternateDirectory="):
                     sp_dict["alternate journal"] = (line.split("=")[1]).strip()
                 if "CurrentDirectory=" in line and not line[0] == ";":
@@ -418,6 +429,8 @@ def system_check(input_file):
             sp_dict["memory MB"] = int("".join(i for i in sp_dict["windows total memory"] if i.isdigit()))
         else:
             sp_dict["memory MB"] = 0
+
+    sp_dict["cpf_databases"] = cpf_databases
 
     return sp_dict
 
@@ -1447,6 +1460,41 @@ def build_log(sp_dict):
     log += f"Days before purge      : {sp_dict['DaysBeforePurge']}\n"
     if "wijdir" in sp_dict:
         log += f"WIJ directory          : {sp_dict['wijdir']}\n"
+
+    role_order = ["Primary Journal", "Alternate Journal", "WIJ"]
+    role_lines = []
+
+    # Database devices (indexed, may be multiple)
+    i = 0
+    while True:
+        key = f"iris disk role Database {i}"
+        if key not in sp_dict:
+            break
+        device = sp_dict[key]
+        names = sp_dict.get(f"iris disk role Database {i} names", "")
+        mount = sp_dict.get(f"iris_disk_role_mount Database {i}", "")
+        mount_str = f"  ({mount})" if mount else ""
+        names_str = f"  [{names}]" if names else ""
+        role_lines.append(f"  {'Database':<22}: {device}{mount_str}{names_str}")
+        i += 1
+
+    # Single-device roles
+    for role in role_order:
+        key = f"iris disk role {role}"
+        if key in sp_dict:
+            device = sp_dict[key]
+            mount = sp_dict.get(f"iris_disk_role_mount {role}", "")
+            mount_str = f"  ({mount})" if mount else ""
+            role_lines.append(f"  {role:<22}: {device}{mount_str}")
+        else:
+            if role == "WIJ":
+                role_lines.append(f"  {role:<22}: not configured (installation directory)")
+
+    has_db = any(f"iris disk role Database {j}" in sp_dict for j in range(10))
+    has_role = any(f"iris disk role {r}" in sp_dict for r in role_order)
+    if has_db or has_role:
+        log += "\nIRIS disk roles (auto-detected):\n"
+        log += "\n".join(role_lines) + "\n"
 
     log += "\nAdditional:\n"
     if "IRISSYS" in sp_dict:

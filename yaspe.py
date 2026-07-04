@@ -5,6 +5,7 @@ Chart the results
 """
 
 import sp_check
+import cpf_disk_resolver
 import split_large_file
 import argparse
 import os
@@ -330,9 +331,12 @@ def create_overview(connection, sp_dict):
 
     execute_simple_query(connection, create_overview_table)
 
-    # Create the insert query string
+    # Create the insert query string; skip non-scalar values (e.g. lists)
     for key in sp_dict:
-        cursor.execute("INSERT INTO overview (field, value) VALUES (?, ?)", (key, sp_dict[key]))
+        value = sp_dict[key]
+        if not isinstance(value, (str, int, float, type(None))):
+            continue
+        cursor.execute("INSERT INTO overview (field, value) VALUES (?, ?)", (key, value))
         connection.commit()
 
     return
@@ -369,6 +373,11 @@ def _find_peak_60_window(png_data, datetime_column):
     peak_start_time = peak_end_time - timedelta(minutes=60)
 
     return peak_start_time, peak_end_time
+
+
+def _ordinal(n):
+    suffix = "th" if 11 <= n % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
 
 
 def _create_peak_60_chart(
@@ -774,21 +783,23 @@ def _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output
     end_str = end_date.strftime("%d-%b-%y")
     ax.set_title(f"{title} - {start_str} to {end_str} ({avg_minutes} min avg)", fontsize=16)
 
-    data_end_hour = end_date.hour
-    if data_end_hour <= 2:
-        date_range = pd.date_range(start=start_date.date(), end=end_date.date() - timedelta(days=1), freq="D")
-    else:
-        date_range = pd.date_range(start=start_date.date(), end=end_date.date(), freq="D")
-    tick_positions = [pd.Timestamp(date) + timedelta(hours=12) for date in date_range]
-    ax.set_xticks(tick_positions)
-    ax.set_xticklabels([tick.strftime("%a 12:00") for tick in tick_positions])
-    plt.setp(ax.get_xticklabels(), rotation=0, ha="center")
+    _shade_days(ax, start_date, end_date)
+
+    ax.xaxis.set_major_locator(plt_dates.HourLocator(byhour=[12]))
+    ax.xaxis.set_major_formatter(mpl.ticker.FuncFormatter(
+        lambda x, pos: f"{plt_dates.num2date(x).strftime('%a')} {_ordinal(plt_dates.num2date(x).day)}"
+    ))
+    ax.xaxis.set_minor_locator(plt_dates.HourLocator(byhour=[0]))
+    ax.tick_params(axis="x", which="major", length=4, grid_linewidth=0)
+    ax.tick_params(axis="x", which="minor", length=6, labelsize=0, grid_linewidth=0)
 
     ax.set_ylabel(column_name, fontsize=14)
     ax.tick_params(labelsize=14)
-    ax.grid(which="major", axis="both", linestyle="--")
+    ax.tick_params(axis="x", which="major", labelsize=6)
+    ax.grid(which="major", axis="y", linestyle="--")
+    ax.xaxis.grid(False)
     ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
-    plt.subplots_adjust(bottom=0.15)
+    plt.subplots_adjust(bottom=0.2)
 
     output_name = column_name.replace("/", "_")
     plt.tight_layout()
@@ -1255,6 +1266,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     write_html = kwargs.get("write_html", True)
     png_path = kwargs.get("png_path", filepath)
     day_overlay = kwargs.get("day_overlay", False)
+    chart_label = kwargs.get("chart_label", [])  # List of strings for right-side annotation
 
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
@@ -1320,6 +1332,21 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     _apply_ref_lines(fig, data, min_max, threshold, row=1)
 
+    _annotations = []
+    if chart_label:
+        _annotations.append(dict(
+            text="<br>".join(chart_label),
+            xref="paper", yref="paper",
+            x=1.01, y=0.0,
+            xanchor="left", yanchor="bottom",
+            showarrow=False,
+            font=dict(size=11),
+            bgcolor="#f0f0f0",
+            bordercolor="gray",
+            borderwidth=1,
+            borderpad=4,
+        ))
+
     fig.update_layout(
         title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
         xaxis=dict(title="", tickfont=dict(size=13)),
@@ -1330,6 +1357,8 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         height=650,
         hovermode="x",
         template="plotly_white",
+        annotations=_annotations,
+        margin=dict(r=160) if chart_label else {},
     )
 
     if write_html:
@@ -1466,6 +1495,21 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
 
 
+def _shade_days(ax, start_date, end_date):
+    """Shade alternate days with a faint blue band so day boundaries are visible on multi-day charts."""
+    from datetime import timedelta
+    day = start_date.date()
+    end_day = end_date.date()
+    idx = 0
+    while day <= end_day:
+        day_start = pd.Timestamp(day)
+        day_end = day_start + timedelta(days=1)
+        if idx % 2 == 0:
+            ax.axvspan(day_start, day_end, facecolor="#d6eaf8", alpha=0.25, zorder=0)
+        day += timedelta(days=1)
+        idx += 1
+
+
 def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
     """
     Create a simple chart. Returns (peak_start, peak_end) if this is a Glorefs chart with peak enabled,
@@ -1484,6 +1528,9 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     line_chart = kwargs.get("line_chart", True)  # Use line charts by default
     threshold = kwargs.get("threshold")  # Optional (value, label) tuple for a reference line
     business_hours_chart = kwargs.get("business_hours_chart", False)  # Generate business-hours peak chart
+    bh_charts = kwargs.get("bh_charts", False)  # Generate per-day BH peak charts for multi-day data
+    long_period_smooth = kwargs.get("long_period_smooth", 30)
+    chart_label = kwargs.get("chart_label", [])  # List of strings for right-side annotation
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -1522,7 +1569,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         time_diffs = sorted_for_smooth.index.to_series().diff().dropna()
         if len(time_diffs) > 0:
             interval_secs = time_diffs.median().total_seconds()
-            window = max(2, int(30 * 60 / interval_secs)) if interval_secs > 0 else 60
+            window = max(2, int(long_period_smooth * 60 / interval_secs)) if interval_secs > 0 else 60
         else:
             interval_secs = 0
             window = 60
@@ -1537,7 +1584,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         ax.plot(sorted_for_smooth.index, sorted_for_smooth.values,
                 color=color, alpha=0.15, linewidth=0.5, label="_raw")
         ax.plot(smoothed.index, smoothed.values,
-                color=color, alpha=0.85, linewidth=1.5, label=f"{column_name} ({sample_label}, 30 min avg)")
+                color=color, alpha=0.85, linewidth=1.5, label=f"{column_name} ({sample_label}, {long_period_smooth} min avg)")
     # Choose plot style based on line_chart option
     elif line_chart:
         ax.plot(
@@ -1612,27 +1659,18 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         end_str = end_date.strftime("%d-%b-%y")
         ax.set_title(f"{title} - {start_str} to {end_str}", fontsize=16)
 
-        # Create custom tick positions at noon of each day (center of 24-hour period)
+        _shade_days(ax, start_date, end_date)
+
         from datetime import timedelta
-        import numpy as np
-
-        # Get date range - exclude last day if data ends near midnight to avoid blank space
-        data_end_hour = end_date.hour
-        if data_end_hour <= 2:  # If data ends at midnight or just after (0-2 AM)
-            # Don't include the last day to avoid blank space
-            date_range = pd.date_range(start=start_date.date(), end=end_date.date() - timedelta(days=1), freq="D")
-        else:
-            # Include all days if data goes well into the last day
-            date_range = pd.date_range(start=start_date.date(), end=end_date.date(), freq="D")
-
-        # Position ticks at noon (center of each day) with time shown
-        tick_positions = [pd.Timestamp(date) + timedelta(hours=12) for date in date_range]
-
-        ax.set_xticks(tick_positions)
-        ax.set_xticklabels([tick.strftime("%a 12:00") for tick in tick_positions])
-
-        # Remove rotation for day labels
-        plt.setp(ax.get_xticklabels(), rotation=0, ha="center")
+        # Major ticks at noon: label centred in each day band, no grid line
+        ax.xaxis.set_major_locator(plt_dates.HourLocator(byhour=[12]))
+        ax.xaxis.set_major_formatter(mpl.ticker.FuncFormatter(
+            lambda x, pos: f"{plt_dates.num2date(x).strftime('%a')} {_ordinal(plt_dates.num2date(x).day)}"
+        ))
+        # Minor ticks at midnight: short boundary marks, no label, no grid line
+        ax.xaxis.set_minor_locator(plt_dates.HourLocator(byhour=[0]))
+        ax.tick_params(axis="x", which="major", length=4, grid_linewidth=0)
+        ax.tick_params(axis="x", which="minor", length=6, labelsize=0, grid_linewidth=0)
     else:
         # For short periods, add date to title in DD-MMM-YY format, use only time on x-axis
         start_date = png_data[datetime_column].min()
@@ -1647,7 +1685,11 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
     ax.set_ylabel(column_name, fontsize=14)
     ax.tick_params(labelsize=14)
-    plt.subplots_adjust(bottom=0.15)
+    if is_long_period:
+        # Restore small label size and suppress x-axis grid lines (shading handles day separation)
+        ax.tick_params(axis="x", which="major", labelsize=6)
+        ax.xaxis.grid(False)
+    plt.subplots_adjust(bottom=0.2)
     ax.set_ylim(bottom=0)  # Always zero start
     if max_y != 0:
         ax.set_ylim(top=max_y)
@@ -1668,6 +1710,11 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
 
     output_name = column_name.replace("/", "_")
+    if chart_label:
+        label_text = "\n".join(chart_label)
+        fig.text(1.01, 0.0, label_text, transform=ax.transAxes,
+                 fontsize=10, va="bottom", ha="left",
+                 bbox=dict(boxstyle="round,pad=0.3", facecolor="#f0f0f0", edgecolor="gray", alpha=0.8))
     plt.tight_layout()
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
@@ -1720,7 +1767,8 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         if day_overlay or column_name in _DAY_OVERLAY_ALWAYS:
             _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
         # day_overlay HTML is handled by linked_chart via _maybe_day_overlay_html
-        _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
+        if bh_charts:
+            _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
 
     # Return peak times (useful for Glorefs to pass to other charts)
     return peak_start_time, peak_end_time
@@ -1970,6 +2018,8 @@ def chart_vmstat(
     glorefs_peak_window=None,
     line_chart=True,
     day_overlay=False,
+    bh_charts=False,
+    long_period_smooth=5,
 ):
     # print(f"vmstat...")
     # Get useful
@@ -2070,6 +2120,8 @@ def chart_vmstat(
                     threshold=threshold,
                     business_hours_chart=min_max,
                     day_overlay=day_overlay,
+                    bh_charts=bh_charts,
+                    long_period_smooth=long_period_smooth,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
@@ -2080,7 +2132,7 @@ def chart_vmstat(
 
 
 def chart_mgstat(
-    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=True, day_overlay=False,
+    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=True, day_overlay=False, bh_charts=False, long_period_smooth=5,
 ):
     """
     Chart mgstat data. Returns the Glorefs peak window (start, end) if available, otherwise (None, None).
@@ -2177,6 +2229,8 @@ def chart_mgstat(
                     line_chart=line_chart,
                     business_hours_chart=min_max,
                     day_overlay=day_overlay,
+                    bh_charts=bh_charts,
+                    long_period_smooth=long_period_smooth,
                 )
                 # Capture Glorefs peak window
                 if column_name == "Glorefs" and peak_start is not None:
@@ -2284,6 +2338,7 @@ def chart_perfmon(
                     data, column_name, title, max_y, png_filepath, output_prefix,
                     min_max=min_max, peak_chart=peak_chart, glorefs_peak_window=glorefs_peak_window,
                     line_chart=line_chart, business_hours_chart=min_max, day_overlay=day_overlay,
+                    bh_charts=bh_charts, long_period_smooth=long_period_smooth,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
@@ -2306,10 +2361,36 @@ def chart_iostat(
     line_chart=True,
     iostat_subfolders=False,
     day_overlay=False,
+    bh_charts=False,
+    long_period_smooth=5,
+    device_labels=None,
 ):
     # print(f"iostat...")
 
     customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+
+    import re as _re
+
+    def _device_slug(device):
+        label = (device_labels or {}).get(device, "")
+        if not label:
+            return device
+        slug = _re.sub(r"[^a-z0-9_-]", "_", label.lower())
+        slug = _re.sub(r"_+", "_", slug).strip("_")
+        full = f"{device}_{slug}"
+        if len(full) > 60:
+            return full[:50] + "_and_more"
+        return full
+
+    def _device_chart_label(device):
+        """Return list of label strings for side annotation, or [] if no label."""
+        label = (device_labels or {}).get(device, "")
+        if not label:
+            return []
+        parts = [s.strip() for s in label.split(",")]
+        if len(parts) > 20:
+            return parts[:20] + ["And more..."]
+        return parts
 
     # Read in to dataframe, drop any bad rows
     try:
@@ -2357,7 +2438,8 @@ def chart_iostat(
             device_df = iostat_df.loc[iostat_df["Device"] == device]
 
             if iostat_subfolders:
-                device_filepath = f"{filepath}{device}/"
+                device_dirname = _device_slug(device)
+                device_filepath = f"{filepath}{device_dirname}/"
                 if not os.path.isdir(device_filepath):
                     os.mkdir(device_filepath)
             else:
@@ -2367,6 +2449,7 @@ def chart_iostat(
 
             # Create stacked read write chart if columns exist
             if png_out or png_html_out:
+                _chart_label = _device_chart_label(device)
                 if operating_system == "AIX":
                     # Something wrong with the way stacked charts come out base is not zero and a fake base rises l-r
 
@@ -2386,18 +2469,18 @@ def chart_iostat(
 
                 else:
                     if "r/s" in device_df.columns and "w/s" in device_df.columns:
-                        title = f"{device} : Total IOPS - {customer}"
+                        _stacked_title = f"{device} : Total IOPS - {customer}"
                         columns_to_stack = {"r/s": "Reads per sec", "w/s": "Writes per sec"}
                         simple_chart_stacked_iostat(
-                            device_df, columns_to_stack, device, title, 0, dev_png_fp, output_prefix
+                            device_df, columns_to_stack, device, _stacked_title, 0, dev_png_fp, output_prefix
                         )
 
                         if "r_await" in device_df.columns and "w_await" in device_df.columns:
-                            title = f"{device} : Latency - {customer}"
+                            _lat_title = f"{device} : Latency - {customer}"
                             # Column name : check for non-zero column
                             columns_to_histogram = {"r_await": "r/s", "w_await": "w/s"}
                             simple_chart_histogram_iostat(
-                                device_df, columns_to_histogram, device, title, dev_png_fp, output_prefix
+                                device_df, columns_to_histogram, device, _lat_title, dev_png_fp, output_prefix
                             )
 
             # unpivot the dataframe; include both datetime and datetime_parsed as id_vars
@@ -2410,6 +2493,7 @@ def chart_iostat(
                 if column_name in ["datetime", "Device"]:
                     pass
                 else:
+                    _chart_label = _device_chart_label(device)
                     title = f"{device} : {column_name} - {customer}"
 
                     to_chart_df = device_df.loc[device_df["Type"] == column_name]
@@ -2445,15 +2529,18 @@ def chart_iostat(
                             threshold=threshold,
                             business_hours_chart=min_max,
                             day_overlay=day_overlay,
+                            bh_charts=bh_charts,
+                            long_period_smooth=long_period_smooth,
+                            chart_label=_chart_label,
                         )
                         if png_html_out:
                             linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
                                          file_prefix=device, min_max=min_max, threshold=threshold,
-                                         day_overlay=day_overlay)
+                                         day_overlay=day_overlay, chart_label=_chart_label)
                     else:
                         linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
                                      file_prefix=device, min_max=min_max, threshold=threshold,
-                                     day_overlay=day_overlay)
+                                     day_overlay=day_overlay, chart_label=_chart_label)
 
     else:
         # No date or time, chart all columns, index is x axis
@@ -2477,7 +2564,8 @@ def chart_iostat(
             device_df = iostat_df.loc[iostat_df["Device"] == device]
 
             if iostat_subfolders:
-                device_filepath = f"{filepath}{device}/"
+                device_dirname = _device_slug(device)
+                device_filepath = f"{filepath}{device_dirname}/"
                 if not os.path.isdir(device_filepath):
                     os.mkdir(device_filepath)
             else:
@@ -2491,6 +2579,7 @@ def chart_iostat(
             # For each column create a chart
             for column_name in columns_to_chart:
                 if not column_name == "Device":
+                    _chart_label = _device_chart_label(device)
                     title = f"{device} : {column_name} - {customer}"
 
                     to_chart_df = device_df.loc[device_df["Type"] == column_name]
@@ -2660,7 +2749,8 @@ def chart_aix_sar_d(
                 if png_out or png_html_out:
                     simple_chart(data, column_name, title, max_y, dev_png_fp, output_prefix,
                                  file_prefix=pfx, peak_chart=peak_chart, line_chart=line_chart,
-                                 min_max=min_max, business_hours_chart=min_max, day_overlay=day_overlay)
+                                 min_max=min_max, business_hours_chart=min_max, day_overlay=day_overlay,
+                                 bh_charts=bh_charts, long_period_smooth=long_period_smooth)
                     if png_html_out:
                         linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
                                      file_prefix=pfx, min_max=min_max, day_overlay=day_overlay)
@@ -2809,6 +2899,8 @@ def mainline(
     iostat_subfolders=True,
     smooth_minutes=5,
     day_overlay=False,
+    bh_charts=False,
+    long_period_smooth=5,
     analysis=False,
     context=None,
 ):
@@ -2907,6 +2999,28 @@ def mainline(
             else:
                 # Create a system summary
                 sp_dict = sp_check.system_check(input_file)
+
+                # Resolve IRIS storage roles from CPF + filesystem info
+                iris_roles = cpf_disk_resolver.resolve_iris_disk_roles(sp_dict)
+                mount_map = cpf_disk_resolver._build_mount_map(sp_dict, sp_dict)
+                device_to_mount = {}
+                for mount_point, device in mount_map.items():
+                    if device not in device_to_mount or len(mount_point) < len(device_to_mount[device]):
+                        device_to_mount[device] = mount_point
+
+                # Store database devices: one key per device, indexed
+                for i, (device, names) in enumerate(iris_roles["Database"]):
+                    sp_dict[f"iris disk role Database {i}"] = device
+                    sp_dict[f"iris disk role Database {i} names"] = ",".join(names)
+                    sp_dict[f"iris_disk_role_mount Database {i}"] = device_to_mount.get(device, "")
+
+                # Store single-device roles
+                for role in ("Primary Journal", "Alternate Journal", "WIJ"):
+                    device = iris_roles[role]
+                    if device:
+                        sp_dict[f"iris disk role {role}"] = device
+                        sp_dict[f"iris_disk_role_mount {role}"] = device_to_mount.get(device, "")
+
                 if system_out:
                     output_log, yaspe_yaml = sp_check.build_log(sp_dict)
 
@@ -2916,8 +3030,11 @@ def mainline(
                         print("", file=text_file)
                         print(yaspe_yaml, file=text_file)
 
-                    # Simple dump of all data in overview
-                    overview_df = pd.DataFrame(list(sp_dict.items()), columns=["key", "value"])
+                    # Simple dump of all data in overview (scalar values only)
+                    overview_df = pd.DataFrame(
+                        [(k, v) for k, v in sp_dict.items() if isinstance(v, (str, int, float, type(None)))],
+                        columns=["key", "value"]
+                    )
                     overview_df.to_csv(
                         f"{output_filepath_prefix}overview_all.csv", header=True, index=False, sep=",", mode="w"
                     )
@@ -2984,7 +3101,7 @@ def mainline(
 
             glorefs_peak_window = chart_mgstat(
                 connection, _make_chart_dir(output_file_path_base, "mgstat"),
-                output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart, day_overlay,
+                output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart, day_overlay, bh_charts, long_period_smooth,
             )
 
             # No need to go further for .mgst file
@@ -2994,13 +3111,54 @@ def mainline(
             is_unix = operating_system in ("Linux", "Ubuntu", "AIX")
             is_linux = operating_system in ("Linux", "Ubuntu")
 
+            device_labels = {}
+            # Auto-detect disk list from CPF roles if none was supplied
+            if is_linux and not disk_list:
+                auto_devices = []
+
+                # Database devices (may be multiple)
+                i = 0
+                while True:
+                    row = execute_single_read_query(
+                        connection,
+                        f"SELECT * FROM overview WHERE field = 'iris disk role Database {i}';"
+                    )
+                    if not row or not row[2]:
+                        break
+                    device = row[2]
+                    names_row = execute_single_read_query(
+                        connection,
+                        f"SELECT * FROM overview WHERE field = 'iris disk role Database {i} names';"
+                    )
+                    label = names_row[2].replace(",", ", ") if names_row and names_row[2] else f"Database {i}"
+                    if device not in device_labels:
+                        auto_devices.append(device)
+                        device_labels[device] = label
+                    i += 1
+
+                # Single-device roles
+                for role in ("Primary Journal", "Alternate Journal", "WIJ"):
+                    row = execute_single_read_query(
+                        connection,
+                        f"SELECT * FROM overview WHERE field = 'iris disk role {role}';"
+                    )
+                    if row and row[2]:
+                        device = row[2]
+                        if device not in device_labels:
+                            auto_devices.append(device)
+                            device_labels[device] = role
+
+                if auto_devices:
+                    disk_list = auto_devices
+                    print(f"  Auto disk list from CPF: {disk_list}")
+
             if is_unix:
                 if extended_charts:
                     system_review.system_charts(filepath)
 
                 chart_vmstat(
                     connection, _make_chart_dir(output_file_path_base, "vmstat"),
-                    output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay,
+                    output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay, bh_charts, long_period_smooth,
                 )
 
                 if is_linux:
@@ -3013,7 +3171,8 @@ def mainline(
                     chart_iostat(
                         connection, _make_chart_dir(output_file_path_base, "iostat"),
                         output_prefix, operating_system, png_out, png_html_out,
-                        disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders, day_overlay,
+                        disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders, day_overlay, bh_charts, long_period_smooth,
+                        device_labels=device_labels,
                     )
 
                     if operating_system == "AIX":
@@ -3246,6 +3405,22 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--bh-charts",
+        dest="bh_charts",
+        help="Create per-day business-hours peak charts for multi-day data (slow; off by default).",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--long-period-smooth",
+        dest="long_period_smooth",
+        help="Rolling average window in minutes for multi-day charts (default: 5).",
+        type=int,
+        default=5,
+        metavar="N",
+    )
+
+    parser.add_argument(
         "--analysis",
         dest="analysis",
         help="Run performance analysis report (implies -s). Writes a narrative markdown summary.",
@@ -3338,6 +3513,8 @@ if __name__ == "__main__":
             args.iostat_subfolders,
             args.smooth_minutes,
             args.day_overlay,
+            args.bh_charts,
+            args.long_period_smooth,
             args.analysis,
             args.context,
         )

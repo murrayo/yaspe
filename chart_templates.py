@@ -183,7 +183,7 @@ def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
     ax1.xaxis.set_major_formatter(formatter)
 
     # Rotate the x-axis labels for readability
-    plt.xticks(rotation=45)
+    plt.xticks(rotation=45, ha="right")
 
     # set y-axis label
     # Label override
