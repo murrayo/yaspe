@@ -2376,16 +2376,21 @@ def chart_iostat(
         if not label:
             return device
         slug = _re.sub(r"[^a-z0-9_-]", "_", label.lower())
-        # Collapse runs of underscores introduced by punctuation
         slug = _re.sub(r"_+", "_", slug).strip("_")
-        return f"{device}_{slug}"
+        full = f"{device}_{slug}"
+        if len(full) > 60:
+            return full[:50] + "_and_more"
+        return full
 
     def _device_chart_label(device):
         """Return list of label strings for side annotation, or [] if no label."""
         label = (device_labels or {}).get(device, "")
         if not label:
             return []
-        return [s.strip() for s in label.split(",")]
+        parts = [s.strip() for s in label.split(",")]
+        if len(parts) > 20:
+            return parts[:20] + ["And more..."]
+        return parts
 
     # Read in to dataframe, drop any bad rows
     try:
