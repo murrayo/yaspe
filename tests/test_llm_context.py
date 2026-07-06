@@ -358,3 +358,72 @@ def test_load_iostat_role_map_returns_all_roles():
     assert len(result) == 5
     assert result["WIJ"] == "dm-3"
     conn.close()
+
+
+# ---- Task 2: _resample_iostat ----
+from llm_context import _resample_iostat
+
+
+def _make_iostat_df(device="dm-5", n=12):
+    """12 rows at 30s intervals for one device."""
+    base = datetime(2024, 1, 15, 9, 0, 0)
+    rows = []
+    for i in range(n):
+        rows.append({
+            "dt": pd.Timestamp(base) + pd.Timedelta(seconds=30 * i),
+            "Device": device,
+            "r/s": float(i),
+            "w/s": float(i * 2),
+            "rkB/s": float(i * 10),
+            "wkB/s": float(i * 20),
+            "r_await": float(i) * 0.1,
+            "w_await": float(i) * 0.2,
+            "aqu-sz": float(i) * 0.01,
+            "%util": float(i),
+        })
+    return pd.DataFrame(rows)
+
+
+def test_resample_iostat_returns_list():
+    df = _make_iostat_df()
+    result = _resample_iostat(df, "dm-5", "5min")
+    assert isinstance(result, list)
+    assert len(result) > 0
+
+
+def test_resample_iostat_json_safe_keys():
+    df = _make_iostat_df()
+    result = _resample_iostat(df, "dm-5", "5min")
+    rec = result[0]
+    assert "timestamp" in rec
+    assert "r_s" in rec
+    assert "w_s" in rec
+    assert "rkB_s" in rec
+    assert "wkB_s" in rec
+    assert "r_await" in rec
+    assert "w_await" in rec
+    assert "aqu_sz" in rec
+    assert "util" in rec
+    # original names must not appear
+    assert "r/s" not in rec
+    assert "%util" not in rec
+    assert "aqu-sz" not in rec
+
+
+def test_resample_iostat_all_max():
+    df = _make_iostat_df(n=12)
+    result = _resample_iostat(df, "dm-5", "5min")
+    # r/s values 0..11; first 5min bucket (10 rows at 30s) max = 9
+    assert result[0]["r_s"] == pytest.approx(9.0, abs=1.0)
+
+
+def test_resample_iostat_unknown_device_returns_empty():
+    df = _make_iostat_df(device="dm-5")
+    result = _resample_iostat(df, "dm-99", "5min")
+    assert result == []
+
+
+def test_resample_iostat_timestamp_format():
+    df = _make_iostat_df()
+    result = _resample_iostat(df, "dm-5", "5min")
+    datetime.strptime(result[0]["timestamp"], "%Y-%m-%d %H:%M:%S")

@@ -25,6 +25,21 @@ _VM_MEAN_COLS = ["us", "sy", "id", "wa", "free", "cache", "swpd", "si", "so", "s
 # vmstat columns aggregated as max (saturation metrics where peak matters)
 _VM_MAX_COLS = ["r", "b"]
 
+# iostat columns included in timeseries (all aggregated as max)
+_IOSTAT_COLS = ["r/s", "w/s", "rkB/s", "wkB/s", "r_await", "w_await", "aqu-sz", "%util"]
+
+# mapping from iostat source column name to JSON-safe key
+_IOSTAT_COL_MAP = {
+    "r/s": "r_s",
+    "w/s": "w_s",
+    "rkB/s": "rkB_s",
+    "wkB/s": "wkB_s",
+    "r_await": "r_await",
+    "w_await": "w_await",
+    "aqu-sz": "aqu_sz",
+    "%util": "util",
+}
+
 
 def _resample_mgstat(mg_df: pd.DataFrame, interval: str) -> list:
     """
@@ -172,6 +187,33 @@ def _load_iostat_role_map(connection) -> dict:
         label = field[len("iris disk role "):]
         result[label] = value
     return result
+
+
+def _resample_iostat(iostat_df: pd.DataFrame, device: str, interval: str) -> list:
+    """
+    Resample iostat DataFrame for one device to interval.
+    All 8 metrics aggregated as max. Returns [] if device not present.
+    """
+    df = iostat_df[iostat_df["Device"] == device].copy()
+    if df.empty:
+        return []
+
+    df = df.set_index("dt").sort_index()
+
+    agg = {}
+    for src_col in _IOSTAT_COLS:
+        if src_col in df.columns:
+            json_key = _IOSTAT_COL_MAP[src_col]
+            agg[json_key] = pd.NamedAgg(column=src_col, aggfunc="max")
+
+    if not agg:
+        return []
+
+    resampled = df.resample(interval).agg(**agg).dropna(how="all").reset_index()
+    resampled.rename(columns={"dt": "timestamp"}, inplace=True)
+    resampled["timestamp"] = resampled["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    return resampled.where(resampled.notna(), None).to_dict(orient="records")
 
 
 def _run_correlation_tests(joined: pd.DataFrame) -> list:
