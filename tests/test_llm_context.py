@@ -427,3 +427,133 @@ def test_resample_iostat_timestamp_format():
     df = _make_iostat_df()
     result = _resample_iostat(df, "dm-5", "5min")
     datetime.strptime(result[0]["timestamp"], "%Y-%m-%d %H:%M:%S")
+
+
+# ---- Task 3: _build_iostat_timeseries + build_llm_context integration ----
+from llm_context import _build_iostat_timeseries
+
+
+def _make_sqlite_with_iostat():
+    """SQLite with overview roles + iostat table for dm-5 and dm-8."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE overview (id_key INTEGER, field TEXT, value TEXT)")
+    overview_rows = [
+        (0, "iris disk role Database 0", "dm-5"),
+        (1, "iris disk role Database 0 names", "IRISSYS,IRISLIB"),
+        (2, "iris_disk_role_mount Database 0", "/trak/iris"),
+        (3, "iris disk role Primary Journal", "dm-8"),
+        (4, "iris_disk_role_mount Primary Journal", "/trak/jrnpri"),
+    ]
+    conn.executemany("INSERT INTO overview VALUES (?,?,?)", overview_rows)
+
+    conn.execute("""
+        CREATE TABLE iostat (
+            id_key INTEGER, RunDate TEXT, RunTime TEXT, Device TEXT,
+            "r/s" REAL, "w/s" REAL, "rkB/s" REAL, "wkB/s" REAL,
+            "rrqm/s" REAL, "wrqm/s" REAL, "%rrqm" REAL, "%wrqm" REAL,
+            r_await REAL, w_await REAL, "aqu-sz" REAL,
+            "rareq-sz" REAL, "wareq-sz" REAL, svctm REAL, "%util" REAL,
+            "html name" TEXT, datetime TEXT
+        )
+    """)
+    from datetime import datetime as _dt, timedelta
+    base = _dt(2024, 1, 15, 9, 0, 0)
+    for i in range(20):
+        ts = base + timedelta(seconds=30 * i)
+        dt_str = ts.strftime("%Y/%m/%d %I:%M:%S %p")
+        for device in ("dm-5", "dm-8"):
+            conn.execute(
+                """INSERT INTO iostat VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (i, ts.strftime("%Y/%m/%d"), ts.strftime("%I:%M:%S %p"), device,
+                 float(i), float(i*2), float(i*10), float(i*20),
+                 0.0, 0.0, 0.0, 0.0,
+                 float(i)*0.1, float(i)*0.2, float(i)*0.01,
+                 0.0, 0.0, 0.0, float(i),
+                 "test_html", dt_str)
+            )
+    conn.commit()
+    return conn
+
+
+def test_build_iostat_timeseries_returns_list():
+    conn = _make_sqlite_with_iostat()
+    result = _build_iostat_timeseries(conn, "5min")
+    assert isinstance(result, list)
+    conn.close()
+
+
+def test_build_iostat_timeseries_has_both_roles():
+    conn = _make_sqlite_with_iostat()
+    result = _build_iostat_timeseries(conn, "5min")
+    roles = [r["role"] for r in result]
+    assert "Database 0" in roles
+    assert "Primary Journal" in roles
+    conn.close()
+
+
+def test_build_iostat_timeseries_role_structure():
+    conn = _make_sqlite_with_iostat()
+    result = _build_iostat_timeseries(conn, "5min")
+    db_entry = next(r for r in result if r["role"] == "Database 0")
+    assert db_entry["device"] == "dm-5"
+    assert isinstance(db_entry["records"], list)
+    assert len(db_entry["records"]) > 0
+    rec = db_entry["records"][0]
+    assert "timestamp" in rec
+    assert "r_s" in rec
+    assert "util" in rec
+    conn.close()
+
+
+def test_build_iostat_timeseries_empty_when_no_roles():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE overview (id_key INTEGER, field TEXT, value TEXT)")
+    conn.execute("CREATE TABLE iostat (id_key INTEGER, RunDate TEXT, RunTime TEXT, Device TEXT, datetime TEXT)")
+    conn.commit()
+    result = _build_iostat_timeseries(conn, "5min")
+    assert result == []
+    conn.close()
+
+
+def test_build_iostat_timeseries_empty_when_no_iostat_table():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE overview (id_key INTEGER, field TEXT, value TEXT)")
+    conn.execute("INSERT INTO overview VALUES (0, 'iris disk role Database 0', 'dm-5')")
+    conn.commit()
+    result = _build_iostat_timeseries(conn, "5min")
+    assert result == []
+    conn.close()
+
+
+def test_build_llm_context_iostat_present():
+    conn = _make_sqlite_with_iostat()
+    # Also need mgstat + vmstat for build_llm_context
+    conn.execute("""
+        CREATE TABLE mgstat (
+            RunDate TEXT, RunTime TEXT,
+            Glorefs REAL, PhyRds REAL, PhyWrs REAL, Gloupds REAL,
+            Jrnwrts REAL, WDQsz REAL, Rdratio REAL, RouLaS REAL,
+            Seize REAL, ASeize REAL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE vmstat (
+            RunDate TEXT, RunTime TEXT,
+            r REAL, b REAL, swpd REAL, free REAL, buff REAL, cache REAL,
+            si REAL, so REAL, bi REAL, bo REAL, "in" REAL, cs REAL,
+            us REAL, sy REAL, id REAL, wa REAL, st REAL
+        )
+    """)
+    conn.commit()
+    result = build_llm_context(conn, {})
+    assert "iostat" in result["timeseries"]
+    roles = [r["role"] for r in result["timeseries"]["iostat"]]
+    assert "Database 0" in roles
+    conn.close()
+
+
+def test_build_llm_context_iostat_absent_when_no_table():
+    conn = _make_sqlite_with_data()  # existing helper — no overview roles, no iostat table
+    result = build_llm_context(conn, {})
+    assert "iostat" not in result["timeseries"]
+    conn.close()

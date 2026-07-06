@@ -216,6 +216,38 @@ def _resample_iostat(iostat_df: pd.DataFrame, device: str, interval: str) -> lis
     return resampled.where(resampled.notna(), None).to_dict(orient="records")
 
 
+def _build_iostat_timeseries(connection, interval: str) -> list:
+    """
+    Build iostat timeseries for IRIS-role devices only.
+    Returns list of {role, device, records} dicts. Returns [] if no roles or no iostat table.
+    """
+    role_map = _load_iostat_role_map(connection)
+    if not role_map:
+        return []
+
+    try:
+        iostat_df = pd.read_sql_query("SELECT * FROM iostat", connection)
+        if iostat_df.empty:
+            return []
+        if "datetime" in iostat_df.columns:
+            iostat_df["dt"] = pd.to_datetime(iostat_df["datetime"].str.strip(), errors="coerce")
+        else:
+            iostat_df["dt"] = pd.to_datetime(
+                iostat_df["RunDate"].str.strip() + " " + iostat_df["RunTime"].str.strip(),
+                errors="coerce",
+            )
+        iostat_df = iostat_df.dropna(subset=["dt"]).reset_index(drop=True)
+    except Exception:
+        return []
+
+    result = []
+    for role, device in role_map.items():
+        records = _resample_iostat(iostat_df, device, interval)
+        if records:
+            result.append({"role": role, "device": device, "records": records})
+    return result
+
+
 def _run_correlation_tests(joined: pd.DataFrame) -> list:
     """Run all 7 cross-signal correlation tests; return list of Finding."""
     results = []
@@ -287,6 +319,23 @@ def build_llm_context(
     vm_records = _resample_vmstat(vm_df, resample_interval) if not vm_df.empty else []
     merged_records = _merge_timeseries(mg_records, vm_records)
 
+    iostat_series = _build_iostat_timeseries(connection, resample_interval)
+
+    timeseries = {
+        "resample_interval": resample_interval,
+        "aggregation_notes": (
+            "Most metrics: mean per interval. "
+            "r, b aggregated as max (suffixed _max). "
+            "WDQsz aggregated as max (suffixed _max). "
+            "us_sy derived = us_mean + sy_mean. "
+            "iostat metrics (r_s, w_s, rkB_s, wkB_s, r_await, w_await, aqu_sz, util): "
+            "max per interval, IRIS-role devices only."
+        ),
+        "records": merged_records,
+    }
+    if iostat_series:
+        timeseries["iostat"] = iostat_series
+
     # Collection meta: convert timestamps to strings
     gaps_serialised = [
         [g[0].strftime("%Y-%m-%d %H:%M:%S"), g[1].strftime("%Y-%m-%d %H:%M:%S")]
@@ -310,16 +359,7 @@ def build_llm_context(
         "collection":     collection,
         "baselines":      baselines,
         "findings":       [_serialise_finding(f) for f in all_findings],
-        "timeseries": {
-            "resample_interval": resample_interval,
-            "aggregation_notes": (
-                "Most metrics: mean per interval. "
-                "r, b aggregated as max (suffixed _max). "
-                "WDQsz aggregated as max (suffixed _max). "
-                "us_sy derived = us_mean + sy_mean."
-            ),
-            "records": merged_records,
-        },
+        "timeseries":     timeseries,
     }
 
 
