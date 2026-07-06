@@ -230,7 +230,11 @@ def _build_iostat_timeseries(connection, interval: str) -> list:
         if iostat_df.empty:
             return []
         if "datetime" in iostat_df.columns:
-            iostat_df["dt"] = pd.to_datetime(iostat_df["datetime"].str.strip(), errors="coerce")
+            iostat_df["dt"] = pd.to_datetime(
+                iostat_df["datetime"].str.strip(),
+                format="%Y/%m/%d %I:%M:%S %p",
+                errors="coerce",
+            )
         else:
             iostat_df["dt"] = pd.to_datetime(
                 iostat_df["RunDate"].str.strip() + " " + iostat_df["RunTime"].str.strip(),
