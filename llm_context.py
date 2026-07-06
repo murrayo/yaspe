@@ -396,6 +396,7 @@ def export_llm_context(
     filename  = f"{output_prefix}performance_context_{start_str}_{end_str}.json"
     out_path  = os.path.join(filepath, filename)
 
+    os.makedirs(filepath, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(ctx, fh, indent=2, default=str)
 
