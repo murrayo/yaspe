@@ -342,6 +342,25 @@ def create_overview(connection, sp_dict):
     return
 
 
+def get_chart_title_base(connection):
+    """Return chart title base: 'customer (hostname / instance)' with graceful fallbacks."""
+    def _query(field):
+        row = execute_single_read_query(connection, f"SELECT * FROM overview WHERE field = '{field}';")
+        return row[2] if row else None
+
+    customer = _query("customer")
+    if not customer:
+        return ""
+
+    hostname = _query("linux hostname") or _query("windows host name")
+    if not hostname:
+        return customer
+
+    instance = _query("instance")
+    if instance:
+        return f"{customer} ({hostname} / {instance})"
+    return f"{customer} ({hostname})"
+
 
 def _find_peak_60_window(png_data, datetime_column):
     """Find the peak 60-minute window for the data. Returns (peak_start_time, peak_end_time) or (None, None)."""
