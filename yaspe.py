@@ -2042,7 +2042,7 @@ def chart_vmstat(
 ):
     # print(f"vmstat...")
     # Get useful
-    customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+    customer = get_chart_title_base(connection)
     number_cpus = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'number cpus';")[2]
     processor = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'processor model';")[2]
 
@@ -2163,7 +2163,7 @@ def chart_mgstat(
     png_filepath, html_filepath = _split_filepath(filepath, png_html_out)
 
     if not mgstat_file:
-        customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+        customer = get_chart_title_base(connection)
     else:
         print("mgstat only")
         customer = "mgstat"
@@ -2277,7 +2277,7 @@ def chart_perfmon(
 ):
     # print(f"perfmon...")
 
-    customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+    customer = get_chart_title_base(connection)
     number_cpus = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'number cpus';")[2]
 
     # Read in to dataframe, drop any bad rows
@@ -2386,7 +2386,7 @@ def chart_iostat(
 ):
     # print(f"iostat...")
 
-    customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+    customer = get_chart_title_base(connection)
 
     import re as _re
 
@@ -2628,7 +2628,7 @@ def chart_iostat(
 def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out, peak_chart=True, line_chart=True, iostat_subfolders=False):
     # print(f"iostat...")
 
-    customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+    customer = get_chart_title_base(connection)
 
     # Read in to dataframe, drop any bad rows
     try:
@@ -2701,7 +2701,7 @@ def chart_aix_sar_d(
     iostat_subfolders=False,
     day_overlay=False,
 ):
-    customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+    customer = get_chart_title_base(connection)
 
     # Read in to dataframe, drop any bad rows
     try:
@@ -2779,7 +2779,7 @@ def chart_aix_sar_d(
 
 
 def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True, line_chart=True, day_overlay=False):
-    customer = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'customer';")[2]
+    customer = get_chart_title_base(connection)
 
     # Read in to dataframe, drop any bad rows
     try:
