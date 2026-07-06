@@ -549,6 +549,7 @@ def test_build_llm_context_iostat_present():
     assert "iostat" in result["timeseries"]
     roles = [r["role"] for r in result["timeseries"]["iostat"]]
     assert "Database 0" in roles
+    json.dumps(result)  # must not raise (NaN leak check)
     conn.close()
 
 

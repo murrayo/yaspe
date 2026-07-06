@@ -185,7 +185,7 @@ def _load_iostat_role_map(connection) -> dict:
             continue
         # "iris disk role Database 0" -> "Database 0"
         label = field[len("iris disk role "):]
-        result[label] = value
+        result[label] = value.strip()
     return result
 
 
@@ -230,11 +230,7 @@ def _build_iostat_timeseries(connection, interval: str) -> list:
         if iostat_df.empty:
             return []
         if "datetime" in iostat_df.columns:
-            iostat_df["dt"] = pd.to_datetime(
-                iostat_df["datetime"].str.strip(),
-                format="%Y/%m/%d %I:%M:%S %p",
-                errors="coerce",
-            )
+            iostat_df["dt"] = pd.to_datetime(iostat_df["datetime"].str.strip(), errors="coerce")
         else:
             iostat_df["dt"] = pd.to_datetime(
                 iostat_df["RunDate"].str.strip() + " " + iostat_df["RunTime"].str.strip(),
@@ -382,7 +378,7 @@ def export_llm_context(
     """
     try:
         pd.tseries.frequencies.to_offset(resample_interval)
-    except ValueError:
+    except (ValueError, TypeError):
         raise ValueError(
             f"Invalid resample interval: {resample_interval!r}. "
             "Examples: '5min', '10min', '1min'."
