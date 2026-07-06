@@ -303,3 +303,58 @@ def test_export_llm_context_invalid_interval_raises():
         with pytest.raises(ValueError, match="Invalid resample interval"):
             export_llm_context(conn, {}, output_prefix="", filepath=tmpdir, resample_interval="garbage")
     conn.close()
+
+
+# ---- Task 1: iostat role map ----
+from llm_context import _load_iostat_role_map
+
+
+def _make_conn_with_overview(rows):
+    """rows: list of (field, value) tuples."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE overview (id_key INTEGER, field TEXT, value TEXT)")
+    for i, (field, value) in enumerate(rows):
+        conn.execute("INSERT INTO overview VALUES (?,?,?)", (i, field, value))
+    conn.commit()
+    return conn
+
+
+def test_load_iostat_role_map_empty_no_table():
+    conn = sqlite3.connect(":memory:")
+    result = _load_iostat_role_map(conn)
+    assert result == {}
+    conn.close()
+
+
+def test_load_iostat_role_map_empty_no_role_rows():
+    conn = _make_conn_with_overview([("customer", "ACME"), ("linux hostname", "srv1")])
+    result = _load_iostat_role_map(conn)
+    assert result == {}
+    conn.close()
+
+
+def test_load_iostat_role_map_filters_names_and_mount():
+    conn = _make_conn_with_overview([
+        ("iris disk role Database 0", "dm-5"),
+        ("iris disk role Database 0 names", "IRISSYS,IRISLIB"),
+        ("iris_disk_role_mount Database 0", "/trak/iris"),
+        ("iris disk role Primary Journal", "dm-8"),
+        ("iris_disk_role_mount Primary Journal", "/trak/jrnpri"),
+    ])
+    result = _load_iostat_role_map(conn)
+    assert result == {"Database 0": "dm-5", "Primary Journal": "dm-8"}
+    conn.close()
+
+
+def test_load_iostat_role_map_returns_all_roles():
+    conn = _make_conn_with_overview([
+        ("iris disk role Database 0", "dm-5"),
+        ("iris disk role Database 1", "dm-2"),
+        ("iris disk role WIJ", "dm-3"),
+        ("iris disk role Primary Journal", "dm-8"),
+        ("iris disk role Alternate Journal", "dm-4"),
+    ])
+    result = _load_iostat_role_map(conn)
+    assert len(result) == 5
+    assert result["WIJ"] == "dm-3"
+    conn.close()

@@ -153,6 +153,27 @@ def _load_vm_df(connection) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _load_iostat_role_map(connection) -> dict:
+    """
+    Return {role_label: device} from overview 'iris disk role *' entries.
+    Excludes 'names' and '_mount' variants. Returns {} on any error.
+    """
+    try:
+        rows = connection.execute(
+            "SELECT field, value FROM overview WHERE field LIKE 'iris disk role %'"
+        ).fetchall()
+    except Exception:
+        return {}
+    result = {}
+    for field, value in rows:
+        if "names" in field or "_mount" in field:
+            continue
+        # "iris disk role Database 0" -> "Database 0"
+        label = field[len("iris disk role "):]
+        result[label] = value
+    return result
+
+
 def _run_correlation_tests(joined: pd.DataFrame) -> list:
     """Run all 7 cross-signal correlation tests; return list of Finding."""
     results = []
