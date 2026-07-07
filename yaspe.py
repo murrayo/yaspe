@@ -2924,6 +2924,7 @@ def mainline(
     context=None,
     llm_context=False,
     resample_interval="5min",
+    combined_overlay=False,
 ):
     input_error = False
     sp_dict = None
@@ -3250,7 +3251,7 @@ def mainline(
         finally:
             close_connection(connection)
 
-        if not png_out and (not is_long_period or day_overlay):
+        if combined_overlay or (not png_out and (not is_long_period or day_overlay)):
             yaspe_combined_overlay.run(sql_filename, output_file_path_base, smooth_minutes=smooth_minutes)
 
 
@@ -3427,7 +3428,7 @@ if __name__ == "__main__":
         "-B",
         "--combined",
         dest="combined_overlay",
-        help="Create a combined vmstat+mgstat overlay HTML chart (standalone use requires -e). Also runs automatically in default HTML and -P modes; combined_overlay.html is written to {prefix}_metrics/.",
+        help="Also create a combined vmstat+mgstat overlay HTML chart alongside all other charts. Also runs automatically in default HTML and -P modes; combined_overlay.html is written to {prefix}_metrics/.",
         action="store_true",
     )
 
@@ -3504,22 +3505,6 @@ if __name__ == "__main__":
         yaspe_compare_overlay.run(args.compare_dir)
         sys.exit(0)
 
-    if args.combined_overlay:
-        if args.existing_database is None:
-            print('Error: --combined requires -e with an existing database path.')
-            sys.exit(1)
-        db_base = os.path.splitext(os.path.basename(args.existing_database))[0]
-        db_dir = os.path.dirname(os.path.abspath(args.existing_database))
-        output_prefix_b = args.output_prefix if args.output_prefix is not None else db_base
-        if output_prefix_b:
-            output_prefix_b = f"{output_prefix_b}_"
-        metrics_dir = os.path.join(db_dir, f"{output_prefix_b}metrics")
-        if not os.path.isdir(metrics_dir):
-            os.makedirs(metrics_dir, exist_ok=True)
-        yaspe_combined_overlay.run(args.existing_database, metrics_dir,
-                                   smooth_minutes=args.smooth_minutes)
-        sys.exit(0)
-
     # Validate input file
     if args.input_file is not None:
         try:
@@ -3581,6 +3566,7 @@ if __name__ == "__main__":
             args.context,
             args.llm_context,
             args.resample_interval,
+            args.combined_overlay,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))

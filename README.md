@@ -1,4 +1,4 @@
-E.md # yaspe
+when the E.md # yaspe
 
 Parse and chart InterSystems Caché pButtons and InterSystems IRIS SystemPerformance files.
 
@@ -334,9 +334,10 @@ The JSON contains:
 - `schema_version`, `system` (vCPUs, RAM, IRIS buffer size), `collection` (date range, sample interval, gaps)
 - `baselines` — per-metric statistical baselines computed from the full collection
 - `findings` — rule-based findings (severity, observation, hypotheses, next steps)
-- `timeseries` — resampled records outer-joining mgstat and vmstat; throughput metrics as mean, queue/saturation metrics (`WDQsz`, `r`, `b`) as max
+- `timeseries.records` — resampled records outer-joining mgstat and vmstat; throughput metrics as mean, queue/saturation metrics (`WDQsz`, `r`, `b`) as max
+- `timeseries.iostat` — per-device records for IRIS-role devices (Database, Primary Journal, etc.); metrics `r_s`, `w_s`, `rkB_s`, `wkB_s`, `r_await`, `w_await`, `aqu_sz`, `util` aggregated as max. Only present when IRIS disk roles are configured and iostat was collected (use `-x` when building the SQLite).
 
-> **NOTE:** `--llm-context` currently supports Linux only (mgstat + vmstat).
+> **NOTE:** `--llm-context` currently supports Linux only (mgstat + vmstat + iostat).
 
 ### Sample LLM prompts
 
@@ -383,6 +384,15 @@ continues? What metrics are closest to their limits now?
 Is there evidence of a batch or maintenance window in this data?
 If so, when does it run, how long does it last, and does it overlap
 with business hours?
+```
+
+**Storage latency deep dive** *(requires iostat in the JSON)*
+```
+The timeseries.iostat section contains per-device IO metrics for the
+IRIS storage roles. For each role, identify the peak r_await and w_await
+values, when they occurred, and whether they correlate with elevated WDQsz
+or wa in the mgstat/vmstat records at the same timestamps. Summarise
+which role shows the worst latency and what it suggests about the storage tier.
 ```
 
 **Comparing two periods**
