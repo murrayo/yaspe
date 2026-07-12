@@ -2274,6 +2274,8 @@ def chart_perfmon(
     glorefs_peak_window=None,
     line_chart=True,
     day_overlay=False,
+    bh_charts=False,
+    long_period_smooth=5,
 ):
     # print(f"perfmon...")
 
