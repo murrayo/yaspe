@@ -1,4 +1,4 @@
-E.md # yaspe
+# yaspe
 
 Parse and chart InterSystems Caché pButtons and InterSystems IRIS SystemPerformance files.
 
@@ -64,10 +64,16 @@ For local version:
 `docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h`
 
 ``` commandline
-usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a] [-o "output file prefix"] [-e "/path/filename_SystemPerformance.sqlite"] [-c]
-             [-p] [-P] [--dots] [-s] [-m] [-D] [-d DISK_LIST [DISK_LIST ...]] [--iostat_no_subfolders]
-             [-l "string to split on"] [--peak_chart] [--no_peak_chart] [-C "/path/to/directory"] [-B] [--smooth-minutes N]
-             [--day-overlay]
+usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a]
+             [-o "output file prefix"]
+             [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-P]
+             [--dots] [-s] [-m] [-D] [-d DISK_LIST [DISK_LIST ...]]
+             [--iostat_no_subfolders] [-l "string to split on"] [--peak_chart]
+             [--no_peak_chart] [-C "/path/to/directory"] [-B]
+             [--smooth-minutes N] [--day-overlay] [--bh-charts]
+             [--long-period-smooth N] [--analysis]
+             [--context "context string"] [--llm-context]
+             [--resample INTERVAL]
 
 Performance file review.
 
@@ -78,35 +84,67 @@ options:
                         Input HTML or .mgst filename with full path.
   -x, --iostat          Also chart iostat data (this can take a long time).
   -n, --nfsiostat       Also chart nfsiostat data.
-  -a, --append          Do not overwrite database, append to existing database.
+  -a, --append          Do not overwrite database, append to existing
+                        database.
   -o "output file prefix", --output_prefix "output file prefix"
-                        Output filename prefix, defaults to HTML file name, blank (-o '') is legal.
+                        Output filename prefix, defaults to HTML file name,
+                        blank (-o '') is legal.
   -e "/path/filename_SystemPerformance.sqlite", --existing_database "/path/filename_SystemPerformance.sqlite"
-                        Chart existing database, full path and filename to existing database.
-  -c, --csv             Create CSV files of each HTML files metrics, append if csv file exists.
-  -p, --png             Create PNG charts of metrics. No HTML. HTML is the default if PNG not selected.
-  -P, --PNG             Create PNG and HTML charts of metrics. Charts are written into png/ and html/
-                        subdirectories within each metric folder.
-  --dots                Create PNG charts as dot charts instead of line charts (default is lines).
+                        Chart existing database, full path and filename to
+                        existing database.
+  -c, --csv             Create CSV files of each HTML files metrics, append if
+                        csv file exists.
+  -p, --png             Create PNG charts of metrics. No HTML. HTML is the
+                        default if PNG not selected.
+  -P, --PNG             Create PNG and HTML charts of metrics. Charts are
+                        written into png/ and html/ subdirectories within each
+                        metric folder.
+  --dots                Create PNG charts as dot charts instead of line charts
+                        (default is lines).
   -s, --system          Output system overview.
   -m, --mgstat_file     This is an mgstat file log file (with extension .mgst).
   -D, --DDMMYYYY        Date format for csv files is DDMMYYYY
   -d DISK_LIST [DISK_LIST ...], --disk_list DISK_LIST [DISK_LIST ...]
-                        List of disks, if not entered all are processed. No commas or quotes, e.g. -d dm-0 dm-1
+                        List of disks, if not entered all are processed. No
+                        commas or quotes, e.g. -d dm-0 dm-1
   --iostat_no_subfolders
-                        Save all iostat charts flat (no per-device subfolders). Default is to use subfolders.
+                        Save all iostat charts flat (no per-device
+                        subfolders). Default is to use subfolders.
   -l "string to split on", --large_file_split_on_string "string to split on"
-                        Split large input file on first occurrence of this string. Blank -l "" defaults to "div id=iostat"
-  --peak_chart          Create additional peak 60-minute charts for metrics with min_max enabled when data is 8-25 hours. Default is True.
+                        Split large input file on first occurrence of this
+                        string. Blank -l "" defaults to "div id=iostat"
+  --peak_chart          Create additional peak 60-minute charts for metrics
+                        with min_max enabled when data is 8-25 hours. Default
+                        is True.
   --no_peak_chart       Disable peak 60-minute charts.
   -C "/path/to/directory", --compare-dir "/path/to/directory"
-                        Compare all HTML files in a directory: produce vmstat and mgstat overlay charts (standalone, exits after).
-  -B, --combined        Create a combined vmstat+mgstat overlay HTML chart (standalone use requires -e).
-                        Also runs automatically in default HTML and -P modes; combined_overlay.html is
-                        written to {prefix}_metrics/.
-  --smooth-minutes N    Rolling average window in minutes for --combined chart (default: 5, 0 = raw).
-  --day-overlay         Create day-overlay charts for all metrics when data spans more than 25 hours.
-                        Total CPU, Glorefs, and PhyRds always get day-overlay charts regardless of this flag.
+                        Compare all HTML files in a directory: produce vmstat
+                        and mgstat overlay charts.
+  -B, --combined        Also create a combined vmstat+mgstat overlay HTML
+                        chart alongside all other charts. Also runs
+                        automatically in default HTML and -P modes;
+                        combined_overlay.html is written to {prefix}_metrics/.
+  --smooth-minutes N    Rolling average window in minutes for --combined chart
+                        (default: 5, 0 = raw).
+  --day-overlay         Create day-overlay charts for all metrics when data
+                        spans more than 25 hours. Total CPU, Glorefs, and
+                        PhyRds always get day-overlay charts regardless of
+                        this flag.
+  --bh-charts           Create per-day business-hours peak charts for multi-
+                        day data (slow; off by default).
+  --long-period-smooth N
+                        Rolling average window in minutes for multi-day charts
+                        (default: 5).
+  --analysis            Run performance analysis report (implies -s). Writes a
+                        narrative markdown summary.
+  --context "context string"
+                        Optional context note for the analysis report (e.g.
+                        "users reported slowness Tuesday").
+  --llm-context         Export a compact JSON context file for LLM-based
+                        performance analysis. Can be used with or without
+                        --analysis.
+  --resample INTERVAL   Resample interval for timeseries in --llm-context
+                        output (default: 5min). Examples: 5min, 10min, 1min.
 
 Be safe, "quote the path".
 ```
@@ -221,7 +259,7 @@ When data spans more than 25 hours (e.g. a week of appended SystemPerformance fi
 | Hourly heatmap | `z_{metric}_heatmap.png` | Hour-of-day × date grid, colour-coded by 99th percentile value. Shows consistent peak hours across days. |
 | Day-overlay PNG | `z_{metric}_day_overlay.png` | All days overlaid on a shared 00:00–24:00 x-axis, one colour per day. Always produced for **Total CPU**, **Glorefs**, and **PhyRds**; produced for all other metrics only when `--day-overlay` is passed. |
 | Day-overlay HTML | `{metric}_day_overlay.html` | Interactive version of the day-overlay chart (produced with `-P` or HTML-only mode). Same conditions as the PNG above. |
-| Per-day business hours peak | `z_{metric}_bh_peak_{date}.png` | Business hours (08:00–18:00) peak 60-minute window for each day. |
+| Per-day business hours peak | `z_{metric}_bh_peak_{date}.png` | Business hours (08:00–18:00) peak 60-minute window for each day. Produced only when `--bh-charts` is passed (off by default — can be slow). |
 
 ### Business hours and peak charts (8–25 hours of data)
 
@@ -288,6 +326,127 @@ All instances on this host:
 - >SHADOW            2018.1.4.505.1.a  56772  /cachesys
 ```
 
+# Performance Analysis
+
+## Rule-based analysis (`--analysis`)
+
+`--analysis` runs a rule-based check against mgstat and vmstat data and writes a Markdown report to the output directory. It runs for all modes (`-i`, `-e`, append).
+
+``` commandline
+./yaspe.py -e yaspe_SystemPerformance.sqlite --analysis -o yaspe
+```
+
+Output: `yaspe_performance_analysis_YYYY-MM-DD_YYYY-MM-DD.md`
+
+Use `--context` to add a free-text note (e.g. "users reported slowness at 14:00") that appears at the top of the report:
+
+``` commandline
+./yaspe.py -e yaspe_SystemPerformance.sqlite --analysis --context "batch job runs 02:00-04:00" -o yaspe
+```
+
+> **NOTE:** `--analysis` currently supports Linux only (mgstat + vmstat).
+
+## LLM context export (`--llm-context`)
+
+`--llm-context` exports a compact JSON file containing resampled timeseries, pre-computed findings, baselines, and system facts. The file is intended as input for an LLM to deepen the performance analysis beyond what the rule-based checks cover.
+
+``` commandline
+./yaspe.py -e yaspe_SystemPerformance.sqlite --llm-context -o yaspe
+```
+
+Output: `yaspe_performance_context_YYYY-MM-DD_YYYY-MM-DD.json`
+
+Can be combined with `--analysis` in a single run:
+
+``` commandline
+./yaspe.py -e yaspe_SystemPerformance.sqlite --analysis --llm-context -o yaspe
+```
+
+Use `--resample` to change the timeseries aggregation interval (default `5min`):
+
+``` commandline
+./yaspe.py -e yaspe_SystemPerformance.sqlite --llm-context --resample 10min -o yaspe
+```
+
+The JSON contains:
+- `schema_version`, `system` (vCPUs, RAM, IRIS buffer size), `collection` (date range, sample interval, gaps)
+- `baselines` — per-metric statistical baselines computed from the full collection
+- `findings` — rule-based findings (severity, observation, hypotheses, next steps)
+- `timeseries.records` — resampled records outer-joining mgstat and vmstat; throughput metrics as mean, queue/saturation metrics (`WDQsz`, `r`, `b`) as max
+- `timeseries.iostat` — per-device records for IRIS-role devices (Database, Primary Journal, etc.); metrics `r_s`, `w_s`, `rkB_s`, `wkB_s`, `r_await`, `w_await`, `aqu_sz`, `util` aggregated as max. Only present when IRIS disk roles are configured and iostat was collected (use `-x` when building the SQLite).
+
+> **NOTE:** `--llm-context` currently supports Linux only (mgstat + vmstat + iostat).
+
+### Sample LLM prompts
+
+Paste (or attach) the JSON as context, then use a prompt like one of these:
+
+**General analysis**
+```
+Here is a performance context file from an InterSystems IRIS system.
+Review the findings, baselines, and timeseries and give me a prioritised
+summary of what is happening and what to investigate first.
+```
+
+**Correlating a user complaint**
+```
+Users reported slowness between 14:00 and 15:00. The context file covers
+that period. What does the data show during that window, and what is the
+most likely cause?
+```
+
+**Explaining findings to a non-technical audience**
+```
+Translate the findings in this context file into plain English for a
+manager. Focus on business impact and what action is needed, not
+technical metrics.
+```
+
+**Hypothesis testing**
+```
+The findings flag elevated WDQsz and wa. Is the evidence consistent with
+a storage throughput bottleneck, or could this be something else?
+Walk through the timeseries and tell me what would confirm or rule out
+each hypothesis.
+```
+
+**Capacity planning**
+```
+Based on the baselines and timeseries in this file, at what point will
+this system run out of headroom on CPU, memory, and IO if current growth
+continues? What metrics are closest to their limits now?
+```
+
+**Batch window detection**
+```
+Is there evidence of a batch or maintenance window in this data?
+If so, when does it run, how long does it last, and does it overlap
+with business hours?
+```
+
+**Storage latency deep dive** *(requires iostat in the JSON)*
+```
+The timeseries.iostat section contains per-device IO metrics for the
+IRIS storage roles. For each role, identify the peak r_await and w_await
+values, when they occurred, and whether they correlate with elevated WDQsz
+or wa in the mgstat/vmstat records at the same timestamps. Summarise
+which role shows the worst latency and what it suggests about the storage tier.
+```
+
+**Comparing two periods**
+```
+I have two context files: one from a normal week and one from a problem
+week. Compare the baselines and findings and tell me what changed.
+```
+*(attach both JSON files as context)*
+
+Tip: use `--context` to embed a note directly in the JSON so the LLM sees it alongside the data:
+
+``` commandline
+./yaspe.py -e yaspe_SystemPerformance.sqlite --llm-context \
+    --context "users reported slowness at 14:00" -o yaspe
+```
+
 # My workflow
 
 - First I create the system check and create the SQLite file (for later processing):
@@ -322,11 +481,11 @@ There are many references for creating Python environments on the web. You can s
 
 - https://docs.python.org/3/tutorial/venv.html
 
-`yaspe` is tested in Python 3.9. Specifically my test system is: 
+`yaspe` is tested in Python 3.12. Specifically my test system is: 
 
 ``` commandline
 python --version
-Python 3.9.13
+Python 3.12.13
 ```
 
 **Once you have set up your Python environment:**

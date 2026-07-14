@@ -2274,6 +2274,8 @@ def chart_perfmon(
     glorefs_peak_window=None,
     line_chart=True,
     day_overlay=False,
+    bh_charts=False,
+    long_period_smooth=5,
 ):
     # print(f"perfmon...")
 
@@ -2922,6 +2924,9 @@ def mainline(
     long_period_smooth=5,
     analysis=False,
     context=None,
+    llm_context=False,
+    resample_interval="5min",
+    combined_overlay=False,
 ):
     input_error = False
     sp_dict = None
@@ -3103,6 +3108,29 @@ def mainline(
         finally:
             close_connection(analysis_conn)
 
+    # LLM context export
+    if llm_context and not input_error and not mgstat_file:
+        llm_conn = create_connection(sql_filename)
+        try:
+            if not sp_dict:
+                try:
+                    rows = execute_read_query(llm_conn, "SELECT field, value FROM overview")
+                    sp_dict = {r[0]: r[1] for r in rows} if rows else {}
+                except Exception:
+                    sp_dict = {}
+            import llm_context as _llm_context
+            ctx_path = _llm_context.export_llm_context(
+                connection=llm_conn,
+                sp_dict=sp_dict,
+                output_prefix=output_prefix,
+                filepath=filepath,
+                resample_interval=resample_interval,
+                context=context,
+            )
+            print(f"LLM context: {ctx_path}")
+        finally:
+            close_connection(llm_conn)
+
     # Charting is separate
     if "Chart" in database_action and not input_error:
         output_file_path_base = f"{output_filepath_prefix}metrics"
@@ -3225,7 +3253,7 @@ def mainline(
         finally:
             close_connection(connection)
 
-        if not png_out and (not is_long_period or day_overlay):
+        if combined_overlay or (not png_out and (not is_long_period or day_overlay)):
             yaspe_combined_overlay.run(sql_filename, output_file_path_base, smooth_minutes=smooth_minutes)
 
 
@@ -3402,7 +3430,7 @@ if __name__ == "__main__":
         "-B",
         "--combined",
         dest="combined_overlay",
-        help="Create a combined vmstat+mgstat overlay HTML chart (standalone use requires -e). Also runs automatically in default HTML and -P modes; combined_overlay.html is written to {prefix}_metrics/.",
+        help="Also create a combined vmstat+mgstat overlay HTML chart alongside all other charts. Also runs automatically in default HTML and -P modes; combined_overlay.html is written to {prefix}_metrics/.",
         action="store_true",
     )
 
@@ -3455,26 +3483,28 @@ if __name__ == "__main__":
         metavar='"context string"',
     )
 
+    parser.add_argument(
+        "--llm-context",
+        dest="llm_context",
+        help="Export a compact JSON context file for LLM-based performance analysis. "
+             "Can be used with or without --analysis.",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--resample",
+        dest="resample_interval",
+        help="Resample interval for timeseries in --llm-context output (default: 5min). "
+             "Examples: 5min, 10min, 1min.",
+        action="store",
+        default="5min",
+        metavar="INTERVAL",
+    )
+
     args = parser.parse_args()
 
     if args.compare_dir is not None:
         yaspe_compare_overlay.run(args.compare_dir)
-        sys.exit(0)
-
-    if args.combined_overlay:
-        if args.existing_database is None:
-            print('Error: --combined requires -e with an existing database path.')
-            sys.exit(1)
-        db_base = os.path.splitext(os.path.basename(args.existing_database))[0]
-        db_dir = os.path.dirname(os.path.abspath(args.existing_database))
-        output_prefix_b = args.output_prefix if args.output_prefix is not None else db_base
-        if output_prefix_b:
-            output_prefix_b = f"{output_prefix_b}_"
-        metrics_dir = os.path.join(db_dir, f"{output_prefix_b}metrics")
-        if not os.path.isdir(metrics_dir):
-            os.makedirs(metrics_dir, exist_ok=True)
-        yaspe_combined_overlay.run(args.existing_database, metrics_dir,
-                                   smooth_minutes=args.smooth_minutes)
         sys.exit(0)
 
     # Validate input file
@@ -3536,6 +3566,9 @@ if __name__ == "__main__":
             args.long_period_smooth,
             args.analysis,
             args.context,
+            args.llm_context,
+            args.resample_interval,
+            args.combined_overlay,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))

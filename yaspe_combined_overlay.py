@@ -233,7 +233,7 @@ def _build_combined_chart(
             stackgroup="cpu",
             visible=True if col in _DEFAULT_VISIBLE else "legendonly",
             line=dict(width=0.5, color=color),
-            hovertemplate="%{x}<br>" + col + ": %{y:,.3g}<extra></extra>",
+            hovertemplate="%{x}<br>" + col + ": %{y:.1f}<extra></extra>",
         ))
         # Overview panel: mirror CPU stacked area
         fig.add_trace(go.Scatter(
@@ -260,7 +260,7 @@ def _build_combined_chart(
             xaxis="x", yaxis="y",
             visible=True if "Total CPU" in _DEFAULT_VISIBLE else "legendonly",
             line=dict(width=2, color="#111111"),
-            hovertemplate="%{x}<br>Total CPU: %{y:,.3g}<extra></extra>",
+            hovertemplate="%{x}<br>Total CPU: %{y:.1f}<extra></extra>",
         ))
     else:
         print("  Skipping missing column: Total CPU")
@@ -280,7 +280,7 @@ def _build_combined_chart(
             xaxis="x", yaxis="y2",
             visible=True if col in _DEFAULT_VISIBLE else "legendonly",
             line=dict(width=1.5, color=_IO_COLORS[col]),
-            hovertemplate="%{x}<br>" + col + ": %{y:,.3g}<extra></extra>",
+            hovertemplate="%{x}<br>" + col + ": %{y:,.0f}<extra></extra>",
         ))
 
     # --- Routing metrics: one independent y-axis each (y3..y7, main row) ---
@@ -298,7 +298,7 @@ def _build_combined_chart(
             xaxis="x", yaxis=_ROU_YAXIS[col],
             visible=True if col in _DEFAULT_VISIBLE else "legendonly",
             line=dict(width=1.5, color=_ROU_COLORS[col]),
-            hovertemplate="%{x}<br>" + col + ": %{y:,.3g}<extra></extra>",
+            hovertemplate="%{x}<br>" + col + ": %{y:,.0f}<extra></extra>",
         ))
 
     # Build routing axis definitions — hidden axes start invisible, visible ones
