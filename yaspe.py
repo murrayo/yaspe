@@ -952,7 +952,7 @@ def _create_day_overlay_html(png_data, column_name, title, max_y, filepath, outp
         title=dict(text=f"{title} - Day Overlay ({start_str} to {end_str})", font=dict(size=16), x=0.5, xanchor="center"),
         xaxis=dict(title="Time of day", tickfont=dict(size=13),
                    tickformat="%H:%M"),
-        xaxis2=dict(title="Drag box here to zoom ↑   (double-click top chart to reset)",
+        xaxis2=dict(title="Drag box here to zoom ↑",
                     tickfont=dict(size=11), tickformat="%H:%M"),
         yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
         yaxis2=dict(rangemode="tozero", showticklabels=False),
@@ -1378,7 +1378,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     fig.update_layout(
         title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
         xaxis=dict(title="", tickfont=dict(size=13)),
-        xaxis2=dict(title="Drag box here to zoom ↑   (double-click top chart to reset)", tickfont=dict(size=11)),
+        xaxis2=dict(title="Drag box here to zoom ↑", tickfont=dict(size=11)),
         yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
         yaxis2=dict(rangemode="tozero", showticklabels=False),
         legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
@@ -1482,7 +1482,7 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     fig.update_layout(
         title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
         xaxis=dict(title="", tickfont=dict(size=13)),
-        xaxis2=dict(title="Drag box here to zoom ↑   (double-click top chart to reset)", tickfont=dict(size=11)),
+        xaxis2=dict(title="Drag box here to zoom ↑", tickfont=dict(size=11)),
         yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
         yaxis2=dict(rangemode="tozero", showticklabels=False),
         legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
