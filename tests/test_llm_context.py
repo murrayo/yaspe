@@ -742,3 +742,54 @@ def test_not_available_db_disk_conditional():
     assert any("disk" in e["metric"].lower() for e in na)
     na2 = _build_not_available(pd.DataFrame(), {"Database 0": "dm-3"})
     assert not any(e["metric"] == "database disk I/O metrics" for e in na2)
+
+
+# ---- Anonymization scrub ----
+from llm_context import _gather_secrets, _scrub
+
+
+def test_gather_secrets_collects_identifiers():
+    sp = {"customer": "Acme Hospital", "linux hostname": "acmedb01.acme.local",
+          "instance": "ACMEPROD", "up instance 1": "ACMEPROD on machine acmedb01"}
+    secrets = _gather_secrets(sp)
+    assert "Acme Hospital" in secrets
+    assert "acmedb01.acme.local" in secrets
+    assert "acmedb01" in secrets          # short-hostname variant of the FQDN
+    assert "ACMEPROD" in secrets
+
+
+def test_gather_secrets_skips_short_and_allowlisted():
+    sp = {"customer": "abc", "instance": "IRIS", "linux hostname": "prod"}
+    assert _gather_secrets(sp) == []
+
+
+def test_gather_secrets_longest_first():
+    sp = {"customer": "Acme", "linux hostname": "acmedb01.acme.local"}
+    secrets = _gather_secrets(sp)
+    assert secrets[0] == "acmedb01.acme.local"
+
+
+def test_scrub_redacts_case_insensitive_nested():
+    secrets = ["Acme Hospital", "acmedb01"]
+    obj = {"note": "Users at ACME HOSPITAL reported slowness",
+           "list": [{"deep": "host acmedb01 was rebooted"}]}
+    out = _scrub(obj, secrets)
+    assert out["note"] == "Users at [redacted] reported slowness"
+    assert out["list"][0]["deep"] == "host [redacted] was rebooted"
+
+
+def test_scrub_word_boundary_no_partial_mangling():
+    out = _scrub("The acmedb011 host and acmedb01 host", ["acmedb01"])
+    # acmedb011 is a different token — must NOT be redacted
+    assert out == "The acmedb011 host and [redacted] host"
+
+
+def test_scrub_non_string_passthrough():
+    assert _scrub(42, ["secret"]) == 42
+    assert _scrub(None, ["secret"]) is None
+    assert _scrub(3.14, ["secret"]) == 3.14
+
+
+def test_scrub_empty_secrets_identity():
+    obj = {"a": "unchanged"}
+    assert _scrub(obj, []) == obj

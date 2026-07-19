@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Optional
 
 import numpy as np
@@ -552,6 +553,62 @@ def _run_correlation_tests(joined: pd.DataFrame) -> list:
         except Exception:
             pass
     return results
+
+
+_SCRUB_ALLOWLIST = {"IRIS", "LINUX", "TEST", "PROD", "DEV", "LIVE"}
+_REDACTED = "[redacted]"
+
+
+def _gather_secrets(sp_dict: dict) -> list:
+    """
+    Identifying strings from sp_dict (customer, hostname, instance names),
+    plus short-hostname variants of FQDNs. Longest first so FQDNs are
+    redacted before their prefixes. Secrets < 4 chars or on the allowlist
+    are dropped (an instance literally named IRIS must not shred output).
+    """
+    if not sp_dict:
+        return []
+    raw = []
+    for key in ("customer", "linux hostname", "instance"):
+        value = sp_dict.get(key)
+        if value:
+            raw.append(str(value).strip())
+    for key, value in sp_dict.items():
+        if key.startswith("up instance") and value:
+            raw.append(str(value).strip())
+    secrets = set()
+    for value in raw:
+        if value:
+            secrets.add(value)
+            if "." in value:
+                secrets.add(value.split(".", 1)[0])
+    keep = [s for s in secrets if len(s) >= 4 and s.upper() not in _SCRUB_ALLOWLIST]
+    return sorted(keep, key=len, reverse=True)
+
+
+def _scrub(obj, secrets: list):
+    """
+    Recursively redact secrets in all strings of a dict/list structure.
+    Case-insensitive, word-boundary matched. Best-effort: never raises.
+    """
+    if not secrets:
+        return obj
+    try:
+        if isinstance(obj, str):
+            for secret in secrets:
+                pattern = re.compile(
+                    r"(?<![A-Za-z0-9])" + re.escape(secret) + r"(?![A-Za-z0-9])",
+                    re.IGNORECASE,
+                )
+                obj = pattern.sub(_REDACTED, obj)
+            return obj
+        if isinstance(obj, dict):
+            return {k: _scrub(v, secrets) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_scrub(v, secrets) for v in obj]
+        return obj
+    except Exception:
+        return obj
 
 
 def build_llm_context(
