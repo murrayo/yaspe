@@ -196,12 +196,10 @@ def test_build_llm_context_top_level_keys():
     conn = _make_sqlite_with_data()
     sp_dict = {"number cpus": "4", "memory MB": "16384", "globals total MB": "8192"}
     result = build_llm_context(conn, sp_dict)
-    assert result["schema_version"] == "1.0"
-    assert "system" in result
-    assert "collection" in result
-    assert "baselines" in result
-    assert "findings" in result
-    assert "timeseries" in result
+    assert result["schema_version"] == "2.0"
+    for key in ("system", "collection", "baselines", "findings",
+                "period_stats", "key_metrics", "not_available", "timeseries"):
+        assert key in result
     conn.close()
 
 
@@ -212,6 +210,7 @@ def test_build_llm_context_system_facts():
     assert result["system"]["vcpus"] == 4
     assert result["system"]["ram_gb"] == 16
     assert result["system"]["iris_buffers_gb"] == 8
+    assert "customer" not in result["system"]
     conn.close()
 
 
@@ -280,7 +279,7 @@ def test_export_llm_context_writes_file():
         assert path.endswith(".json")
         with open(path) as fh:
             data = json.load(fh)
-        assert data["schema_version"] == "1.0"
+        assert data["schema_version"] == "2.0"
     conn.close()
 
 
@@ -798,3 +797,74 @@ def test_scrub_empty_secrets_identity():
 def test_scrub_redacts_dict_keys():
     out = _scrub({"acmedb01": {"nested": "on acmedb01"}}, ["acmedb01"])
     assert out == {"[redacted]": {"nested": "on [redacted]"}}
+
+
+# ---- Schema 2.0 integration ----
+
+def test_build_llm_context_no_customer_even_when_present():
+    conn = _make_sqlite_with_data()
+    sp_dict = {"number cpus": "4", "customer": "Acme Hospital"}
+    result = build_llm_context(conn, sp_dict)
+    assert "customer" not in result["system"]
+    conn.close()
+
+
+def test_build_llm_context_scrubs_context_note():
+    conn = _make_sqlite_with_data()
+    sp_dict = {"customer": "Acme Hospital", "linux hostname": "acmedb01"}
+    result = build_llm_context(conn, sp_dict, context="Acme Hospital users on acmedb01 reported slowness")
+    assert "Acme Hospital" not in result["context"]
+    assert "acmedb01" not in result["context"]
+    assert "[redacted]" in result["context"]
+    conn.close()
+
+
+def test_build_llm_context_period_stats_populated():
+    conn = _make_sqlite_with_data()
+    result = build_llm_context(conn, {})
+    assert isinstance(result["period_stats"], list)
+    # _make_sqlite_with_data rows start 09:00 → inside 09:00–11:30
+    assert result["period_stats"], "expected at least one period bucket"
+    assert "Glorefs" in result["period_stats"][0]["metrics"]
+    conn.close()
+
+
+def test_build_llm_context_key_metrics_populated():
+    conn = _make_sqlite_with_data()
+    result = build_llm_context(conn, {"number cpus": "4", "memory MB": "16384"})
+    assert "physical_read_write_ratio" in result["key_metrics"]["overall"]
+    assert result["key_metrics"]["peak_period"] is not None
+    conn.close()
+
+
+def test_build_llm_context_not_available_populated():
+    conn = _make_sqlite_with_data()
+    result = build_llm_context(conn, {})
+    assert any("transaction rate" in e["metric"] for e in result["not_available"])
+    conn.close()
+
+
+def test_auto_resample_interval_boundaries():
+    from llm_context import _auto_resample_interval
+    assert _auto_resample_interval(None) == "5min"
+    assert _auto_resample_interval(1) == "5min"
+    assert _auto_resample_interval(2) == "5min"
+    assert _auto_resample_interval(3) == "15min"
+    assert _auto_resample_interval(4) == "15min"
+    assert _auto_resample_interval(5) == "30min"
+    assert _auto_resample_interval(7) == "30min"
+
+
+def test_build_llm_context_auto_resample_default():
+    conn = _make_sqlite_with_data()
+    # fixture is a single day → auto resolves to 5min
+    result = build_llm_context(conn, {})
+    assert result["timeseries"]["resample_interval"] == "5min"
+    conn.close()
+
+
+def test_build_llm_context_explicit_resample_wins():
+    conn = _make_sqlite_with_data()
+    result = build_llm_context(conn, {}, resample_interval="10min")
+    assert result["timeseries"]["resample_interval"] == "10min"
+    conn.close()

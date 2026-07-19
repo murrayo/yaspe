@@ -611,10 +611,19 @@ def _scrub(obj, secrets: list):
         return obj
 
 
+def _auto_resample_interval(n_days) -> str:
+    """Timeseries interval scaled to window length so bundles stay chat-sized."""
+    if not n_days or n_days <= 2:
+        return "5min"
+    if n_days <= 4:
+        return "15min"
+    return "30min"
+
+
 def build_llm_context(
     connection,
     sp_dict: dict,
-    resample_interval: str = "5min",
+    resample_interval: Optional[str] = None,
     context: Optional[str] = None,
 ) -> dict:
     """
@@ -622,10 +631,14 @@ def build_llm_context(
 
     Returns dict with keys:
       schema_version, generated_by, context, system, collection,
-      baselines, findings, timeseries
+      baselines, findings, period_stats, key_metrics, not_available,
+      timeseries
     """
     meta  = _pa._get_collection_meta(connection)
+    if resample_interval is None:
+        resample_interval = _auto_resample_interval(meta.get("n_days"))
     facts = _pa._get_system_facts(sp_dict)
+    facts.pop("customer", None)
 
     mg_df = _load_mg_df(connection)
     vm_df = _load_vm_df(connection)
@@ -693,16 +706,27 @@ def build_llm_context(
         "gaps":              gaps_serialised,
     }
 
-    return {
-        "schema_version": "1.0",
+    role_map = _load_iostat_role_map(connection)
+    iostat_df = _load_iostat_df(connection)
+
+    period_stats = _compute_period_stats(mg_df, vm_df)
+    key_metrics = _compute_key_metrics(mg_df, vm_df, iostat_df, role_map, facts)
+    not_available = _build_not_available(mg_df, role_map)
+
+    ctx = {
+        "schema_version": "2.0",
         "generated_by":   "yaspe --llm-context",
         "context":        context,
         "system":         facts,
         "collection":     collection,
         "baselines":      baselines,
         "findings":       [_serialise_finding(f) for f in all_findings],
+        "period_stats":   period_stats,
+        "key_metrics":    key_metrics,
+        "not_available":  not_available,
         "timeseries":     timeseries,
     }
+    return _scrub(ctx, _gather_secrets(sp_dict or {}))
 
 
 def export_llm_context(
