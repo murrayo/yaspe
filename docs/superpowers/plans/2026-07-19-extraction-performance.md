@@ -43,9 +43,31 @@ wc -l golden_before.dump && grep real baseline_time.txt
 
 Expected: dump has >1.2 M lines; `real` ≈ 55 s. (A prior session measured 55.6 s and 1,244,160 iostat rows across 72 devices.)
 
-- [ ] **Step 2: Record the baseline numbers**
+- [ ] **Step 2: Produce baseline dumps for AIX and Windows samples too**
 
-Note the `real` time and dump line count; they go in the PR description at the end.
+The golden-diff gate must cover every OS parsing path, not just Linux:
+
+```bash
+cd "/private/tmp/claude-1499724556/-Users-moldfiel-projects-all-live-projects-yaspe/5a45a5f2-bac9-472b-9b20-ba8057bc7e95/scratchpad/perf_test"
+mkdir -p aix win
+# largest sample per OS
+AIX_F=$(ls -S "/Users/moldfiel/projects/all_live_projects/yaspe/test_samples/AIX/"*.html | head -1)
+WIN_F=$(ls -S "/Users/moldfiel/projects/all_live_projects/yaspe/test_samples/windows/"*.html | head -1)
+ln -sf "$AIX_F" aix/aix.html && ln -sf "$WIN_F" win/win.html
+( cd aix && rm -f golden_SystemPerformance.sqlite && \
+  python3 /Users/moldfiel/projects/all_live_projects/yaspe/yaspe.py -i aix.html -a -x -o golden && \
+  sqlite3 golden_SystemPerformance.sqlite .dump > golden_before.dump )
+( cd win && rm -f golden_SystemPerformance.sqlite && \
+  python3 /Users/moldfiel/projects/all_live_projects/yaspe/yaspe.py -i win.html -a -x -o golden && \
+  sqlite3 golden_SystemPerformance.sqlite .dump > golden_before.dump )
+wc -l aix/golden_before.dump win/golden_before.dump
+```
+
+Expected: both dumps non-trivial (AIX has mgstat/vmstat/iostat/sar-d tables; Windows has mgstat/perfmon).
+
+- [ ] **Step 3: Record the baseline numbers**
+
+Note the `real` time and dump line counts; they go in the PR description at the end.
 
 ---
 
@@ -194,9 +216,19 @@ rm -f t1_SystemPerformance.sqlite
     -i day1.html -a -x -o t1 2> t1_time.txt
 sqlite3 t1_SystemPerformance.sqlite .dump > t1.dump
 diff golden_before.dump t1.dump && echo "GOLDEN DIFF CLEAN" && grep real t1_time.txt
+
+# AIX and Windows golden diffs
+( cd aix && rm -f t1_SystemPerformance.sqlite && \
+  python3 /Users/moldfiel/projects/all_live_projects/yaspe/yaspe.py -i aix.html -a -x -o t1 && \
+  sqlite3 t1_SystemPerformance.sqlite .dump > t1.dump && \
+  diff golden_before.dump t1.dump && echo "AIX GOLDEN DIFF CLEAN" )
+( cd win && rm -f t1_SystemPerformance.sqlite && \
+  python3 /Users/moldfiel/projects/all_live_projects/yaspe/yaspe.py -i win.html -a -x -o t1 && \
+  sqlite3 t1_SystemPerformance.sqlite .dump > t1.dump && \
+  diff golden_before.dump t1.dump && echo "WINDOWS GOLDEN DIFF CLEAN" )
 ```
 
-Expected: `GOLDEN DIFF CLEAN`; wall time drops to roughly 15–20 s. If the diff is NOT clean, stop — do not rationalize differences; investigate with superpowers:systematic-debugging.
+Expected: all three `GOLDEN DIFF CLEAN` messages; RHEL wall time drops to roughly 15–20 s. If any diff is NOT clean, stop — do not rationalize differences; investigate with superpowers:systematic-debugging.
 
 - [ ] **Step 6: Commit**
 
@@ -610,9 +642,19 @@ rm -f t2_SystemPerformance.sqlite
     -i day1.html -a -x -o t2 2> t2_time.txt
 sqlite3 t2_SystemPerformance.sqlite .dump > t2.dump
 diff golden_before.dump t2.dump && echo "GOLDEN DIFF CLEAN" && grep real t2_time.txt
+
+# AIX and Windows golden diffs (exercises perfmon, sar-d, AIX iostat markers)
+( cd aix && rm -f t2_SystemPerformance.sqlite && \
+  python3 /Users/moldfiel/projects/all_live_projects/yaspe/yaspe.py -i aix.html -a -x -o t2 && \
+  sqlite3 t2_SystemPerformance.sqlite .dump > t2.dump && \
+  diff golden_before.dump t2.dump && echo "AIX GOLDEN DIFF CLEAN" )
+( cd win && rm -f t2_SystemPerformance.sqlite && \
+  python3 /Users/moldfiel/projects/all_live_projects/yaspe/yaspe.py -i win.html -a -x -o t2 && \
+  sqlite3 t2_SystemPerformance.sqlite .dump > t2.dump && \
+  diff golden_before.dump t2.dump && echo "WINDOWS GOLDEN DIFF CLEAN" )
 ```
 
-Expected: `GOLDEN DIFF CLEAN`, stdout shows `Section seek: reading only needed sections`, wall time ≈ 10–15 s. If diff is not clean, stop and debug (superpowers:systematic-debugging) — do not proceed.
+Expected: all three `GOLDEN DIFF CLEAN` messages, RHEL stdout shows `Section seek: reading only needed sections`, RHEL wall time ≈ 10–15 s. It is acceptable for the AIX/Windows runs to log `Section seek unavailable, full scan` (their markers may vary by file vintage) — the requirement is identical output either way. If any diff is not clean, stop and debug (superpowers:systematic-debugging) — do not proceed.
 
 - [ ] **Step 7: Commit**
 
