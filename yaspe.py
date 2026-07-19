@@ -211,11 +211,13 @@ def create_sections(
     # Get the start date for date format validation
     # profile_run = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'profile run';")[2]
 
-    # Effective iostat disk filter: explicit -d list wins; otherwise filter to
-    # CPF-resolved IRIS devices unless --all-disks was given. Non-IRIS files
-    # (no CPF roles in overview) keep every device.
+    # Effective disk filter: explicit -d list wins; otherwise filter to
+    # CPF-resolved IRIS devices unless --all-disks was given. On Linux/Ubuntu
+    # this filters iostat devices; on Windows the CPF drive letters feed the
+    # perfmon disk column filter instead. Non-IRIS files (no CPF roles in
+    # overview) keep everything.
     effective_disk_list = disk_list
-    if not disk_list and not all_disks and operating_system in ("Linux", "Ubuntu"):
+    if not disk_list and not all_disks and operating_system in ("Linux", "Ubuntu", "Windows"):
         auto_disk_list = get_cpf_auto_disk_list(connection)
         if auto_disk_list:
             print(f"Auto disk list from CPF (extraction): {auto_disk_list}")

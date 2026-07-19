@@ -49,3 +49,14 @@ def test_auto_list_stops_at_gap_in_database_index():
         ("iris disk role Database 2", "dm-99"),
     ])
     assert get_cpf_auto_disk_list(conn) == ["dm-18"]
+
+
+def test_auto_list_windows_drive_letters():
+    conn = _make_overview([
+        ("operating system", "Windows"),
+        ("iris disk role Database 0", "C:"),
+        ("iris disk role Database 1", "G:"),
+        ("iris disk role Primary Journal", "J:"),
+        ("iris disk role WIJ", "W:"),
+    ])
+    assert get_cpf_auto_disk_list(conn) == ["C:", "G:", "J:", "W:"]

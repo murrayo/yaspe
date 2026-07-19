@@ -220,6 +220,38 @@ def test_path_to_device_no_false_prefix_match():
     assert cdr._path_to_device("/data2/file/", mount_map) is None
 
 
+def test_path_to_device_windows_drive_letter():
+    from cpf_disk_resolver import _path_to_device
+    assert _path_to_device("G:\\DB\\IRISTEMP\\", {}) == "G:"
+    assert _path_to_device("c:\\intersystems\\iris\\mgr\\", {}) == "C:"
+    assert _path_to_device("J:/JOURNAL/", {}) == "J:"
+
+
+def test_path_to_device_unc_path_returns_none():
+    from cpf_disk_resolver import _path_to_device
+    assert _path_to_device("\\\\server\\share\\db\\", {}) is None
+
+
+def test_resolve_roles_windows_sp_dict():
+    from cpf_disk_resolver import resolve_iris_disk_roles
+    sp_dict = {
+        "cpf_databases": [
+            ("IRISSYS", "C:\\InterSystems\\IRIS\\mgr\\"),
+            ("IRISTEMP", "G:\\DB\\IRISTEMP\\"),
+            ("APPDATA", "N:\\DB\\APP\\"),
+            ("MIRRORDB", ":mirror:MIRRORSET:\\somewhere\\"),
+        ],
+        "current journal": "J:\\JOURNAL\\",
+        "alternate journal": "G:\\JOURNAL\\",
+        "wijdir": "W:\\WIJ\\",
+    }
+    roles = resolve_iris_disk_roles(sp_dict)
+    assert roles["Database"] == [("C:", ["IRISSYS"]), ("G:", ["IRISTEMP"]), ("N:", ["APPDATA"])]
+    assert roles["Primary Journal"] == "J:"
+    assert roles["Alternate Journal"] == "G:"
+    assert roles["WIJ"] == "W:"
+
+
 def test_build_mount_map_nvme_partition():
     """NVMe partition /dev/nvme0n1p1 should resolve to nvme0n1 not nvme0."""
     sp_dict = {

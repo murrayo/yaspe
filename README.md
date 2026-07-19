@@ -110,10 +110,12 @@ options:
                         On Windows, `-d` filters perfmon disk counters by drive
                         letter (e.g. `-d F: J:`): only matching PhysicalDisk/LogicalDisk
                         columns are stored, plus `_Total` and all non-disk counters.
-  --all-disks           Store every iostat device in the SQLite database. By
-                        default, when a CPF file is found in the
-                        SystemPerformance HTML, only IRIS-related disks
-                        (database, primary/alternate journal, WIJ devices) are
+  --all-disks           Store every iostat device (Linux) or perfmon disk
+                        counter (Windows) in the SQLite database. By default,
+                        when a CPF file is found in the SystemPerformance
+                        HTML, only IRIS-related disks (database,
+                        primary/alternate journal, WIJ devices — iostat
+                        devices on Linux, drive letters on Windows) are
                         stored, which makes extraction much faster and
                         databases much smaller. Use --all-disks (or an
                         explicit -d list) when you need to investigate

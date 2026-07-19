@@ -68,6 +68,13 @@ def _path_to_device(path, mount_map):
     """
     if not path:
         return None
+    # Windows: CPF paths carry the drive letter directly (e.g. "G:\DB\").
+    # Resolve to the normalized letter ("G:"), which matches perfmon
+    # PhysicalDisk instance names like "2 G:". UNC paths have no letter and
+    # fall through to the mount-map logic (no match on Windows -> None).
+    m = re.match(r"^([A-Za-z]):([\\/]|$)", path)
+    if m:
+        return m.group(1).upper() + ":"
     best_mount = None
     best_len = -1
     for mount_point in mount_map:
