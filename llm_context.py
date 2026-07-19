@@ -8,6 +8,7 @@ import json
 import os
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 import performance_analysis as _pa
 
@@ -119,6 +120,75 @@ def _merge_timeseries(mg_records: list, vm_records: list) -> list:
             row.update({k: v for k, v in vm_map[ts].items() if k != "timestamp"})
         merged.append(row)
     return merged
+
+
+# Columns included in period statistics
+_PERIOD_MG_COLS = ["Glorefs", "Gloupds", "PhyRds", "PhyWrs", "Jrnwrts", "Rdratio", "WDQsz", "PPGupds"]
+_PERIOD_VM_COLS = ["r", "b", "sy", "wa", "si", "so"]
+_WEEKDAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def _series_stats(vals) -> Optional[dict]:
+    """mean/sigma/p90/p95/max/n_samples for a numeric series; None if no numeric data."""
+    vals = pd.to_numeric(vals, errors="coerce").dropna()
+    if vals.empty:
+        return None
+    return {
+        "mean": float(vals.mean()),
+        "sigma": float(vals.std(ddof=1)) if len(vals) > 1 else 0.0,
+        "p90": float(np.percentile(vals, 90)),
+        "p95": float(np.percentile(vals, 95)),
+        "max": float(vals.max()),
+        "n_samples": int(len(vals)),
+    }
+
+
+def _add_period_cols(df: pd.DataFrame) -> pd.DataFrame:
+    """Copy of df with _weekday and _period columns; rows outside all IRIS periods dropped."""
+    df = df.copy()
+    df["_weekday"] = df["dt"].dt.day_name()
+    df["_period"] = df["dt"].dt.strftime("%H:%M").apply(_pa._label_period)
+    return df.dropna(subset=["_period"])
+
+
+def _compute_period_stats(mg_df: pd.DataFrame, vm_df: pd.DataFrame) -> list:
+    """
+    Per weekday × IRIS Health Monitor period stats from full-resolution data.
+    Returns [{"weekday", "period", "metrics": {metric: stats}}] sorted by
+    weekday then period. vmstat gains a derived us_sy column.
+    """
+    buckets = {}
+
+    def _collect(df, cols, derive_us_sy=False):
+        if df is None or df.empty or "dt" not in df.columns:
+            return
+        df = _add_period_cols(df)
+        if df.empty:
+            return
+        if derive_us_sy and "us" in df.columns and "sy" in df.columns:
+            df["us_sy"] = (pd.to_numeric(df["us"], errors="coerce")
+                           + pd.to_numeric(df["sy"], errors="coerce"))
+            cols = cols + ["us_sy"]
+        for (weekday, period), group in df.groupby(["_weekday", "_period"]):
+            metrics = buckets.setdefault((weekday, period), {})
+            for col in cols:
+                if col in group.columns:
+                    stats = _series_stats(group[col])
+                    if stats:
+                        metrics[col] = stats
+
+    _collect(mg_df, _PERIOD_MG_COLS)
+    _collect(vm_df, _PERIOD_VM_COLS, derive_us_sy=True)
+
+    period_order = [p["name"] for p in _pa.IRIS_PERIODS]
+    keys = sorted(
+        buckets,
+        key=lambda k: (
+            _WEEKDAY_ORDER.index(k[0]) if k[0] in _WEEKDAY_ORDER else 99,
+            period_order.index(k[1]) if k[1] in period_order else 99,
+        ),
+    )
+    return [{"weekday": w, "period": p, "metrics": buckets[(w, p)]} for w, p in keys]
 
 
 def _serialise_finding(f) -> dict:

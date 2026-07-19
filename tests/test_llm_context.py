@@ -557,3 +557,82 @@ def test_build_llm_context_iostat_absent_when_no_table():
     result = build_llm_context(conn, {})
     assert "iostat" not in result["timeseries"]
     conn.close()
+
+
+# ---- Period stats ----
+from llm_context import _compute_period_stats, _series_stats
+
+
+def _make_mg_df_business_hours(n=20):
+    """20 rows at 60s starting Tue 2024-01-16 09:30 — inside period 09:00–11:30."""
+    base = datetime(2024, 1, 16, 9, 30, 0)
+    rows = []
+    for i in range(n):
+        rows.append({
+            "dt": pd.Timestamp(base) + pd.Timedelta(seconds=60 * i),
+            "Glorefs": 10000 + i * 100,
+            "Gloupds": 500,
+            "PhyRds": 50,
+            "PhyWrs": 20,
+            "Jrnwrts": 30,
+            "Rdratio": 95.0,
+            "WDQsz": i,
+        })
+    return pd.DataFrame(rows)
+
+
+def _make_vm_df_business_hours(n=20):
+    base = datetime(2024, 1, 16, 9, 30, 0)
+    rows = []
+    for i in range(n):
+        rows.append({
+            "dt": pd.Timestamp(base) + pd.Timedelta(seconds=60 * i),
+            "r": i, "b": 0, "us": 30.0, "sy": 10.0, "wa": 2.0, "si": 0, "so": 0,
+        })
+    return pd.DataFrame(rows)
+
+
+def test_series_stats_keys():
+    s = _series_stats(pd.Series([1.0, 2.0, 3.0, 4.0]))
+    assert set(s) == {"mean", "sigma", "p90", "p95", "max", "n_samples"}
+    assert s["mean"] == pytest.approx(2.5)
+    assert s["max"] == 4.0
+    assert s["n_samples"] == 4
+
+
+def test_series_stats_empty_returns_none():
+    assert _series_stats(pd.Series([], dtype=float)) is None
+    assert _series_stats(pd.Series(["x", None])) is None
+
+
+def test_period_stats_bucketing():
+    result = _compute_period_stats(_make_mg_df_business_hours(), _make_vm_df_business_hours())
+    assert len(result) == 1
+    entry = result[0]
+    assert entry["weekday"] == "Tuesday"
+    assert entry["period"] == "09:00–11:30"
+    assert "Glorefs" in entry["metrics"]
+    assert "r" in entry["metrics"]
+
+
+def test_period_stats_us_sy_derived():
+    result = _compute_period_stats(pd.DataFrame(), _make_vm_df_business_hours())
+    assert result[0]["metrics"]["us_sy"]["mean"] == pytest.approx(40.0)
+
+
+def test_period_stats_has_p90():
+    result = _compute_period_stats(_make_mg_df_business_hours(), pd.DataFrame())
+    g = result[0]["metrics"]["Glorefs"]
+    assert "p90" in g and "p95" in g
+    assert g["p90"] <= g["p95"] <= g["max"]
+
+
+def test_period_stats_empty_inputs():
+    assert _compute_period_stats(pd.DataFrame(), pd.DataFrame()) == []
+
+
+def test_period_stats_ppgupds_when_present():
+    mg = _make_mg_df_business_hours()
+    mg["PPGupds"] = 250.0
+    result = _compute_period_stats(mg, pd.DataFrame())
+    assert result[0]["metrics"]["PPGupds"]["mean"] == pytest.approx(250.0)
