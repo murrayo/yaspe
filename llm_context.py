@@ -782,6 +782,11 @@ def _fmt_num(v, ratio: bool = False) -> str:
     return str(v)
 
 
+def _md_cell(text) -> str:
+    """Escape pipe characters so free text cannot break a markdown table row."""
+    return str(text).replace("|", "\\|") if text else ""
+
+
 def _csv_block(records: list, columns: list) -> str:
     """Fenced csv block; header once, None -> empty cell, floats rounded."""
     lines = [",".join(columns)]
@@ -804,10 +809,15 @@ def _yaml_header(ctx: dict) -> str:
          f'schema_version: "{ctx["schema_version"]}"',
          f'generated_by: {ctx["generated_by"]}']
     if ctx.get("context"):
-        y.append(f'context: "{ctx["context"]}"')
+        y.append(f'context: {json.dumps(ctx["context"])}')
     y.append("system:")
     for key, value in ctx["system"].items():
-        y.append(f"  {key}: {value if value is not None else 'null'}")
+        if value is None:
+            y.append(f"  {key}: null")
+        elif isinstance(value, float):
+            y.append(f"  {key}: {_fmt_num(value)}")
+        else:
+            y.append(f"  {key}: {value}")
     coll = ctx["collection"]
     y.append("collection:")
     for key in ("start", "end", "n_days", "interval_seconds"):
@@ -816,6 +826,8 @@ def _yaml_header(ctx: dict) -> str:
             y.append(f"  {key}: null")
         elif key in ("start", "end"):
             y.append(f'  {key}: "{value}"')     # contains spaces/colons — YAML needs quoting
+        elif isinstance(value, float):
+            y.append(f"  {key}: {_fmt_num(value)}")
         else:
             y.append(f"  {key}: {value}")
     y.append(f"  weekdays: [{', '.join(coll.get('weekdays') or [])}]")
@@ -837,8 +849,8 @@ def _render_key_metrics_table(title: str, metrics: dict) -> str:
     for name, entry in metrics.items():
         value = entry.get("value")
         is_ratio = "_ratio" in name
-        basis = entry.get("basis", "")
-        caveat = entry.get("caveat", "")
+        basis = _md_cell(entry.get("basis", ""))
+        caveat = _md_cell(entry.get("caveat", ""))
         if isinstance(value, dict):
             rows.append(
                 f"| {name} | {_fmt_num(value.get('mean'))} | {_fmt_num(value.get('p90'))} "
@@ -909,7 +921,7 @@ def _render_markdown(ctx: dict) -> str:
                 "Metrics this dataset cannot provide — candidates for the data-to-request list.", "",
                 "| Metric | Reason | How to collect |", "|---|---|---|"]
         for entry in na:
-            rows.append(f"| {entry['metric']} | {entry['reason']} | {entry['how_to_collect']} |")
+            rows.append(f"| {_md_cell(entry['metric'])} | {_md_cell(entry['reason'])} | {_md_cell(entry['how_to_collect'])} |")
         parts.append("\n".join(rows))
 
     # Period statistics

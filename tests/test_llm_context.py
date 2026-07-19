@@ -935,3 +935,29 @@ def test_render_markdown_no_full_float_repr():
     md = _render_markdown(_built_ctx())
     import re as _re
     assert not _re.search(r"\d+\.\d{4,}", md), "unrounded float leaked into bundle"
+
+
+def test_yaml_header_rounds_float_interval():
+    ctx = _built_ctx()
+    ctx["collection"]["interval_seconds"] = 4.999000000001
+    md = _render_markdown(ctx)
+    import yaml
+    parsed = yaml.safe_load(md.split("---")[1])
+    assert parsed["collection"]["interval_seconds"] == 5.0
+
+
+def test_yaml_header_context_with_quotes_parses():
+    ctx = _built_ctx()
+    ctx["context"] = 'users said "slow" on Tuesday \\ Wednesday'
+    md = _render_markdown(ctx)
+    import yaml
+    parsed = yaml.safe_load(md.split("---")[1])
+    assert 'slow' in parsed["context"]
+
+
+def test_table_cells_escape_pipes():
+    ctx = _built_ctx()
+    ctx["not_available"].append(
+        {"metric": "x|y", "reason": "a|b", "how_to_collect": "c"})
+    md = _render_markdown(ctx)
+    assert "x\\|y" in md
