@@ -304,6 +304,7 @@ def extract_sections(
     perfmon_processing = False
     perfmon_header = ""
     perfmon_rows_list = []
+    perfmon_keep_indices = None
 
     nfsiostat_processing = False
     nfsiostat_header = ""
@@ -654,6 +655,8 @@ def extract_sections(
                     if line.strip() != "":
                         perfmon_row_dict = {}
                         values = line.split(",")
+                        if perfmon_keep_indices is not None and len(values) >= len(perfmon_columns):
+                            values = [values[i] for i in perfmon_keep_indices]
                         values = [i.strip() for i in values]  # strip off carriage return etc
                         values = list(map(lambda x: x[1:-1].replace('"', ""), values))
                         values = list(map(lambda x: 0.0 if x == " " else x, values))
@@ -666,6 +669,32 @@ def extract_sections(
 
                         perfmon_rows_list.append(perfmon_row_dict)
                 if perfmon_processing and "Memory" in line:
+                    # Optional disk-column filter: perfmon stores disks as columns
+                    # (one per disk x counter). With -d, keep only matching drive
+                    # letters, _Total, and every non-disk counter. Must run on the
+                    # raw header before the character clean-up below mangles "(4 F:)".
+                    if disk_list:
+                        raw_cols = line.split(",")
+                        wanted = {d.strip().rstrip(":").upper() for d in disk_list}
+                        keep = []
+                        for idx, col in enumerate(raw_cols):
+                            if "PhysicalDisk(" in col or "LogicalDisk(" in col:
+                                a = col.find("(")
+                                b = col.find(")", a)
+                                instance = col[a + 1 : b] if b != -1 else ""
+                                if instance == "_Total":
+                                    keep.append(idx)
+                                    continue
+                                parts = instance.split()
+                                letter = parts[-1].rstrip(":").upper() if parts else ""
+                                if letter in wanted:
+                                    keep.append(idx)
+                            else:
+                                keep.append(idx)
+                        if len(keep) < len(raw_cols):
+                            perfmon_keep_indices = keep
+                            line = ",".join(raw_cols[i] for i in keep)
+
                     perfmon_header = line
                     # get rid of characters that screw with queries or charting
                     perfmon_header = [s for s in perfmon_header if s.isalnum() or s.isspace() or (s == ",")]

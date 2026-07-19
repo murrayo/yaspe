@@ -107,6 +107,9 @@ options:
   -d DISK_LIST [DISK_LIST ...], --disk_list DISK_LIST [DISK_LIST ...]
                         List of disks, if not entered all are processed. No
                         commas or quotes, e.g. -d dm-0 dm-1
+                        On Windows, `-d` filters perfmon disk counters by drive
+                        letter (e.g. `-d F: J:`): only matching PhysicalDisk/LogicalDisk
+                        columns are stored, plus `_Total` and all non-disk counters.
   --all-disks           Store every iostat device in the SQLite database. By
                         default, when a CPF file is found in the
                         SystemPerformance HTML, only IRIS-related disks
