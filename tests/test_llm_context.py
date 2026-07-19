@@ -636,3 +636,109 @@ def test_period_stats_ppgupds_when_present():
     mg["PPGupds"] = 250.0
     result = _compute_period_stats(mg, pd.DataFrame())
     assert result[0]["metrics"]["PPGupds"]["mean"] == pytest.approx(250.0)
+
+
+# ---- Key metrics + not_available ----
+from llm_context import _compute_key_metrics, _build_not_available
+
+
+def _make_iostat_role_df(n=20):
+    """iostat rows for one Database device (dm-3) and one IRIS device (dm-9)."""
+    base = datetime(2024, 1, 16, 9, 30, 0)
+    rows = []
+    for i in range(n):
+        for dev, r_s, w_s, r_await, w_await in (("dm-3", 200.0, 100.0, 1.5, 0.8),
+                                                ("dm-9", 5.0, 50.0, 0.5, 0.6)):
+            rows.append({
+                "dt": pd.Timestamp(base) + pd.Timedelta(seconds=60 * i),
+                "Device": dev, "r/s": r_s, "w/s": w_s,
+                "r_await": r_await, "w_await": w_await,
+            })
+    return pd.DataFrame(rows)
+
+
+_FACTS = {"vcpus": 4, "ram_gb": 16, "iris_buffers_gb": 8, "version": "x", "os": "Linux"}
+_ROLE_MAP = {"Database 0": "dm-3", "IRIS 0": "dm-9"}
+
+
+def test_key_metrics_ratio_from_sums():
+    mg = _make_mg_df_business_hours()
+    km = _compute_key_metrics(mg, pd.DataFrame(), pd.DataFrame(), {}, _FACTS)
+    # PhyRds=50, PhyWrs=20 constant → sum ratio = 2.5
+    assert km["overall"]["physical_read_write_ratio"]["value"] == pytest.approx(2.5)
+
+
+def test_key_metrics_cpu_distribution():
+    km = _compute_key_metrics(pd.DataFrame(), _make_vm_df_business_hours(), pd.DataFrame(), {}, _FACTS)
+    cpu = km["overall"]["cpu_utilization"]["value"]
+    assert cpu["mean"] == pytest.approx(40.0)
+    assert "p95" in cpu
+
+
+def test_key_metrics_glorefs_per_core():
+    mg = _make_mg_df_business_hours()
+    km = _compute_key_metrics(mg, pd.DataFrame(), pd.DataFrame(), {}, _FACTS)
+    g = km["overall"]["glorefs_distribution"]["value"]
+    gpc = km["overall"]["glorefs_per_core"]["value"]
+    assert gpc["max"] == pytest.approx(g["max"] / 4)
+
+
+def test_key_metrics_db_disk_from_role():
+    km = _compute_key_metrics(pd.DataFrame(), pd.DataFrame(), _make_iostat_role_df(), _ROLE_MAP, _FACTS)
+    o = km["overall"]
+    assert o["db_disk_reads_per_sec"]["value"]["mean"] == pytest.approx(200.0)
+    assert o["db_disk_read_response_ms"]["value"]["mean"] == pytest.approx(1.5)
+    assert o["db_disk_read_write_ratio"]["value"] == pytest.approx(2.0)
+
+
+def test_key_metrics_ppg_conditional():
+    mg = _make_mg_df_business_hours()
+    km = _compute_key_metrics(mg, pd.DataFrame(), pd.DataFrame(), {}, _FACTS)
+    assert "ppg_update_rate" not in km["overall"]
+    mg["PPGupds"] = 250.0
+    km2 = _compute_key_metrics(mg, pd.DataFrame(), pd.DataFrame(), {}, _FACTS)
+    assert km2["overall"]["ppg_update_rate"]["value"]["mean"] == pytest.approx(250.0)
+    assert km2["overall"]["ppg_to_global_update_ratio"]["value"] == pytest.approx(0.5)
+
+
+def test_key_metrics_max_memory():
+    # free=8000000 KB + cache=2000000 KB of 16 GB (16777216 KB) → used ≈ 40.4%
+    vm = _make_vm_df_business_hours()
+    vm["free"] = 8000000
+    vm["cache"] = 2000000
+    km = _compute_key_metrics(pd.DataFrame(), vm, pd.DataFrame(), {}, _FACTS)
+    val = km["overall"]["max_memory_utilization_pct"]["value"]
+    assert val == pytest.approx((16 * 1024 * 1024 - 10000000) / (16 * 1024 * 1024) * 100, abs=0.5)
+
+
+def test_key_metrics_peak_period():
+    mg = _make_mg_df_business_hours()
+    km = _compute_key_metrics(mg, pd.DataFrame(), pd.DataFrame(), {}, _FACTS)
+    peak = km["peak_period"]
+    assert peak["weekday"] == "Tuesday"
+    assert peak["period"] == "09:00–11:30"
+    assert "glorefs_distribution" in peak["metrics"]
+
+
+def test_not_available_static_entries():
+    na = _build_not_available(pd.DataFrame(), {})
+    metrics = [e["metric"] for e in na]
+    assert any("transaction rate" in m for m in metrics)
+    assert any("kill" in m for m in metrics)
+    assert all({"metric", "reason", "how_to_collect"} <= set(e) for e in na)
+
+
+def test_not_available_ppg_conditional():
+    mg = _make_mg_df_business_hours()
+    na = _build_not_available(mg, {"Database 0": "dm-3"})
+    assert any("PPG" in e["metric"] for e in na)
+    mg["PPGupds"] = 1.0
+    na2 = _build_not_available(mg, {"Database 0": "dm-3"})
+    assert not any("PPG" in e["metric"] for e in na2)
+
+
+def test_not_available_db_disk_conditional():
+    na = _build_not_available(pd.DataFrame(), {})
+    assert any("disk" in e["metric"].lower() for e in na)
+    na2 = _build_not_available(pd.DataFrame(), {"Database 0": "dm-3"})
+    assert not any(e["metric"] == "database disk I/O metrics" for e in na2)

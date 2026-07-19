@@ -238,6 +238,216 @@ def _load_vm_df(connection) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _sum_ratio(num, den) -> Optional[float]:
+    """Ratio of sums; None if denominator sums to <= 0."""
+    num = pd.to_numeric(num, errors="coerce").dropna()
+    den = pd.to_numeric(den, errors="coerce").dropna()
+    total = float(den.sum())
+    if total <= 0:
+        return None
+    return float(num.sum()) / total
+
+
+def _role_devices(role_map: dict, prefix: str) -> list:
+    return [dev for label, dev in role_map.items() if label.startswith(prefix)]
+
+
+def _db_disk_metrics(iostat_df: pd.DataFrame, devices: list) -> dict:
+    """Database-role disk scorecard entries. Rates summed across devices; response times from worst device."""
+    entries = {}
+    sub = iostat_df[iostat_df["Device"].isin(devices)]
+    if sub.empty:
+        return entries
+
+    rate_cols = [c for c in ("r/s", "w/s") if c in sub.columns]
+    if rate_cols:
+        rates = sub.groupby("dt")[rate_cols].sum()
+        if "r/s" in rates.columns:
+            stats = _series_stats(rates["r/s"])
+            if stats:
+                entries["db_disk_reads_per_sec"] = {
+                    "value": stats, "basis": "iostat r/s summed across Database-role devices"}
+        if "w/s" in rates.columns:
+            stats = _series_stats(rates["w/s"])
+            if stats:
+                entries["db_disk_writes_per_sec"] = {
+                    "value": stats, "basis": "iostat w/s summed across Database-role devices"}
+        if {"r/s", "w/s"} <= set(rates.columns):
+            ratio = _sum_ratio(rates["r/s"], rates["w/s"])
+            if ratio is not None:
+                entries["db_disk_read_write_ratio"] = {
+                    "value": ratio, "basis": "sum(r/s) / sum(w/s) on Database-role devices"}
+
+    for col, name, label in (("r_await", "db_disk_read_response_ms", "read"),
+                             ("w_await", "db_disk_write_response_ms", "write")):
+        if col not in sub.columns:
+            continue
+        worst, worst_dev = None, None
+        for dev in devices:
+            stats = _series_stats(sub[sub["Device"] == dev][col])
+            if stats and (worst is None or stats["p95"] > worst["p95"]):
+                worst, worst_dev = stats, dev
+        if worst:
+            entries[name] = {
+                "value": worst,
+                "basis": f"iostat {col} on worst Database-role device ({worst_dev}, highest p95)"}
+    return entries
+
+
+def _key_metrics_slice(mg_df, vm_df, iostat_df, role_map, facts) -> dict:
+    """Scorecard entries computable from the given (already time-filtered) frames."""
+    km = {}
+    ram_gb = facts.get("ram_gb")
+    vcpus = facts.get("vcpus")
+
+    if vm_df is not None and not vm_df.empty:
+        mem_cols = [c for c in ("free", "buff", "cache") if c in vm_df.columns]
+        if mem_cols and ram_gb:
+            ram_kb = ram_gb * 1024 * 1024
+            avail = vm_df[mem_cols].apply(pd.to_numeric, errors="coerce").sum(axis=1)
+            used_pct = ((ram_kb - avail) / ram_kb * 100).dropna()
+            if not used_pct.empty:
+                km["max_memory_utilization_pct"] = {
+                    "value": float(used_pct.max()),
+                    "basis": "max of (RAM − (free+buff+cache)) / RAM from vmstat",
+                    "caveat": "page cache counted as used; reclaimable in practice"}
+        if "us" in vm_df.columns and "sy" in vm_df.columns:
+            us_sy = (pd.to_numeric(vm_df["us"], errors="coerce")
+                     + pd.to_numeric(vm_df["sy"], errors="coerce"))
+            stats = _series_stats(us_sy)
+            if stats:
+                km["cpu_utilization"] = {
+                    "value": stats, "basis": "vmstat us+sy; p95 is the headline number"}
+
+    if mg_df is not None and not mg_df.empty:
+        if "Glorefs" in mg_df.columns:
+            stats = _series_stats(mg_df["Glorefs"])
+            if stats:
+                km["glorefs_distribution"] = {
+                    "value": stats, "basis": "mgstat Glorefs; p90 is the headline number"}
+                if vcpus:
+                    km["glorefs_per_core"] = {
+                        "value": {k: stats[k] / vcpus for k in ("mean", "p90", "p95", "max")},
+                        "basis": f"Glorefs ÷ {vcpus} vCPUs — capacity benchmark"}
+        if "Gloupds" in mg_df.columns:
+            stats = _series_stats(mg_df["Gloupds"])
+            if stats:
+                km["global_update_rate"] = {"value": stats, "basis": "mgstat Gloupds"}
+        if {"PhyRds", "PhyWrs"} <= set(mg_df.columns):
+            ratio = _sum_ratio(mg_df["PhyRds"], mg_df["PhyWrs"])
+            if ratio is not None:
+                km["physical_read_write_ratio"] = {
+                    "value": ratio, "basis": "sum(PhyRds) / sum(PhyWrs)"}
+        if {"Rdratio", "PhyRds"} <= set(mg_df.columns):
+            rr = pd.to_numeric(mg_df["Rdratio"], errors="coerce")
+            pr = pd.to_numeric(mg_df["PhyRds"], errors="coerce")
+            logical = (rr * pr).dropna()
+            denom = float(pr.dropna().sum())
+            if denom > 0 and not logical.empty:
+                agg_rdratio = float(logical.sum()) / denom
+                if agg_rdratio > 1:
+                    km["global_cache_hit_ratio_pct"] = {
+                        "value": (1 - 1 / agg_rdratio) * 100,
+                        "basis": "1 − 1/Rdratio with Rdratio = sum(Rdratio×PhyRds)/sum(PhyRds)",
+                        "caveat": "block-level approximation of cache hit ratio"}
+        if "PPGupds" in mg_df.columns:
+            stats = _series_stats(mg_df["PPGupds"])
+            if stats:
+                km["ppg_update_rate"] = {"value": stats, "basis": "mgstat PPGupds"}
+            if "Gloupds" in mg_df.columns:
+                ratio = _sum_ratio(mg_df["PPGupds"], mg_df["Gloupds"])
+                if ratio is not None:
+                    km["ppg_to_global_update_ratio"] = {
+                        "value": ratio, "basis": "sum(PPGupds) / sum(Gloupds)"}
+
+    db_devices = _role_devices(role_map, "Database")
+    if iostat_df is not None and not iostat_df.empty and db_devices:
+        km.update(_db_disk_metrics(iostat_df, db_devices))
+
+    iris_devices = _role_devices(role_map, "IRIS")
+    if (iostat_df is not None and not iostat_df.empty and iris_devices
+            and mg_df is not None and not mg_df.empty
+            and "PPGupds" in mg_df.columns and "w/s" in iostat_df.columns):
+        sub = iostat_df[iostat_df["Device"].isin(iris_devices)]
+        ws_mean = pd.to_numeric(sub["w/s"], errors="coerce").dropna().mean() if not sub.empty else None
+        ppg_mean = pd.to_numeric(mg_df["PPGupds"], errors="coerce").dropna().mean()
+        if ws_mean and ws_mean > 0 and pd.notna(ppg_mean):
+            km["ppg_to_iristemp_writes_ratio"] = {
+                "value": float(ppg_mean) / float(ws_mean),
+                "basis": "mean(PPGupds) / mean(w/s on IRIS-role devices) — cross-source, mean-based",
+                "caveat": "IRIS-role device carries more than IRISTEMP"}
+    return km
+
+
+def _slice_by_period(df, weekday: str, period: str):
+    if df is None or df.empty or "dt" not in getattr(df, "columns", []):
+        return pd.DataFrame()
+    d = _add_period_cols(df)
+    return d[(d["_weekday"] == weekday) & (d["_period"] == period)]
+
+
+def _compute_key_metrics(mg_df, vm_df, iostat_df, role_map, facts) -> dict:
+    """Analyst scorecard: overall window plus the peak (highest mean Glorefs) weekday×period."""
+    overall = _key_metrics_slice(mg_df, vm_df, iostat_df, role_map, facts)
+    peak = None
+    if mg_df is not None and not mg_df.empty and "Glorefs" in mg_df.columns:
+        dfp = _add_period_cols(mg_df)
+        if not dfp.empty:
+            means = dfp.groupby(["_weekday", "_period"])["Glorefs"].mean()
+            if not means.empty:
+                weekday, period = means.idxmax()
+                peak = {
+                    "weekday": weekday,
+                    "period": period,
+                    "metrics": _key_metrics_slice(
+                        _slice_by_period(mg_df, weekday, period),
+                        _slice_by_period(vm_df, weekday, period),
+                        _slice_by_period(iostat_df, weekday, period),
+                        role_map, facts),
+                }
+    return {"overall": overall, "peak_period": peak}
+
+
+def _build_not_available(mg_df, role_map) -> list:
+    """Metrics this dataset cannot provide, with collection advice. Seeds the LLM's data-request list."""
+    na = [
+        {"metric": "transaction rate",
+         "reason": "journal files are not part of a SystemPerformance capture",
+         "how_to_collect": "journal file analysis (Begin/Commit records)"},
+        {"metric": "global updates per transaction",
+         "reason": "requires the journal-derived transaction rate",
+         "how_to_collect": "journal file analysis"},
+        {"metric": "ECP synch rate",
+         "reason": "ECP synch records live in journal files",
+         "how_to_collect": "journal file analysis"},
+        {"metric": "global kill rate",
+         "reason": "mgstat Gloupds merges sets and kills",
+         "how_to_collect": "^GLOSTAT collection"},
+        {"metric": "bitsets rate / bitsets-to-update ratio",
+         "reason": "not reported by mgstat",
+         "how_to_collect": "^GLOSTAT collection"},
+        {"metric": "max IRIS / user processes",
+         "reason": "process counts are not captured as a timeseries",
+         "how_to_collect": "license/process count monitoring during the window"},
+        {"metric": "average memory per IRIS process",
+         "reason": "per-process memory is not captured",
+         "how_to_collect": "periodic ps RSS sampling"},
+        {"metric": "routine buffer statistics",
+         "reason": "irisstat -R output is not in standard profiles",
+         "how_to_collect": "irisstat -R snapshots"},
+    ]
+    has_ppg = mg_df is not None and not mg_df.empty and "PPGupds" in mg_df.columns
+    if not has_ppg:
+        na.append({"metric": "PPG update rate and ratios",
+                   "reason": "mgstat from this IRIS version has no PPGupds column",
+                   "how_to_collect": "capture from a newer IRIS version or ^GLOSTAT"})
+    if not _role_devices(role_map, "Database"):
+        na.append({"metric": "database disk I/O metrics",
+                   "reason": "no Database-role device identified (CPF or iostat missing from capture)",
+                   "how_to_collect": "re-run yaspe on a capture containing the CPF and iostat sections"})
+    return na
+
+
 def _load_iostat_role_map(connection) -> dict:
     """
     Return {role_label: device} from overview 'iris disk role *' entries.
@@ -286,6 +496,24 @@ def _resample_iostat(iostat_df: pd.DataFrame, device: str, interval: str) -> lis
     return resampled.where(resampled.notna(), None).to_dict(orient="records")
 
 
+def _load_iostat_df(connection) -> pd.DataFrame:
+    """Load iostat from SQLite with a 'dt' column. Empty DataFrame on any error."""
+    try:
+        df = pd.read_sql_query("SELECT * FROM iostat", connection)
+        if df.empty:
+            return pd.DataFrame()
+        if "datetime" in df.columns:
+            df["dt"] = pd.to_datetime(df["datetime"].str.strip(), errors="coerce")
+        else:
+            df["dt"] = pd.to_datetime(
+                df["RunDate"].str.strip() + " " + df["RunTime"].str.strip(),
+                errors="coerce",
+            )
+        return df.dropna(subset=["dt"]).reset_index(drop=True)
+    except Exception:
+        return pd.DataFrame()
+
+
 def _build_iostat_timeseries(connection, interval: str) -> list:
     """
     Build iostat timeseries for IRIS-role devices only.
@@ -294,22 +522,9 @@ def _build_iostat_timeseries(connection, interval: str) -> list:
     role_map = _load_iostat_role_map(connection)
     if not role_map:
         return []
-
-    try:
-        iostat_df = pd.read_sql_query("SELECT * FROM iostat", connection)
-        if iostat_df.empty:
-            return []
-        if "datetime" in iostat_df.columns:
-            iostat_df["dt"] = pd.to_datetime(iostat_df["datetime"].str.strip(), errors="coerce")
-        else:
-            iostat_df["dt"] = pd.to_datetime(
-                iostat_df["RunDate"].str.strip() + " " + iostat_df["RunTime"].str.strip(),
-                errors="coerce",
-            )
-        iostat_df = iostat_df.dropna(subset=["dt"]).reset_index(drop=True)
-    except Exception:
+    iostat_df = _load_iostat_df(connection)
+    if iostat_df.empty:
         return []
-
     result = []
     for role, device in role_map.items():
         records = _resample_iostat(iostat_df, device, interval)
