@@ -42,7 +42,7 @@ function resetAll() {
         'xaxis.autorange': true,
         'xaxis2.autorange': true,
         shapes: noHighlightShapes()
-    }).then(function() { syncing = false; });
+    }).then(function() { syncing = false; btn.style.display = 'none'; });
 }
 
 gd.on('plotly_relayout', function(eventdata) {
@@ -57,7 +57,7 @@ gd.on('plotly_relayout', function(eventdata) {
             'xaxis.range[0]': r0, 'xaxis.range[1]': r1,
             'xaxis.autorange': false,
             'xaxis2.autorange': true
-        }).then(function() { syncing = false; applyHighlight(r0, r1); });
+        }).then(function() { syncing = false; applyHighlight(r0, r1); btn.style.display = 'block'; });
         return;
     }
     // Double-click on either chart: reset both axes and clear highlight
@@ -71,8 +71,17 @@ gd.on('plotly_relayout', function(eventdata) {
     if (m0 !== undefined && m1 !== undefined) {
         zoomRange = [m0, m1];
         applyHighlight(m0, m1);
+        btn.style.display = 'block';
     }
 });
+
+// Reset Zoom button — reliable alternative to double-click
+var btn = document.createElement('button');
+btn.textContent = 'Reset Zoom';
+btn.style.cssText = 'position:absolute;top:8px;left:8px;z-index:999;padding:6px 14px;font-size:13px;font-weight:bold;color:#fff;background:#e63946;border:none;border-radius:4px;cursor:pointer;display:none;box-shadow:0 2px 6px rgba(0,0,0,0.3);';
+btn.addEventListener('click', resetAll);
+gd.style.position = 'relative';
+gd.appendChild(btn);
 })();
 """
 
