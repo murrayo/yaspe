@@ -913,6 +913,187 @@ explicit -d lists are unchanged. Files without CPF info keep all devices."
 
 ---
 
+### Task 3b: Windows perfmon disk-column filtering via `-d` (`extract_sections.py`)
+
+**Files:**
+- Modify: `extract_sections.py` — perfmon header branch (~line 490) and perfmon data branch (~line 475) inside `extract_sections`
+- Modify: `README.md` — one sentence extending the `-d` description
+- Test: `tests/test_perfmon_disk_filter.py` (new)
+
+**Interfaces:**
+- Consumes: `disk_list` parameter already threaded into `extract_sections` (Task 3 does not change its meaning for Windows — CPF auto-detection is Linux-only, so on Windows only an explicit `-d` list activates this).
+- Produces: no new functions. Behaviour: on Windows, `-d F: J:` (or `-d F J`, case-insensitive) keeps only PhysicalDisk/LogicalDisk *columns* whose instance drive letter matches, plus `_Total` and every non-disk column. Empty `disk_list` = no filtering (default run and golden diffs unaffected).
+
+**Context for the implementer:** perfmon is column-oriented — one CSV column per (disk × counter), e.g. `\\HOST\PhysicalDisk(4 F:)\Disk Reads/sec`; instances look like `0 C:`, `4 F:`, `_Total`. On the reference Windows sample, 80 of 163 columns are disk columns. Filtering must happen on the RAW header line (before the existing character-cleaning mangles `(4 F:)` into `4_F`), by computing keep-indices once, then applying them to every data row.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `tests/test_perfmon_disk_filter.py`:
+
+```python
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from extract_sections import extract_sections
+
+WIN_HTML = """\
+<html><head><title>Test</title></head>
+Profile run "test" started by user "u" at 00:00:00 on May 29 2026.
+<div id=perfmon></div>perfmon<br><pre>
+"(PDH-CSV 4.0) (UTC)(0)","\\\\H\\Memory\\Available MBytes","\\\\H\\PhysicalDisk(0 C:)\\Disk Reads/sec","\\\\H\\PhysicalDisk(1 F:)\\Disk Reads/sec","\\\\H\\PhysicalDisk(_Total)\\Disk Reads/sec","\\\\H\\Processor(_Total)\\% Processor Time"
+"05/29/2026 06:30:15.123","1000","5","7","12","55"
+"05/29/2026 06:30:45.123","1100","6","8","14","60"
+<!-- end_win_perfmon -->
+"""
+
+
+def _write(tmp_path):
+    p = tmp_path / "win.html"
+    p.write_text(WIN_HTML, encoding="ISO-8859-1")
+    return str(p)
+
+
+def _perfmon_df(path, disk_list):
+    dfs = extract_sections(
+        operating_system="Windows",
+        input_file=path,
+        include_iostat=False,
+        include_nfsiostat=False,
+        html_filename="win.html",
+        disk_list=disk_list,
+    )
+    return dfs[4]  # perfmon_df
+
+
+def test_no_filter_keeps_all_columns(tmp_path):
+    df = _perfmon_df(_write(tmp_path), [])
+    disk_cols = [c for c in df.columns if "PhysicalDisk" in c]
+    assert len(disk_cols) == 3  # C:, F:, _Total
+    assert len(df) == 2
+
+
+def test_filter_keeps_selected_letter_total_and_nondisk(tmp_path):
+    df = _perfmon_df(_write(tmp_path), ["F:"])
+    disk_cols = [c for c in df.columns if "PhysicalDisk" in c]
+    assert len(disk_cols) == 2  # F: and _Total
+    assert any("1_F" in c for c in disk_cols)
+    assert all("0_C" not in c for c in disk_cols)
+    # non-disk columns untouched
+    assert any("Available_MBytes" in c for c in df.columns)
+    assert any("Processor_Time" in c for c in df.columns)
+    # data still aligned with headers after filtering
+    assert len(df) == 2
+
+
+def test_filter_accepts_bare_letter_case_insensitive(tmp_path):
+    df = _perfmon_df(_write(tmp_path), ["f"])
+    disk_cols = [c for c in df.columns if "PhysicalDisk" in c]
+    assert len(disk_cols) == 2
+```
+
+- [ ] **Step 2: Run tests to verify the filter tests fail**
+
+Run: `python3 -m pytest tests/test_perfmon_disk_filter.py -v`
+Expected: `test_no_filter_keeps_all_columns` PASSES (documents current behaviour); the two filter tests FAIL (all disk columns present despite `disk_list`).
+
+- [ ] **Step 3: Implement the column filter**
+
+In `extract_sections.py`:
+
+1. With the other perfmon state variables (~line 154), add:
+
+```python
+    perfmon_keep_indices = None
+```
+
+2. In the perfmon header branch (`if perfmon_processing and "Memory" in line:`, ~line 490), insert at the TOP of the branch, before the existing character-cleaning:
+
+```python
+                    # Optional disk-column filter: perfmon stores disks as columns
+                    # (one per disk x counter). With -d, keep only matching drive
+                    # letters, _Total, and every non-disk counter. Must run on the
+                    # raw header before the character clean-up below mangles "(4 F:)".
+                    if disk_list:
+                        raw_cols = line.split(",")
+                        wanted = {d.strip().rstrip(":").upper() for d in disk_list}
+                        keep = []
+                        for idx, col in enumerate(raw_cols):
+                            if "PhysicalDisk(" in col or "LogicalDisk(" in col:
+                                a = col.find("(")
+                                b = col.find(")", a)
+                                instance = col[a + 1 : b] if b != -1 else ""
+                                if instance == "_Total":
+                                    keep.append(idx)
+                                    continue
+                                parts = instance.split()
+                                letter = parts[-1].rstrip(":").upper() if parts else ""
+                                if letter in wanted:
+                                    keep.append(idx)
+                            else:
+                                keep.append(idx)
+                        if len(keep) < len(raw_cols):
+                            perfmon_keep_indices = keep
+                            line = ",".join(raw_cols[i] for i in keep)
+```
+
+3. In the perfmon data branch (~line 478), right after `values = line.split(",")`, insert:
+
+```python
+                        if perfmon_keep_indices is not None and len(values) >= len(perfmon_columns):
+                            values = [values[i] for i in perfmon_keep_indices]
+```
+
+Note the guard: a short/truncated row is left unfiltered and falls through to the existing `dict(zip(...))`/`dropna` handling rather than raising IndexError.
+
+- [ ] **Step 4: Run the full suite**
+
+Run: `python3 -m pytest tests/ -v`
+Expected: all PASS. The Windows golden diff from Tasks 1–2 is unaffected because default runs pass an empty `disk_list`.
+
+- [ ] **Step 5: Manual check on the real Windows sample**
+
+```bash
+cd "/private/tmp/claude-1499724556/-Users-moldfiel-projects-all-live-projects-yaspe/5a45a5f2-bac9-472b-9b20-ba8057bc7e95/scratchpad/perf_test/win"
+rm -f t3b_SystemPerformance.sqlite
+python3 /Users/moldfiel/projects/all_live_projects/yaspe/yaspe.py -i win.html -a -x -o t3b -d F: J:
+python3 - <<'EOF'
+import sqlite3
+conn = sqlite3.connect("t3b_SystemPerformance.sqlite")
+cols = [r[1] for r in conn.execute("PRAGMA table_info('perfmon')")]
+disk = [c for c in cols if "PhysicalDisk" in c or "LogicalDisk" in c]
+print(len(cols), "columns,", len(disk), "disk columns")
+letters = {c.split("PhysicalDisk")[1][:4] for c in disk if "PhysicalDisk" in c}
+print("instances:", sorted(letters))
+EOF
+```
+
+Expected: disk columns only for F:, J:, and `_Total` (~24 instead of 80); charts still render (`yaspe.py -e t3b_SystemPerformance.sqlite -p` produces perfmon charts without traceback).
+
+- [ ] **Step 6: Update README**
+
+Extend the `-d` documentation sentence:
+
+```markdown
+On Windows, `-d` filters perfmon disk counters by drive letter (e.g. `-d F: J:`):
+only matching PhysicalDisk/LogicalDisk columns are stored, plus `_Total` and all
+non-disk counters.
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add extract_sections.py README.md tests/test_perfmon_disk_filter.py
+git commit -m "feat: filter Windows perfmon disk columns by drive letter via -d
+
+Perfmon stores disks as columns (80 of 163 on reference sample). With -d,
+keep-indices are computed once from the raw header; _Total and non-disk
+counters always kept. Default runs (no -d) are unchanged."
+```
+
+---
+
 ### Task 4: Multi-day column-alignment hardening (`yaspe.py`)
 
 **Files:**
