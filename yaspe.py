@@ -134,6 +134,25 @@ def insert_dict_into_table(connection, table_name, _dict):
         connection.execute(f"INSERT INTO {table_name} ({keys}) VALUES ({question_marks})", values)
 
 
+def align_table_columns(connection, table_name, df):
+    """Before a to_sql append: ALTER TABLE ADD COLUMN for any DataFrame column
+    the existing table lacks, so a day with new metrics doesn't abort the
+    append ("table X has no column named Y"). Columns the DataFrame lacks are
+    harmless — pandas inserts only the DataFrame's own columns and SQLite
+    fills the rest with NULL. No-op if the table doesn't exist yet."""
+    cursor = connection.cursor()
+    cursor.execute("SELECT count(name) FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+    if cursor.fetchone()[0] == 0:
+        return
+    existing = {row[1] for row in cursor.execute(f'PRAGMA table_info("{table_name}")').fetchall()}
+    kind_to_sql = {"i": "INTEGER", "u": "INTEGER", "b": "INTEGER", "f": "REAL"}
+    for column in df.columns:
+        if column not in existing:
+            sql_type = kind_to_sql.get(df[column].dtype.kind, "TEXT")
+            cursor.execute(f'ALTER TABLE "{table_name}" ADD COLUMN "{column}" {sql_type}')
+    connection.commit()
+
+
 def is_column_numeric(df, column_name):
     try:
         pd.to_numeric(df[column_name])
@@ -208,6 +227,7 @@ def create_sections(
 
     # Add each section to the database
     if not mgstat_df.empty:
+        align_table_columns(connection, "mgstat", mgstat_df)
         mgstat_df.to_sql("mgstat", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
 
@@ -225,6 +245,7 @@ def create_sections(
                 mgstat_df.to_csv(mgstat_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
     if not vmstat_df.empty:
+        align_table_columns(connection, "vmstat", vmstat_df)
         vmstat_df.to_sql("vmstat", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
 
@@ -242,6 +263,7 @@ def create_sections(
                 vmstat_df.to_csv(vmstat_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
     if not perfmon_df.empty:
+        align_table_columns(connection, "perfmon", perfmon_df)
         perfmon_df.to_sql("perfmon", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
 
@@ -260,6 +282,7 @@ def create_sections(
 
     if not iostat_df.empty:
         # id_key is used when there is no time
+        align_table_columns(connection, "iostat", iostat_df)
         iostat_df.to_sql("iostat", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
 
@@ -278,6 +301,7 @@ def create_sections(
 
     if not nfsiostat_df.empty:
         # id_key is used when there is no time
+        align_table_columns(connection, "nfsiostat", nfsiostat_df)
         nfsiostat_df.to_sql("nfsiostat", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
 
@@ -295,6 +319,7 @@ def create_sections(
                 nfsiostat_df.to_csv(nfsiostat_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
     if not aix_sar_d_df.empty:
+        align_table_columns(connection, "aix_sar_d", aix_sar_d_df)
         aix_sar_d_df.to_sql("aix_sar_d", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
 
@@ -312,6 +337,7 @@ def create_sections(
                 aix_sar_d_df.to_csv(aix_sar_d_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
     if not free_df.empty:
+        align_table_columns(connection, "free_memory", free_df)
         free_df.to_sql("free_memory", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
 
