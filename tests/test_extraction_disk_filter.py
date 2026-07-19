@@ -2,8 +2,11 @@ import os
 import sqlite3
 import sys
 
+import pandas as pd
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import yaspe
 from yaspe import get_cpf_auto_disk_list
 
 
@@ -60,3 +63,57 @@ def test_auto_list_windows_drive_letters():
         ("iris disk role WIJ", "W:"),
     ])
     assert get_cpf_auto_disk_list(conn) == ["C:", "G:", "J:", "W:"]
+
+
+def _stub_extract_sections_recording(recorded):
+    """Return a stub matching extract_sections' signature that records the
+    disk_list it was called with and returns 7 empty DataFrames, so
+    create_sections skips all to_sql/csv work downstream."""
+
+    def _stub(operating_system, input_file, include_iostat, include_nfsiostat, html_filename, disk_list):
+        recorded["disk_list"] = disk_list
+        empty = pd.DataFrame({"empty": []})
+        return empty, empty, empty, empty, empty, empty, empty
+
+    return _stub
+
+
+def test_create_sections_wires_windows_auto_disk_list(monkeypatch):
+    conn = _make_overview([
+        ("operating system", "Windows"),
+        ("iris disk role Database 0", "C:"),
+        ("iris disk role Primary Journal", "J:"),
+    ])
+    recorded = {}
+    monkeypatch.setattr(yaspe, "extract_sections", _stub_extract_sections_recording(recorded))
+
+    yaspe.create_sections(conn, "unused.html", True, False, "t.html", False, "/tmp/unused_", [], False)
+
+    assert recorded["disk_list"] == ["C:", "J:"]
+
+
+def test_create_sections_wires_linux_auto_disk_list(monkeypatch):
+    conn = _make_overview([
+        ("operating system", "Linux"),
+        ("iris disk role Database 0", "dm-1"),
+    ])
+    recorded = {}
+    monkeypatch.setattr(yaspe, "extract_sections", _stub_extract_sections_recording(recorded))
+
+    yaspe.create_sections(conn, "unused.html", True, False, "t.html", False, "/tmp/unused_", [], False)
+
+    assert recorded["disk_list"] == ["dm-1"]
+
+
+def test_create_sections_all_disks_suppresses_auto_list(monkeypatch):
+    conn = _make_overview([
+        ("operating system", "Windows"),
+        ("iris disk role Database 0", "C:"),
+        ("iris disk role Primary Journal", "J:"),
+    ])
+    recorded = {}
+    monkeypatch.setattr(yaspe, "extract_sections", _stub_extract_sections_recording(recorded))
+
+    yaspe.create_sections(conn, "unused.html", True, False, "t.html", False, "/tmp/unused_", [], False, True)
+
+    assert recorded["disk_list"] == []
