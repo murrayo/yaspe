@@ -31,7 +31,16 @@ percentiles, ratios, breach detection); **the LLM does the judgment work**
   SQLite DB, not `.mgst` input).
 - **Keep `--context "free text"`** — help text reworded to reference the LLM
   context file. The note is included in the bundle and passes through the scrub.
-- **Keep `--resample`** (default `5min`), unchanged.
+- **`--resample` default becomes adaptive.** With no explicit value, the
+  interval scales with the collection window so multi-day bundles stay inside
+  chat context windows: ≤2 days → `5min`, 3–4 days → `15min`, ≥5 days →
+  `30min` (argparse default `None` = auto). An explicit `--resample` always
+  wins. Multi-day databases are fully supported — `period_stats`, baselines,
+  and peak-period selection are already weekday-aware and do not grow with
+  window length; only the timeseries CSV does, which this addresses. The
+  bundle's timeseries caption states the chosen interval, and precise
+  statistics come from full-resolution `period_stats`, so a coarser timeseries
+  on long windows loses shape fidelity only.
 
 `--llm-context` now writes **two files** to the output directory:
 

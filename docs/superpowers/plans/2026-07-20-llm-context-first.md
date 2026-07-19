@@ -19,6 +19,7 @@
 - Bundle filename: `{prefix}performance_context_{start}_{end}.md`; prompt filename: `{prefix}llm_analysis_prompt.md`
 - `schema_version` is the string `"2.0"`
 - All timestamps `%Y-%m-%d %H:%M:%S`
+- Resample default is adaptive: `None` (auto) → 5min for ≤2 days, 15min for 3–4, 30min for ≥5; an explicit `--resample` value always wins
 - Floats in rendered output are rounded: ratios 2 decimals, values ≥100 integers, else 1 decimal — never full float repr
 - Ratios computed from sums (never mean-of-ratios) when numerator and denominator come from the same rows; cross-source rate ratios use mean/mean and say so in `basis`
 - The scrub never raises; export must succeed even if scrubbing fails internally
@@ -905,7 +906,9 @@ git commit -m "feat: anonymization scrub for LLM context export"
 
 **Interfaces:**
 - Consumes: `_compute_period_stats` (Task 2), `_compute_key_metrics`, `_build_not_available`, `_load_iostat_df`, `_load_iostat_role_map` (Task 3), `_gather_secrets`, `_scrub` (Task 4)
-- Produces: `build_llm_context(connection, sp_dict, resample_interval="5min", context=None) -> dict` with keys `schema_version ("2.0"), generated_by, context, system (NO customer), collection, baselines, findings, period_stats, key_metrics, not_available, timeseries` — fully scrubbed
+- Produces:
+  - `_auto_resample_interval(n_days) -> str` — `"5min"` for ≤2 days (or None), `"15min"` for 3–4, `"30min"` for ≥5
+  - `build_llm_context(connection, sp_dict, resample_interval=None, context=None) -> dict` with keys `schema_version ("2.0"), generated_by, context, system (NO customer), collection, baselines, findings, period_stats, key_metrics, not_available, timeseries` — fully scrubbed; `resample_interval=None` resolves via `_auto_resample_interval(meta["n_days"])`
 
 - [ ] **Step 1: Update existing tests and add new ones**
 
@@ -972,6 +975,32 @@ def test_build_llm_context_not_available_populated():
     result = build_llm_context(conn, {})
     assert any("transaction rate" in e["metric"] for e in result["not_available"])
     conn.close()
+
+
+def test_auto_resample_interval_boundaries():
+    from llm_context import _auto_resample_interval
+    assert _auto_resample_interval(None) == "5min"
+    assert _auto_resample_interval(1) == "5min"
+    assert _auto_resample_interval(2) == "5min"
+    assert _auto_resample_interval(3) == "15min"
+    assert _auto_resample_interval(4) == "15min"
+    assert _auto_resample_interval(5) == "30min"
+    assert _auto_resample_interval(7) == "30min"
+
+
+def test_build_llm_context_auto_resample_default():
+    conn = _make_sqlite_with_data()
+    # fixture is a single day → auto resolves to 5min
+    result = build_llm_context(conn, {})
+    assert result["timeseries"]["resample_interval"] == "5min"
+    conn.close()
+
+
+def test_build_llm_context_explicit_resample_wins():
+    conn = _make_sqlite_with_data()
+    result = build_llm_context(conn, {}, resample_interval="10min")
+    assert result["timeseries"]["resample_interval"] == "10min"
+    conn.close()
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -984,7 +1013,26 @@ Expected: schema/new-key assertions FAIL (schema is still "1.0", new keys missin
 
 - [ ] **Step 3: Update `build_llm_context`**
 
-Modify the existing function: after `facts = _pa._get_system_facts(sp_dict)` add `facts.pop("customer", None)`. After the timeseries assembly, add the new sections and scrub before returning:
+Add the auto-interval helper:
+
+```python
+def _auto_resample_interval(n_days) -> str:
+    """Timeseries interval scaled to window length so bundles stay chat-sized."""
+    if not n_days or n_days <= 2:
+        return "5min"
+    if n_days <= 4:
+        return "15min"
+    return "30min"
+```
+
+Modify the existing function: change the signature default to `resample_interval: Optional[str] = None`; after `meta = _pa._get_collection_meta(connection)` add:
+
+```python
+    if resample_interval is None:
+        resample_interval = _auto_resample_interval(meta.get("n_days"))
+```
+
+After `facts = _pa._get_system_facts(sp_dict)` add `facts.pop("customer", None)`. After the timeseries assembly, add the new sections and scrub before returning:
 
 ```python
     role_map = _load_iostat_role_map(connection)
@@ -1546,20 +1594,22 @@ def export_llm_context(
     sp_dict: dict,
     output_prefix: str,
     filepath: str,
-    resample_interval: str = "5min",
+    resample_interval: Optional[str] = None,
     context: Optional[str] = None,
 ) -> tuple:
     """
     Build and write the LLM context bundle and companion prompt.
+    resample_interval None = auto (scaled to window length).
     Returns (bundle_path, prompt_path).
     """
-    try:
-        pd.tseries.frequencies.to_offset(resample_interval)
-    except (ValueError, TypeError):
-        raise ValueError(
-            f"Invalid resample interval: {resample_interval!r}. "
-            "Examples: '5min', '10min', '1min'."
-        )
+    if resample_interval is not None:
+        try:
+            pd.tseries.frequencies.to_offset(resample_interval)
+        except (ValueError, TypeError):
+            raise ValueError(
+                f"Invalid resample interval: {resample_interval!r}. "
+                "Examples: '5min', '10min', '1min'."
+            )
 
     ctx = build_llm_context(connection, sp_dict, resample_interval, context)
 
@@ -1623,6 +1673,21 @@ Help-text updates:
     )
 ```
 
+```python
+    parser.add_argument(
+        "--resample",
+        dest="resample_interval",
+        help="Resample interval for timeseries in the LLM context bundle. "
+             "Default: auto — 5min for up to 2 days of data, 15min for 3-4, "
+             "30min for 5+. Examples: 5min, 10min, 30min.",
+        action="store",
+        default=None,
+        metavar="INTERVAL",
+    )
+```
+
+Also change the `mainline(...)` parameter default from `resample_interval="5min"` to `resample_interval=None`.
+
 - [ ] **Step 5: Run all tests**
 
 ```bash
@@ -1668,7 +1733,8 @@ Remove/replace any `--analysis` documentation. Add (near the other flag docs, ma
 
 Attach **both** files to your LLM chat of choice. Use `--context "note"` to
 embed a free-text note (it is redacted like everything else) and `--resample`
-to change the timeseries interval (default 5min).
+to override the timeseries interval (default: auto — 5min for up to 2 days,
+15min for 3–4, 30min for 5+, so multi-day bundles stay LLM-sized).
 
     ./yaspe.py -e yaspe_SystemPerformance.sqlite --llm-context -o yaspe
 
@@ -1723,6 +1789,7 @@ git commit -m "docs: README — LLM context bundle workflow replaces --analysis"
 | Scrub: secrets from sp_dict, FQDN short forms, word-boundary, allowlist, never raises | 4 |
 | `system.customer` removed at source | 5 |
 | Schema `"2.0"`, scrub applied to whole dict incl. context note | 5 |
+| Adaptive resample default (auto by n_days, explicit wins) | 5, 7 |
 | Markdown bundle: YAML header, tables, fenced CSV, rounding rules | 6 |
 | CSV round-trips via pandas; no full float repr | 6 |
 | `PROMPT_TEMPLATE` with all 7 spec content sections | 7 |
