@@ -2928,50 +2928,6 @@ def _split_filepath(fp, png_html_out):
     return _make_chart_dir(fp.rstrip("/"), "png"), _make_chart_dir(fp.rstrip("/"), "html")
 
 
-def _render_analysis_chart(chart_request, output_prefix):
-    """Render a single analysis finding chart as PNG using matplotlib."""
-    cr = chart_request
-    df = cr.df.copy()
-    if df.empty:
-        return
-
-    dt_col = "datetime_parsed" if "datetime_parsed" in df.columns else "dt"
-    if dt_col not in df.columns:
-        return
-
-    fig, ax1 = plt.subplots(figsize=(16, 6))
-    plt.style.use("seaborn-v0_8-whitegrid")
-
-    ax1.plot(df[dt_col], df["metric"], color="steelblue", linewidth=1.2, label=cr.metric)
-
-    if cr.warn_level and cr.warn_level > 0:
-        ax1.axhline(y=cr.warn_level, color="orange", linestyle="--", linewidth=1, label=f"Warning ({cr.warn_level})")
-    if cr.alert_level and cr.alert_level > 0:
-        ax1.axhline(y=cr.alert_level, color="red", linestyle="--", linewidth=1, label=f"Alert ({cr.alert_level})")
-
-    for span_start, span_end in cr.shading_spans:
-        ax1.axvspan(span_start, span_end, alpha=0.2, color="red")
-
-    if cr.twin_df is not None and cr.twin_metric:
-        ax2 = ax1.twinx()
-        ax2.plot(cr.twin_df[dt_col], cr.twin_df["metric"],
-                 color="darkorange", linewidth=1.0, linestyle=":", label=cr.twin_metric)
-        ax2.set_ylabel(cr.twin_metric, color="darkorange")
-        ax2.legend(loc="upper right")
-
-    ax1.set_title(cr.title)
-    ax1.set_xlabel("Time")
-    ax1.set_ylabel(cr.metric)
-    ax1.xaxis.set_major_formatter(plt_dates.DateFormatter("%H:%M"))
-    ax1.legend(loc="upper left")
-    fig.autofmt_xdate()
-
-    out_path = os.path.join(cr.output_dir, f"{cr.filename}.png")
-    plt.savefig(out_path, format="png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Analysis chart: {out_path}")
-
-
 def mainline(
     input_file,
     include_iostat,
@@ -2994,7 +2950,6 @@ def mainline(
     day_overlay=False,
     bh_charts=False,
     long_period_smooth=5,
-    analysis=False,
     context=None,
     llm_context=False,
     resample_interval="5min",
@@ -3157,31 +3112,6 @@ def mainline(
 
         close_connection(connection)
         connection = None
-
-    # Performance analysis — runs for all modes: -i, -e, append
-    if analysis and not input_error and not mgstat_file:
-        analysis_conn = create_connection(sql_filename)
-        try:
-            # sp_dict may be None when using -e (no HTML parsed); build a minimal one from the DB
-            if not sp_dict:
-                try:
-                    rows = execute_read_query(analysis_conn, "SELECT field, value FROM overview")
-                    sp_dict = {r[0]: r[1] for r in rows} if rows else {}
-                except Exception:
-                    sp_dict = {}
-            import performance_analysis
-            md_path, chart_requests = performance_analysis.run_analysis(
-                connection=analysis_conn,
-                sp_dict=sp_dict,
-                output_prefix=output_prefix,
-                filepath=filepath,
-                context=context,
-            )
-            print(f"Analysis report: {md_path}")
-            for cr in chart_requests:
-                _render_analysis_chart(cr, output_prefix)
-        finally:
-            close_connection(analysis_conn)
 
     # LLM context export
     if llm_context and not input_error and not mgstat_file:
@@ -3543,13 +3473,6 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--analysis",
-        dest="analysis",
-        help="Run performance analysis report (implies -s). Writes a narrative markdown summary.",
-        action="store_true",
-    )
-
-    parser.add_argument(
         "--context",
         dest="context",
         help='Optional context note for the analysis report (e.g. "users reported slowness Tuesday").',
@@ -3613,7 +3536,7 @@ if __name__ == "__main__":
     # yaml input
     site_survey_input = {}
 
-    if args.analysis:
+    if args.llm_context:
         args.system_out = True
 
     try:
@@ -3639,7 +3562,6 @@ if __name__ == "__main__":
             args.day_overlay,
             args.bh_charts,
             args.long_period_smooth,
-            args.analysis,
             args.context,
             args.llm_context,
             args.resample_interval,

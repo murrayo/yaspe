@@ -7,8 +7,7 @@ import tempfile
 import pandas as pd
 from datetime import datetime
 
-from performance_analysis import IRIS_PERIODS, METRIC_THRESHOLDS, Finding, ChartRequest
-from performance_analysis import run_analysis
+from performance_analysis import IRIS_PERIODS, METRIC_THRESHOLDS, Finding
 from performance_analysis import _get_collection_meta, _get_system_facts
 from performance_analysis import _label_period, _compute_baselines, _find_breaches
 from performance_analysis import _analyse_vmstat
@@ -18,7 +17,6 @@ from performance_analysis import (
     _test_memory_danger, _test_contention_vs_throughput,
     _test_kernel_overhead, _test_batch_window,
 )
-from performance_analysis import _attach_chart_requests, _write_report
 
 def test_iris_periods_count():
     assert len(IRIS_PERIODS) == 9
@@ -53,26 +51,8 @@ def test_finding_dataclass():
         corroborating=[],
         hypotheses=["hypothesis: storage latency"],
         next_step="Monitor",
-        chart_request=None,
     )
     assert f.severity == "Yellow"
-    assert f.chart_request is None
-
-def test_chart_request_dataclass():
-    import pandas as pd
-    cr = ChartRequest(
-        metric="wa",
-        title="I/O Wait",
-        df=pd.DataFrame({"datetime_parsed": [], "metric": []}),
-        warn_level=10.0,
-        alert_level=20.0,
-        shading_spans=[],
-        twin_metric=None,
-        twin_df=None,
-        output_dir="/tmp",
-        filename="wa_finding",
-    )
-    assert cr.warn_level == 10.0
 
 
 def _make_test_db(rows):
@@ -444,169 +424,3 @@ def test_memory_danger_detects_free_declining_with_swap():
     result = _test_memory_danger(df)
     assert result is not None
     assert result.severity == "Red"
-
-
-# Task 8: _attach_chart_requests and _write_report
-
-def test_attach_chart_requests_only_nongreen():
-    n = 5
-    base_dt = pd.date_range("2026-01-01 09:00:00", periods=n, freq="5s")
-    df = pd.DataFrame({"dt": base_dt, "wa": [25.0]*n, "metric": [25.0]*n})
-    red_finding = Finding(
-        metric="wa (I/O wait %)", severity="Red",
-        observation="wa exceeded 20%", when="09:00:00",
-        chart_request=None,
-    )
-    green_finding = Finding(
-        metric="vmstat (all)", severity="Green",
-        observation="All clear", when="entire window",
-        chart_request=None,
-    )
-    findings = [red_finding, green_finding]
-    metric_df_map = {"wa (I/O wait %)": df}
-    result = _attach_chart_requests(findings, metric_df_map, output_dir="/tmp")
-    assert result[0].chart_request is not None   # Red gets chart
-    assert result[1].chart_request is None        # Green does not
-
-
-def test_write_report_creates_file(tmp_path):
-    meta = {
-        "start": pd.Timestamp("2026-01-01 09:00:00"),
-        "end":   pd.Timestamp("2026-01-01 17:00:00"),
-        "n_days": 1, "weekdays": ["Thursday"],
-        "interval_seconds": 5, "gaps": [],
-    }
-    facts = {"vcpus": 8, "ram_gb": 32, "iris_buffers_gb": 16,
-             "customer": "TestHospital", "version": "IRIS 2024.1", "os": "Linux"}
-    findings = [Finding(
-        metric="vmstat (all)", severity="Green",
-        observation="All clear", when="entire window",
-    )]
-    baselines = {}
-    path = _write_report(
-        meta=meta, facts=facts, findings=findings, baselines=baselines,
-        context="Routine health check", output_dir=str(tmp_path),
-    )
-    assert os.path.exists(path)
-    content = open(path).read()
-    assert "Executive Summary" in content
-    assert "TestHospital" in content
-    assert "Green" in content
-
-
-def test_write_report_filename_uses_dates(tmp_path):
-    meta = {
-        "start": pd.Timestamp("2026-01-05 09:00:00"),
-        "end":   pd.Timestamp("2026-01-07 17:00:00"),
-        "n_days": 3, "weekdays": ["Monday", "Tuesday", "Wednesday"],
-        "interval_seconds": 30, "gaps": [],
-    }
-    facts = {"vcpus": None, "ram_gb": None, "iris_buffers_gb": None,
-             "customer": "Unknown", "version": None, "os": "Linux"}
-    path = _write_report(
-        meta=meta, facts=facts, findings=[], baselines={},
-        context=None, output_dir=str(tmp_path),
-    )
-    assert "2026-01-05" in os.path.basename(path)
-    assert "2026-01-07" in os.path.basename(path)
-
-
-def test_run_analysis_returns_markdown_path(tmp_path):
-    """run_analysis() must return a path to an existing .md file."""
-    rows = [
-        ("01/01/2026", "09:00:00", 1000,10,5,200,50,0,17,0,1000,10,"f.html"),
-        ("01/01/2026", "09:00:05", 1100,11,5,210,50,0,17,0,1000,10,"f.html"),
-        ("01/01/2026", "09:00:10",  900, 9,5,190,50,0,17,0,1000,10,"f.html"),
-        ("01/01/2026", "09:00:15", 1050,10,5,200,50,0,17,0,1000,10,"f.html"),
-        ("01/01/2026", "09:00:20",  950,10,5,195,50,0,17,0,1000,10,"f.html"),
-    ]
-    conn = _make_test_db(rows)
-    # Add vmstat table
-    conn.execute("""
-        CREATE TABLE vmstat (
-            id_key INTEGER PRIMARY KEY,
-            RunDate TEXT, RunTime TEXT,
-            r REAL, b REAL, swpd REAL, free REAL, buff REAL, cache REAL,
-            si REAL, so REAL, bi REAL, bo REAL, "in" REAL, cs REAL,
-            us REAL, sy REAL, id REAL, wa REAL, st REAL,
-            "html name" TEXT
-        )
-    """)
-    for i in range(5):
-        conn.execute(
-            "INSERT INTO vmstat (RunDate, RunTime, r, b, swpd, free, buff, cache, "
-            'si, so, bi, bo, "in", cs, us, sy, id, wa, st, "html name") '
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("01/01/2026", f"09:00:{i*5:02d}", 0,0,0,10000,0,5000, 0,0,0,0,100,200, 20,5,75,2,0,"f.html"),
-        )
-    conn.commit()
-
-    sp_dict = {
-        "operating system": "Linux",
-        "customer": "TestHospital",
-        "number cpus": "8",
-        "memory MB": "32768",
-        "globals total MB": "16384",
-    }
-
-    md_path, chart_requests = run_analysis(
-        connection=conn,
-        sp_dict=sp_dict,
-        output_prefix="test_",
-        filepath=str(tmp_path),
-        context="Integration test",
-    )
-    conn.close()
-
-    assert os.path.exists(md_path)
-    assert md_path.endswith(".md")
-    assert isinstance(chart_requests, list)
-
-
-def test_run_analysis_returns_chart_requests_for_red_findings(tmp_path):
-    """Red findings must produce ChartRequest objects."""
-    rows = []
-    for i in range(5):
-        rows.append(("01/01/2026", f"09:00:{i*5:02d}", 1000,10,5,200,50,0,17,0,1000,10,"f.html"))
-    conn = _make_test_db(rows)
-    conn.execute("""
-        CREATE TABLE vmstat (
-            id_key INTEGER PRIMARY KEY,
-            RunDate TEXT, RunTime TEXT,
-            r REAL, b REAL, swpd REAL, free REAL, buff REAL, cache REAL,
-            si REAL, so REAL, bi REAL, bo REAL, "in" REAL, cs REAL,
-            us REAL, sy REAL, id REAL, wa REAL, st REAL,
-            "html name" TEXT
-        )
-    """)
-    # 3 consecutive wa=25% rows → Red
-    for i in range(5):
-        wa = 25.0 if i < 3 else 2.0
-        conn.execute(
-            "INSERT INTO vmstat (RunDate, RunTime, r, b, swpd, free, buff, cache, "
-            'si, so, bi, bo, "in", cs, us, sy, id, wa, st, "html name") '
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("01/01/2026", f"09:00:{i*5:02d}", 0,0,0,10000,0,5000, 0,0,0,0,100,200, 20,5,75,wa,0,"f.html"),
-        )
-    conn.commit()
-
-    sp_dict = {"operating system": "Linux", "customer": "Test", "number cpus": "8",
-               "memory MB": "32768", "globals total MB": "16384"}
-    md_path, chart_requests = run_analysis(conn, sp_dict, "test_", str(tmp_path), context=None)
-    conn.close()
-
-    assert os.path.exists(md_path)
-
-
-import subprocess
-
-
-def test_yaspe_analysis_flag_exists():
-    """--analysis flag must be recognised by yaspe.py (no error on --help)."""
-    result = subprocess.run(
-        ["python", "yaspe.py", "--help"],
-        capture_output=True, text=True,
-        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    )
-    assert "--analysis" in result.stdout
-    assert "--context" in result.stdout

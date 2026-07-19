@@ -1,8 +1,8 @@
 """
-Performance analysis module for yaspe.
-Produces a narrative markdown summary from a SQLite database following
-the methodology in docs/Performance analysis/PERFORMANCE_ANALYSIS.md.
-Linux only.
+Performance analysis engine for yaspe.
+Baselines, KPI breach detection, and cross-signal correlation tests
+following docs/Performance analysis/PERFORMANCE_ANALYSIS.md.
+Consumed by llm_context.py. Linux only.
 """
 from __future__ import annotations
 
@@ -67,20 +67,6 @@ def _fmt_n(value) -> str:
 
 
 @dataclass
-class ChartRequest:
-    metric: str
-    title: str
-    df: pd.DataFrame
-    warn_level: float
-    alert_level: float
-    shading_spans: list          # list of (start_dt, end_dt) for abnormal run shading
-    twin_metric: Optional[str]   # None, or name of second metric for twin-axis overlay
-    twin_df: Optional[pd.DataFrame]
-    output_dir: str
-    filename: str                # no extension; .png appended by renderer
-
-
-@dataclass
 class Finding:
     metric: str
     severity: str                # "Red", "Yellow", "Green"
@@ -89,7 +75,6 @@ class Finding:
     corroborating: list = field(default_factory=list)
     hypotheses: list = field(default_factory=list)
     next_step: str = ""
-    chart_request: Optional[ChartRequest] = None
 
 
 def _get_collection_meta(connection) -> dict:
@@ -295,7 +280,6 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                             "hypothesis: excessive write-back I/O from dirty page flush"],
                 next_step="Correlate with iostat await and queue depth. Check WDQsz and PhyWrs. "
                           "wa > 20% is significant but requires device-level confirmation.",
-                chart_request=None,
             ))
         elif warn_runs:
             start, end, count = warn_runs[0]
@@ -311,7 +295,6 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                             "correlate with iostat await before concluding"],
                 next_step="Check iostat device latency and queue depth during this window. "
                           "wa alone is insufficient to diagnose storage latency.",
-                chart_request=None,
             ))
 
     # --- us+sy (total CPU) ---
@@ -338,7 +321,6 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                 next_step="Correlate with Glorefs and run queue. If Glorefs is proportional: normal peak load. "
                           "If Glorefs is low: suspect a runaway process or external CPU consumer. "
                           "Check steal time (st) if virtualised. Use History Monitor for CPU/GloRefs trend.",
-                chart_request=None,
             ))
         elif warn_runs:
             start, end, count = warn_runs[0]
@@ -351,7 +333,6 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                 when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
                 hypotheses=["hypothesis: elevated workload — correlate with Glorefs and run queue"],
                 next_step="Monitor trend across collections. Check History Monitor CPU and GloRefs together.",
-                chart_request=None,
             ))
 
     # --- sy as % of total CPU ---
@@ -374,7 +355,6 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                             "hypothesis: NUMA cross-socket traffic",
                             "hypothesis: high interrupt/softirq rate"],
                 next_step="Check HugePages configuration. Review /proc/interrupts during a repeat event.",
-                chart_request=None,
             ))
         elif warn_runs:
             start, end, count = warn_runs[0]
@@ -385,7 +365,6 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                 when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
                 hypotheses=["hypothesis: elevated system-call rate or kernel overhead"],
                 next_step="Monitor; check HugePages setting.",
-                chart_request=None,
             ))
 
     # --- r (run queue) — vCPU-relative ---
@@ -405,7 +384,6 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                 when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
                 hypotheses=["hypothesis: CPU saturation — more runnable threads than cores"],
                 next_step="Cross-reference with us+sy. If us+sy < 80%, suspect lock contention rather than CPU shortage.",
-                chart_request=None,
             ))
         elif warn_runs:
             start, end, count = warn_runs[0]
@@ -416,7 +394,6 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                 when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
                 hypotheses=["hypothesis: intermittent CPU pressure"],
                 next_step="Monitor trend.",
-                chart_request=None,
             ))
 
     # --- si / so (swap) — any sustained = Red ---
@@ -435,7 +412,6 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                     hypotheses=["confirmed: memory pressure causing IRIS shared memory to page out"],
                     next_step="URGENT: Reduce global buffer allocation or add RAM. "
                               "Any sustained swap on a dedicated IRIS server is critical.",
-                    chart_request=None,
                 ))
 
     if not findings:
@@ -511,7 +487,6 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
                     when=f"{_fmt_ts(start_dt)} – {_fmt_ts(end_dt)}",
                     hypotheses=["hypothesis: write path (storage/WIJ/journal) latency preventing queue drain"],
                     next_step="Correlate with wa and PhyWrs. Check WD cycle time; any cycle ≥ 90 s is critical.",
-                    chart_request=None,
                 ))
 
     # --- RouLaS (column name is capitalised S in pButtons schema) ---
@@ -536,7 +511,6 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
                 hypotheses=["hypothesis: routine buffer (routines= in CPF) too small for working set during peak"],
                 next_step="Review routines= setting in CPF. Only increase if misses persist across multiple "
                           "business-hours collections — transient startup/batch activity is normal.",
-                chart_request=None,
             ))
 
     # --- Baseline-relative metrics: Glorefs, PhyRds, PhyWrs, Gloupds, Jrnwrts ---
@@ -566,7 +540,6 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
                     when=f"{_fmt_ts(start)} – {_fmt_ts(end)} ({period_name})",
                     hypotheses=[f"hypothesis: abnormal workload spike in {metric}"],
                     next_step=f"Correlate with vmstat and other mgstat metrics in the same window.",
-                    chart_request=None,
                 ))
             elif warn_runs:
                 start, end, count = warn_runs[0]
@@ -579,7 +552,6 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
                     when=f"{_fmt_ts(start)} – {_fmt_ts(end)} ({period_name})",
                     hypotheses=[f"hypothesis: elevated {metric} during {period_name}"],
                     next_step="Monitor trend across multiple days.",
-                    chart_request=None,
                 ))
         findings.extend(period_findings)
 
@@ -662,7 +634,6 @@ def _test_user_stall(df: pd.DataFrame) -> Optional[Finding]:
                     else ["hypothesis: application-side stall (no storage indicators)"]),
         next_step="Capture ^SystemPerformance during a recurrence. "
                   "Check storage latency with iostat -x during the window.",
-        chart_request=None,
     )
 
 
@@ -709,7 +680,6 @@ def _test_buffer_pressure(df: pd.DataFrame) -> Optional[Finding]:
                     "buffers are undersized for current workload"],
         next_step="Review globals= setting in CPF. If Rdratio trend continues across multiple "
                   "collections, increase global buffers (if RAM allows).",
-        chart_request=None,
     )
 
 
@@ -742,7 +712,6 @@ def _test_write_daemon_strain(df: pd.DataFrame) -> Optional[Finding]:
         hypotheses=["hypothesis: storage write latency causing write daemon queue growth",
                     "hypothesis: WIJ or journal device saturated"],
         next_step="Check iostat await on WIJ and journal devices during recurrence.",
-        chart_request=None,
     )
 
 
@@ -791,7 +760,6 @@ def _test_memory_danger(df: pd.DataFrame) -> Optional[Finding]:
                     "hypothesis: insufficient RAM for configured IRIS global buffers + OS overhead"],
         next_step="URGENT if swap is active: reduce global buffers or add RAM. "
                   "Monitor free memory trend across collections.",
-        chart_request=None,
     )
 
 
@@ -829,7 +797,6 @@ def _test_contention_vs_throughput(df: pd.DataFrame) -> Optional[Finding]:
         hypotheses=["hypothesis: lock table pressure — review locksiz in CPF",
                     "hypothesis: application-level contention on a shared resource"],
         next_step="Review locksiz setting. Capture ^SystemPerformance lock analysis during peak.",
-        chart_request=None,
     )
 
 
@@ -875,408 +842,7 @@ def _test_kernel_overhead(df: pd.DataFrame) -> Optional[Finding]:
                     "hypothesis: NUMA cross-socket memory traffic",
                     "hypothesis: growing interrupt or softirq load (network/storage driver)"],
         next_step="Verify HugePages configuration. Check /proc/interrupts for growth on specific IRQs.",
-        chart_request=None,
     )
-
-
-def _attach_chart_requests(
-    findings: list,
-    metric_df_map: dict,
-    output_dir: str,
-) -> list:
-    """
-    For each Yellow/Red finding, populate finding.chart_request if a matching
-    DataFrame is available in metric_df_map (keyed by finding.metric).
-    Green findings are left unchanged.
-    """
-    updated = []
-    for f in findings:
-        if f.severity in ("Yellow", "Red") and f.metric in metric_df_map:
-            df = metric_df_map[f.metric]
-            thresh = METRIC_THRESHOLDS.get(f.metric.split()[0], {})
-            warn_level  = thresh.get("fixed_warn", 0.0) or 0.0
-            alert_level = thresh.get("fixed_alert", 0.0) or 0.0
-            safe_name = f.metric.replace(" ", "_").replace("/", "_").replace("(", "").replace(")", "")
-            f.chart_request = ChartRequest(
-                metric=f.metric,
-                title=f.metric,
-                df=df,
-                warn_level=float(warn_level),
-                alert_level=float(alert_level),
-                shading_spans=[],
-                twin_metric=None,
-                twin_df=None,
-                output_dir=output_dir,
-                filename=f"{safe_name}_finding",
-            )
-        updated.append(f)
-    return updated
-
-
-def _write_report(
-    meta: dict,
-    facts: dict,
-    findings: list,
-    baselines: dict,
-    context: Optional[str],
-    output_dir: str,
-) -> str:
-    """
-    Write the 7-section narrative markdown report.
-    Returns the path to the written file.
-    """
-    start = meta.get("start")
-    end   = meta.get("end")
-    start_str = start.strftime("%Y-%m-%d") if start else "unknown"
-    end_str   = end.strftime("%Y-%m-%d")   if end   else "unknown"
-
-    filename = f"performance_summary_{start_str}_{end_str}.md"
-    filepath = os.path.join(output_dir, filename)
-
-    red_findings    = [f for f in findings if f.severity == "Red"]
-    yellow_findings = [f for f in findings if f.severity == "Yellow"]
-    green_findings  = [f for f in findings if f.severity == "Green"]
-
-    if red_findings:
-        overall = "Red"
-    elif yellow_findings:
-        overall = "Yellow"
-    else:
-        overall = "Green"
-
-    context_line = context or "Routine health check — no specific context provided."
-
-    customer    = facts.get("customer", "Unknown")
-    vcpus       = facts.get("vcpus")
-    ram_gb      = facts.get("ram_gb")
-    buffers_gb  = facts.get("iris_buffers_gb")
-    version     = facts.get("version", "")
-    interval    = meta.get("interval_seconds")
-    n_days      = meta.get("n_days", 1)
-    weekdays    = meta.get("weekdays", [])
-    gaps        = meta.get("gaps", [])
-
-    vcpu_str    = str(vcpus) if vcpus else "unknown (assumption: check sp_check output)"
-    ram_str     = f"{ram_gb} GB" if ram_gb else "unknown"
-    buf_str     = f"{buffers_gb} GB" if buffers_gb else "unknown"
-    interval_str = f"{interval:.0f}s" if interval else "unknown"
-
-    lines = []
-
-    # 1. Executive summary
-    top_findings = (red_findings + yellow_findings)[:2]
-    top_text = (
-        " ".join(f.observation.split(". ")[0] + "." for f in top_findings)
-        if top_findings
-        else "No anomalies detected."
-    )
-    urgent = any(f.severity == "Red" for f in findings)
-    urgency_text = "Immediate review recommended." if urgent else "No urgent action required."
-
-    lines += [
-        f"# Performance Summary: {customer}",
-        f"",
-        f"**Collection:** {start_str} - {end_str}  ",
-        f"**Context:** {context_line}  ",
-        f"**Generated by:** yaspe `--analysis`",
-        f"",
-        f"> **Disclaimer:** These explanations are general guidance for InterSystems IRIS and Linux environments. "
-        f"They are not universal recommendations. Validate changes against the application workload, "
-        f"IRIS version, operating system, storage platform, and support requirements before implementation.",
-        f"",
-        f"---",
-        f"",
-        f"## 1. Executive Summary",
-        f"",
-        f"Overall health: **{overall}**. {top_text} {urgency_text}",
-        f"",
-    ]
-
-    # 2. Collection overview
-    lines += [
-        f"## 2. Collection Overview",
-        f"",
-        f"| Item | Value |",
-        f"|---|---|",
-        f"| Customer / hostname | {customer} |",
-        f"| IRIS version | {version or 'not captured'} |",
-        f"| Collection window | {start_str} {start.strftime('%H:%M') if start else ''} - "
-        f"{end_str} {end.strftime('%H:%M') if end else ''} |",
-        f"| Days covered | {n_days} ({', '.join(weekdays)}) |",
-        f"| Median sample interval | {interval_str} |",
-        f"| vCPUs | {vcpu_str} |",
-        f"| RAM | {ram_str} |",
-        f"| IRIS global buffers | {buf_str} |",
-        f"",
-    ]
-
-    if gaps:
-        lines.append("**Data quality — collection gaps (> 3x interval):**")
-        lines.append("")
-        for g_start, g_end in gaps:
-            lines.append(f"- {pd.Timestamp(g_start).strftime('%Y-%m-%d %H:%M:%S')} - "
-                         f"{pd.Timestamp(g_end).strftime('%Y-%m-%d %H:%M:%S')}")
-        lines.append("")
-        lines.append("Gaps are not interpolated. Statistics within gap windows may be unreliable.")
-        lines.append("")
-    else:
-        lines += ["No collection gaps detected.", ""]
-
-    # 3. Workload profile
-    lines += [f"## 3. Workload Profile", f""]
-    if baselines:
-        lines += [
-            "Per-period peak Glorefs and Gloupds:",
-            "",
-            "| Period | Peak Glorefs | Peak Gloupds |",
-            "|---|---|---|",
-        ]
-        for period in IRIS_PERIODS:
-            pname = period["name"]
-            if pname in baselines:
-                gl = baselines[pname].get("Glorefs", {}).get("max", "-")
-                gu = baselines[pname].get("Gloupds", {}).get("max", "-")
-                gl_str = _fmt_n(gl) if isinstance(gl, float) else str(gl)
-                gu_str = _fmt_n(gu) if isinstance(gu, float) else str(gu)
-                lines.append(f"| {pname} | {gl_str} | {gu_str} |")
-        lines.append("")
-    else:
-        lines += ["Workload profile data not available.", ""]
-
-    # 4. Findings
-    lines += ["## 4. Findings", ""]
-
-    ordered_findings = red_findings + yellow_findings
-    if not ordered_findings:
-        lines += ["No Yellow or Red findings. System health is **Green** for this collection window.", ""]
-    else:
-        for i, f in enumerate(ordered_findings, 1):
-            badge = "Red" if f.severity == "Red" else "Yellow"
-            lines += [
-                f"### Finding {i}: {badge} — {f.metric}",
-                f"",
-                f"**Observed:** {f.observation}",
-                f"",
-                f"**When:** {f.when}",
-                f"",
-            ]
-            if f.corroborating:
-                lines.append("**Corroborating metrics:**")
-                lines.append("")
-                for c in f.corroborating:
-                    lines.append(f"- {c}")
-                lines.append("")
-            if f.hypotheses:
-                lines.append("**Hypotheses (ranked):**")
-                lines.append("")
-                for h in f.hypotheses:
-                    lines.append(f"1. {h}")
-                lines.append("")
-            if f.next_step:
-                lines += [f"**Next step:** {f.next_step}", ""]
-            if f.chart_request:
-                chart_path = os.path.join(f.chart_request.output_dir, f"{f.chart_request.filename}.png")
-                rel_path = os.path.relpath(chart_path, output_dir)
-                lines += [f"![{f.metric} chart]({rel_path})", ""]
-
-    # 5. Explainable anomalies
-    batch = next((f for f in findings if "batch" in f.metric.lower() and f.severity == "Green"), None)
-    lines += ["## 5. Explainable Anomalies", ""]
-    if batch:
-        lines += [f"**Batch/backup window:** {batch.observation}", ""]
-    else:
-        lines += ["No explainable anomalies identified outside of findings above.", ""]
-
-    # 6. Baseline table
-    lines += ["## 6. Baseline Table", ""]
-    if baselines:
-        all_metrics = set()
-        for p in baselines.values():
-            all_metrics.update(p.keys())
-        all_metrics = sorted(all_metrics)
-
-        lines += [
-            "Per-period mean / σ / p95 for baseline-relative metrics. "
-            "Where σ > mean the distribution is highly skewed — use p95 rather than mean for capacity assessment. "
-            "Rows marked † have σ > mean for at least one metric.",
-            "",
-        ]
-
-        header = "| Period | " + " | ".join(f"{m} mean / σ / p95" for m in all_metrics) + " |"
-        sep    = "|---|" + "---|" * len(all_metrics)
-        lines += [header, sep]
-
-        for period in IRIS_PERIODS:
-            pname = period["name"]
-            if pname not in baselines:
-                continue
-            high_var = any(
-                baselines[pname][m]["sigma"] > baselines[pname][m]["mean"]
-                for m in all_metrics
-                if m in baselines[pname] and baselines[pname][m]["mean"] > 0
-            )
-            row = f"| {pname}{'†' if high_var else ''} |"
-            for m in all_metrics:
-                if m in baselines[pname]:
-                    b = baselines[pname][m]
-                    row += f" {_fmt_n(b['mean'])} / {_fmt_n(b['sigma'])} / {_fmt_n(b['p95'])} |"
-                else:
-                    row += " - |"
-            lines.append(row)
-        lines.append("")
-    else:
-        lines += ["Baseline data not available.", ""]
-
-    # 7. Appendix
-    lines += [
-        "## 7. Appendix: SQL Queries",
-        "",
-        "Queries used to produce this report:",
-        "",
-        "```sql",
-        "-- mgstat data",
-        "SELECT RunDate, RunTime, Glorefs, PhyRds, PhyWrs, Gloupds, Jrnwrts,",
-        "       WDQsz, Rdratio, RouLaS, Seize, ASeize FROM mgstat",
-        "ORDER BY RunDate, RunTime;",
-        "",
-        "-- vmstat data",
-        "SELECT RunDate, RunTime, r, b, swpd, free, buff, cache,",
-        '       si, so, bi, bo, "in", cs, us, sy, id, wa, st FROM vmstat',
-        "ORDER BY RunDate, RunTime;",
-        "```",
-        "",
-    ]
-
-    with open(filepath, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(lines))
-
-    return filepath
-
-
-def run_analysis(
-    connection,
-    sp_dict: dict,
-    output_prefix: str,
-    filepath: str,
-    context: Optional[str] = None,
-    png_out: bool = False,
-) -> tuple:
-    """
-    Public entry point. Run full performance analysis.
-
-    Returns (markdown_path, chart_requests) where:
-      markdown_path  — path to the written .md file
-      chart_requests — list[ChartRequest] for Yellow/Red findings (empty if all Green)
-    """
-    meta  = _get_collection_meta(connection)
-    facts = _get_system_facts(sp_dict)
-
-    # Load vmstat and mgstat DataFrames
-    try:
-        mg_raw = pd.read_sql_query("SELECT * FROM mgstat", connection)
-        mg_raw.dropna(subset=["RunDate", "RunTime"], inplace=True)
-        if "datetime" in mg_raw.columns:
-            mg_raw["dt"] = pd.to_datetime(mg_raw["datetime"].str.strip(), errors="coerce")
-        else:
-            mg_raw["dt"] = pd.to_datetime(
-                mg_raw["RunDate"].str.strip() + " " + mg_raw["RunTime"].str.strip(),
-                errors="coerce",
-            )
-        mg_df = mg_raw.dropna(subset=["dt"]).sort_values("dt").reset_index(drop=True)
-    except Exception:
-        mg_df = pd.DataFrame()
-
-    try:
-        vm_raw = pd.read_sql_query("SELECT * FROM vmstat", connection)
-        vm_raw.dropna(subset=["RunDate", "RunTime"], inplace=True)
-        if "datetime" in vm_raw.columns:
-            vm_raw["dt"] = pd.to_datetime(vm_raw["datetime"].str.strip(), errors="coerce")
-        else:
-            vm_raw["dt"] = pd.to_datetime(
-                vm_raw["RunDate"].str.strip() + " " + vm_raw["RunTime"].str.strip(),
-                errors="coerce",
-            )
-        vm_df = vm_raw.dropna(subset=["dt"]).sort_values("dt").reset_index(drop=True)
-    except Exception:
-        vm_df = pd.DataFrame()
-
-    # Compute baselines from mgstat
-    mgstat_metrics = [m for m in ("Glorefs","PhyRds","PhyWrs","Gloupds","Jrnwrts","Rdratio")
-                      if not mg_df.empty and m in mg_df.columns]
-    baselines = _compute_baselines(mg_df, mgstat_metrics) if not mg_df.empty else {}
-
-    # Per-metric analysis
-    vcpus = facts.get("vcpus")
-    all_findings = []
-
-    if not vm_df.empty:
-        all_findings.extend(_analyse_vmstat(vm_df, vcpus=vcpus))
-
-    if not mg_df.empty:
-        all_findings.extend(_analyse_mgstat(mg_df, baselines))
-
-    # Correlation tests
-    if not mg_df.empty and not vm_df.empty:
-        interval = meta.get("interval_seconds") or 30.0
-        joined = _nearest_join(mg_df, vm_df, interval)
-        for test_fn in (
-            _test_user_stall,
-            _test_buffer_pressure,
-            _test_write_daemon_strain,
-            _test_memory_danger,
-            _test_contention_vs_throughput,
-            _test_kernel_overhead,
-            _test_batch_window,
-        ):
-            try:
-                result = test_fn(joined)
-                if result is not None:
-                    all_findings.append(result)
-            except Exception:
-                pass
-    elif not mg_df.empty:
-        for test_fn in (_test_buffer_pressure, _test_write_daemon_strain,
-                        _test_contention_vs_throughput, _test_batch_window):
-            try:
-                result = test_fn(mg_df)
-                if result is not None:
-                    all_findings.append(result)
-            except Exception:
-                pass
-
-    # Build metric_df_map for chart attachment
-    metric_df_map = {}
-    if not vm_df.empty:
-        for col in ("wa", "r", "b", "si", "so"):
-            if col in vm_df.columns:
-                key = next((f.metric for f in all_findings if f.metric.startswith(col)), None)
-                if key:
-                    sub = vm_df[["dt", col]].rename(columns={col: "metric"})
-                    metric_df_map[key] = sub
-    if not mg_df.empty:
-        for col in ("WDQsz", "RouLaS", "Glorefs", "PhyRds", "PhyWrs", "Jrnwrts"):
-            if col in mg_df.columns:
-                key = next((f.metric for f in all_findings if col in f.metric), None)
-                if key:
-                    sub = mg_df[["dt", col]].rename(columns={col: "metric"})
-                    metric_df_map[key] = sub
-
-    analysis_dir = os.path.join(filepath, f"{output_prefix}analysis_metrics")
-    os.makedirs(analysis_dir, exist_ok=True)
-
-    all_findings = _attach_chart_requests(all_findings, metric_df_map, analysis_dir)
-
-    md_path = _write_report(
-        meta=meta,
-        facts=facts,
-        findings=all_findings,
-        baselines=baselines,
-        context=context,
-        output_dir=filepath,
-    )
-
-    chart_requests = [f.chart_request for f in all_findings if f.chart_request is not None]
-    return md_path, chart_requests
 
 
 def _test_batch_window(df: pd.DataFrame) -> Optional[Finding]:
@@ -1325,5 +891,4 @@ def _test_batch_window(df: pd.DataFrame) -> Optional[Finding]:
                     else ["confirmed: batch window clears before business hours — acceptable"]),
         next_step=("Review backup schedule; aim to complete before 07:00." if overlap
                    else "No action required."),
-        chart_request=None,
     )

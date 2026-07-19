@@ -172,7 +172,7 @@ def _make_sqlite_with_data():
     return conn
 
 
-def test_serialise_finding_drops_chart_request():
+def test_serialise_finding_fields():
     f = Finding(
         metric="wa",
         severity="Yellow",
@@ -181,7 +181,6 @@ def test_serialise_finding_drops_chart_request():
         corroborating=["WDQsz elevated"],
         hypotheses=["storage latency"],
         next_step="Check iostat",
-        chart_request=None,
     )
     d = _serialise_finding(f)
     assert "chart_request" not in d
