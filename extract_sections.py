@@ -655,8 +655,12 @@ def extract_sections(
                     if line.strip() != "":
                         perfmon_row_dict = {}
                         values = line.split(",")
-                        if perfmon_keep_indices is not None and len(values) >= len(perfmon_columns):
-                            values = [values[i] for i in perfmon_keep_indices]
+                        if perfmon_keep_indices is not None:
+                            # Bound indices to the row length: a truncated row keeps its
+                            # aligned prefix, ends up with fewer values than columns, and
+                            # is dropped by the existing dict(zip)/dropna handling instead
+                            # of raising IndexError or zipping misaligned values.
+                            values = [values[i] for i in perfmon_keep_indices if i < len(values)]
                         values = [i.strip() for i in values]  # strip off carriage return etc
                         values = list(map(lambda x: x[1:-1].replace('"', ""), values))
                         values = list(map(lambda x: 0.0 if x == " " else x, values))
@@ -691,6 +695,7 @@ def extract_sections(
                                     keep.append(idx)
                             else:
                                 keep.append(idx)
+                        # If nothing was dropped, keep-indices stay None deliberately (no-op filter).
                         if len(keep) < len(raw_cols):
                             perfmon_keep_indices = keep
                             line = ",".join(raw_cols[i] for i in keep)

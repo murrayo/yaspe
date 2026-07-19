@@ -58,3 +58,29 @@ def test_filter_accepts_bare_letter_case_insensitive(tmp_path):
     df = _perfmon_df(_write(tmp_path), ["f"])
     disk_cols = [c for c in df.columns if "PhysicalDisk" in c]
     assert len(disk_cols) == 2
+
+
+# Raw header has 6 columns; with -d F: the filtered set is 5 (index 2, the C:
+# column, is dropped). The second data row is truncated to 5 fields: >= the
+# filtered count but < the raw count. It must NOT be index-filtered (that would
+# raise IndexError on keep index 5) — it falls through to the existing
+# dict(zip)/dropna handling and is dropped.
+WIN_HTML_TRUNCATED = """\
+<html><head><title>Test</title></head>
+Profile run "test" started by user "u" at 00:00:00 on May 29 2026.
+<div id=perfmon></div>perfmon<br><pre>
+"(PDH-CSV 4.0) (UTC)(0)","\\\\H\\Memory\\Available MBytes","\\\\H\\PhysicalDisk(0 C:)\\Disk Reads/sec","\\\\H\\PhysicalDisk(1 F:)\\Disk Reads/sec","\\\\H\\PhysicalDisk(_Total)\\Disk Reads/sec","\\\\H\\Processor(_Total)\\% Processor Time"
+"05/29/2026 06:30:15.123","1000","5","7","12","55"
+"05/29/2026 06:30:45.123","1100","6","8","14"
+<!-- end_win_perfmon -->
+"""
+
+
+def test_truncated_row_between_filtered_and_raw_count_does_not_crash(tmp_path):
+    p = tmp_path / "win.html"
+    p.write_text(WIN_HTML_TRUNCATED, encoding="ISO-8859-1")
+    df = _perfmon_df(str(p), ["F:"])  # must not raise IndexError
+    # the full-length row survives; the truncated row is dropped by dropna
+    assert len(df) == 1
+    disk_cols = [c for c in df.columns if "PhysicalDisk" in c]
+    assert len(disk_cols) == 2  # F: and _Total
