@@ -121,6 +121,13 @@ def build_section_ranges(input_file, needed_markers, chunk_size=4 * 1024 * 1024)
                 # Early exit: once every needed marker has a hit AND a boundary
                 # exists beyond the last marker hit (so every marker's end-boundary
                 # is resolvable without file_size), the tail of the file is useless.
+                # Early-exit caveat: if a needed marker string ever appeared as a
+                # false positive BEFORE its real section, the real section could be
+                # missed once all other markers resolve. Real pButtons files only
+                # contain these markers at their sections (TOC uses href=#name), and
+                # a MISSING marker still falls back to full scan — only a
+                # false-positive hit plus early-exit is exposed. If new marker
+                # strings are added here, verify they cannot match earlier content.
                 if all(marker_hits[m] for m in needed_markers):
                     max_marker_hit = max(off for hits in marker_hits.values() for off in hits)
                     if any(b > max_marker_hit for b in boundary_hits):

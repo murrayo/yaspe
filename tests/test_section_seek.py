@@ -96,7 +96,7 @@ def test_seek_equals_full_scan(tmp_path):
     path = _write(tmp_path, SYNTH)
     dfs_seek = _extract(path, force_full_scan=False)
     dfs_full = _extract(path, force_full_scan=True)
-    for seek_df, full_df in zip(dfs_seek, dfs_full):
+    for seek_df, full_df in zip(dfs_seek, dfs_full, strict=True):
         assert seek_df.equals(full_df), f"seek/full mismatch:\n{seek_df}\nvs\n{full_df}"
     mgstat_df = dfs_seek[0]
     assert mgstat_df["Glorefs"].tolist() == [100, 200]
