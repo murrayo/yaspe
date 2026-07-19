@@ -183,6 +183,7 @@ def create_sections(
     output_filepath_prefix,
     disk_list,
     csv_date_format,
+    all_disks=False,
 ):
     operating_system = execute_single_read_query(
         connection, "SELECT * FROM overview WHERE field = 'operating system';"
@@ -191,8 +192,18 @@ def create_sections(
     # Get the start date for date format validation
     # profile_run = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'profile run';")[2]
 
+    # Effective iostat disk filter: explicit -d list wins; otherwise filter to
+    # CPF-resolved IRIS devices unless --all-disks was given. Non-IRIS files
+    # (no CPF roles in overview) keep every device.
+    effective_disk_list = disk_list
+    if not disk_list and not all_disks and operating_system in ("Linux", "Ubuntu"):
+        auto_disk_list = get_cpf_auto_disk_list(connection)
+        if auto_disk_list:
+            print(f"Auto disk list from CPF (extraction): {auto_disk_list}")
+            effective_disk_list = auto_disk_list
+
     mgstat_df, vmstat_df, iostat_df, nfsiostat_df, perfmon_df, aix_sar_d_df, free_df = extract_sections(
-        operating_system, input_file, include_iostat, include_nfsiostat, html_filename, disk_list
+        operating_system, input_file, include_iostat, include_nfsiostat, html_filename, effective_disk_list
     )
 
     # Add each section to the database
@@ -340,6 +351,30 @@ def create_overview(connection, sp_dict):
         connection.commit()
 
     return
+
+
+def get_cpf_auto_disk_list(connection):
+    """Devices for IRIS disk roles resolved from the CPF, as stored in the
+    overview table by create_overview. Order: Database 0..N, then Primary
+    Journal, Alternate Journal, WIJ. Empty list if no roles were stored."""
+    devices = []
+    i = 0
+    while True:
+        row = execute_single_read_query(
+            connection, f"SELECT * FROM overview WHERE field = 'iris disk role Database {i}';"
+        )
+        if not row or not row[2]:
+            break
+        if row[2] not in devices:
+            devices.append(row[2])
+        i += 1
+    for role in ("Primary Journal", "Alternate Journal", "WIJ"):
+        row = execute_single_read_query(
+            connection, f"SELECT * FROM overview WHERE field = 'iris disk role {role}';"
+        )
+        if row and row[2] and row[2] not in devices:
+            devices.append(row[2])
+    return devices
 
 
 def get_chart_title_base(connection):
@@ -2936,6 +2971,7 @@ def mainline(
     llm_context=False,
     resample_interval="5min",
     combined_overlay=False,
+    all_disks=False,
 ):
     input_error = False
     sp_dict = None
@@ -3023,6 +3059,7 @@ def mainline(
                     output_filepath_prefix,
                     disk_list,
                     csv_date_format,
+                    all_disks,
                 )
 
         else:
@@ -3087,6 +3124,7 @@ def mainline(
                     output_filepath_prefix,
                     disk_list,
                     csv_date_format,
+                    all_disks,
                 )
 
         close_connection(connection)
@@ -3387,6 +3425,14 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--all-disks",
+        dest="all_disks",
+        help="Store every iostat device in SQLite. Default: when a CPF is found, "
+             "only IRIS-related disks (databases, journals, WIJ) are stored.",
+        action="store_true",
+    )
+
+    parser.add_argument(
         "--iostat_no_subfolders",
         dest="iostat_subfolders",
         help="Save all iostat charts flat (no per-device subfolders).",
@@ -3570,6 +3616,7 @@ if __name__ == "__main__":
             args.llm_context,
             args.resample_interval,
             args.combined_overlay,
+            all_disks=args.all_disks,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))

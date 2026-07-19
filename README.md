@@ -67,7 +67,7 @@ For local version:
 usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a]
              [-o "output file prefix"]
              [-e "/path/filename_SystemPerformance.sqlite"] [-c] [-p] [-P]
-             [--dots] [-s] [-m] [-D] [-d DISK_LIST [DISK_LIST ...]]
+             [--dots] [-s] [-m] [-D] [-d DISK_LIST [DISK_LIST ...]] [--all-disks]
              [--iostat_no_subfolders] [-l "string to split on"] [--peak_chart]
              [--no_peak_chart] [-C "/path/to/directory"] [-B]
              [--smooth-minutes N] [--day-overlay] [--bh-charts]
@@ -107,6 +107,14 @@ options:
   -d DISK_LIST [DISK_LIST ...], --disk_list DISK_LIST [DISK_LIST ...]
                         List of disks, if not entered all are processed. No
                         commas or quotes, e.g. -d dm-0 dm-1
+  --all-disks           Store every iostat device in the SQLite database. By
+                        default, when a CPF file is found in the
+                        SystemPerformance HTML, only IRIS-related disks
+                        (database, primary/alternate journal, WIJ devices) are
+                        stored, which makes extraction much faster and
+                        databases much smaller. Use --all-disks (or an
+                        explicit -d list) when you need to investigate
+                        non-IRIS devices — re-running extraction is cheap.
   --iostat_no_subfolders
                         Save all iostat charts flat (no per-device
                         subfolders). Default is to use subfolders.
