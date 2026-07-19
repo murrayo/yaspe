@@ -7,11 +7,18 @@
 ## Goal
 
 Make `--llm-context` the single analysis-oriented output of yaspe. Remove the
-`--analysis` markdown report (never advertised, no users). The JSON output must
-be safe to paste into a public LLM: no customer-identifying information. Ship a
-companion prompt file that teaches the LLM the analysis methodology, and add the
-analyst-approved key-metrics scorecard so the LLM's output is
+`--analysis` markdown report (never advertised, no users). The exported context
+must be safe to paste into a public LLM: no customer-identifying information.
+Ship a companion prompt file that teaches the LLM the analysis methodology, and
+add the analyst-approved key-metrics scorecard so the LLM's output is
 review-meeting-ready.
+
+The data file is a **markdown bundle**, not JSON: JSON repeats every key on
+every timeseries row (~150 tokens/record vs ~50 for CSV), and a week of 5-min
+records as JSON (~320k tokens) would not fit typical chat context windows.
+Markdown with fenced CSV blocks is ~3× leaner, reads better for LLMs, and is
+human-eyeballable before sharing — which directly serves the anonymization
+goal.
 
 Division of labour: **yaspe does the deterministic work** (parse, resample,
 percentiles, ratios, breach detection); **the LLM does the judgment work**
@@ -23,14 +30,14 @@ percentiles, ratios, breach detection); **the LLM does the judgment work**
 - **Keep `--llm-context`** (unchanged trigger conditions: any mode with a
   SQLite DB, not `.mgst` input).
 - **Keep `--context "free text"`** — help text reworded to reference the LLM
-  context file. The note is included in the JSON and passes through the scrub.
+  context file. The note is included in the bundle and passes through the scrub.
 - **Keep `--resample`** (default `5min`), unchanged.
 
 `--llm-context` now writes **two files** to the output directory:
 
 | File | Content |
 |---|---|
-| `{prefix}performance_context_{start}_{end}.json` | Anonymized data, `schema_version: "2.0"` |
+| `{prefix}performance_context_{start}_{end}.md` | Anonymized markdown data bundle, `schema_version: 2.0` in its YAML header |
 | `{prefix}llm_analysis_prompt.md` | Companion prompt, identical every run |
 
 Console output prints both paths.
@@ -59,23 +66,36 @@ In `yaspe.py`: remove the `--analysis` call block; the `--llm-context` block
 stays (it opens its own connection and rebuilds `sp_dict` from the overview
 table when needed).
 
-## JSON schema 2.0
+## Context bundle format (schema 2.0)
 
-Top-level keys:
+Internally `build_llm_context()` still assembles a plain dict (testable,
+scrubbable); a new `_render_markdown(ctx) -> str` renders it to the bundle.
+Document structure:
 
 ```
-schema_version   "2.0"
-generated_by     "yaspe --llm-context"
-context          user-supplied note or null (scrubbed)
-system           vcpus, ram_gb, iris_buffers_gb, version, os   ← customer REMOVED
-collection       start, end, n_days, weekdays, interval_seconds, gaps
-baselines        per-period mgstat baselines (as today)
-findings         pre-computed hints (as today, minus chart_request)
-period_stats     NEW — per weekday × Health-Monitor period stats
-key_metrics      NEW — analyst scorecard
-not_available    NEW — metrics this dataset cannot provide
-timeseries       resampled mgstat+vmstat merge + per-IRIS-role iostat (as today)
+---  (YAML header)
+schema_version: "2.0"
+generated_by: yaspe --llm-context
+context: <user note or omitted>          (scrubbed)
+system:  vcpus, ram_gb, iris_buffers_gb, version, os   ← customer REMOVED
+collection: start, end, n_days, weekdays, interval_seconds, gaps
+---
+## Baselines            per-period mgstat baselines, markdown table
+## Findings             pre-computed hints, one bullet group per finding
+## Key metrics          analyst scorecard, markdown table (NEW)
+## Not available        metrics this dataset cannot provide, table (NEW)
+## Period statistics    fenced CSV block (NEW)
+## Timeseries           fenced CSV blocks: one merged mgstat+vmstat block,
+                        one per iostat IRIS-role device
 ```
+
+Rendering rules:
+
+- **Floats rounded**: percentages/response-times to 1 decimal, ratios to 2,
+  large rates to integers. Never emit full float repr.
+- CSV blocks: header row once; missing values are empty cells (no `null`).
+- Each CSV block is preceded by a one-line caption stating units and
+  aggregation (mean vs `_max`, resample interval).
 
 ### `period_stats` (new)
 
@@ -92,7 +112,7 @@ Metrics covered:
 
 Computed from **full-resolution** data (not the resampled series). Structure:
 
-```json
+```
 "period_stats": [
   {"weekday": "Tuesday", "period": "09:00-11:30",
    "metrics": {"Glorefs": {"mean":…, "sigma":…, "p90":…, "p95":…, "max":…, "n_samples":…}, …}},
@@ -158,7 +178,7 @@ contains (e.g. PPG entries appear here only when `PPGupds` is absent):
 ## Anonymization
 
 `_scrub(obj, secrets)` — final pass over the fully-built context dict, before
-JSON serialisation:
+markdown rendering:
 
 - **Secrets** gathered from `sp_dict`: `customer`, `linux hostname`,
   `instance`, all `up instance N` values. Each secret also contributes its
@@ -175,7 +195,7 @@ JSON serialisation:
 
 Known limitation (documented in the prompt file): the scrub only knows
 identifiers captured in `sp_dict`. A customer name embedded in, say, a device
-label would survive. The prompt carries a one-line reminder to eyeball the JSON
+label would survive. The prompt carries a one-line reminder to eyeball the bundle
 before sharing externally.
 
 ## Companion prompt (`{prefix}llm_analysis_prompt.md`)
@@ -184,11 +204,11 @@ Lives as a module-level string constant `PROMPT_TEMPLATE` in `llm_context.py`
 (so the Flask `sync_engine.sh`, which copies `.py` files only, ships it for
 free). Written once per export, identical content every run. Derived from
 `docs/Performance analysis/PERFORMANCE_ANALYSIS.md` and
-`IRIS_EHR_KPI_Reference.md`, rewritten for the JSON workflow. Content outline:
+`IRIS_EHR_KPI_Reference.md`, rewritten for the bundle-attachment workflow. Content outline:
 
 1. **What you are looking at** — anonymized performance capture from an
-   IRIS/EHR system; the reviewer holds the identity; JSON schema walk-through
-   (every top-level key, aggregation caveats: mean vs `_max` columns, resample
+   IRIS/EHR system; the reviewer holds the identity; document walk-through
+   (YAML header, every section, aggregation caveats: mean vs `_max` columns, resample
    interval, ratios-from-sums).
 2. **Method** — period-by-period, never whole-window averages;
    consecutive-readings rule (3+ over alert = event, 5+ over warning);
@@ -221,7 +241,9 @@ free). Written once per export, identical content every run. Derived from
     word-boundary (no partial-word mangling), skips short and allowlisted
     secrets, never raises
   - `system` has no `customer` key; schema_version is `"2.0"`
-  - prompt file written alongside JSON; contains schema and thresholds markers
+  - prompt file written alongside the bundle; contains schema and thresholds markers
+  - renderer: CSV blocks round-trip through pandas.read_csv; floats rounded per
+    rule; YAML header parses and carries schema_version 2.0
 - `tests/test_performance_analysis.py`: remove report-writer /
   chart-request tests; engine tests unchanged and green.
 - Full suite passes; smoke test against a real SQLite.
