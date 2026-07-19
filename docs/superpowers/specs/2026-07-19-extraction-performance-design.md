@@ -113,6 +113,14 @@ day file into fresh databases; `sqlite3 <db> .dump` output must be byte-identica
   SQLite for Linux files with a parseable CPF. Re-run with `--all-disks` to capture
   everything. This default also flows to the Flask app via the normal engine sync.
 
+**Windows perfmon (added during planning):** perfmon stores disks as *columns*
+(one per disk × counter; 80 of 163 columns on the reference Windows sample). With
+an explicit `-d` list of drive letters (e.g. `-d F: J:`), keep-indices are computed
+once from the raw header line and applied per row: matching PhysicalDisk/LogicalDisk
+columns, `_Total`, and all non-disk counters are kept. No filtering without `-d` —
+CPF auto-detection stays Linux-only for now (Windows CPF drive-letter resolution is
+a possible follow-up).
+
 ### 4. Multi-day column-alignment hardening (`yaspe.py` `create_sections`)
 
 Appending a day whose section gained or lost columns currently raises
