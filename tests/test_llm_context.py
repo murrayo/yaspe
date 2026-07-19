@@ -868,3 +868,70 @@ def test_build_llm_context_explicit_resample_wins():
     result = build_llm_context(conn, {}, resample_interval="10min")
     assert result["timeseries"]["resample_interval"] == "10min"
     conn.close()
+
+
+# ---- Markdown renderer ----
+import io
+from llm_context import _fmt_num, _csv_block, _render_markdown
+
+
+def test_fmt_num_rules():
+    assert _fmt_num(None) == ""
+    assert _fmt_num(12345.678) == "12346"        # >=100 → integer
+    assert _fmt_num(18.349) == "18.3"            # <100 → 1 decimal
+    assert _fmt_num(2.5, ratio=True) == "2.50"   # ratio → 2 decimals
+    assert _fmt_num(7) == "7"
+    assert _fmt_num("2024-01-15 09:00:00") == "2024-01-15 09:00:00"
+
+
+def test_csv_block_shape():
+    records = [{"timestamp": "2024-01-15 09:00:00", "Glorefs": 10450.333, "us": None}]
+    block = _csv_block(records, ["timestamp", "Glorefs", "us"])
+    assert block.startswith("```csv\n")
+    assert block.endswith("\n```")
+    lines = block.splitlines()
+    assert lines[1] == "timestamp,Glorefs,us"
+    assert lines[2] == "2024-01-15 09:00:00,10450,"   # rounded, empty cell for None
+
+
+def _built_ctx():
+    conn = _make_sqlite_with_data()
+    ctx = build_llm_context(conn, {"number cpus": "4", "memory MB": "16384"},
+                            context="users reported slowness")
+    conn.close()
+    return ctx
+
+
+def test_render_markdown_yaml_header():
+    md = _render_markdown(_built_ctx())
+    assert md.startswith("---\n")
+    header = md.split("---")[1]
+    assert 'schema_version: "2.0"' in header
+    assert "customer" not in header
+    import yaml
+    parsed = yaml.safe_load(header)
+    assert parsed["schema_version"] == "2.0"
+    assert parsed["system"]["vcpus"] == 4
+
+
+def test_render_markdown_sections_present():
+    md = _render_markdown(_built_ctx())
+    for heading in ("## Findings", "## Key metrics", "## Not available",
+                    "## Period statistics", "## Timeseries"):
+        assert heading in md, f"missing {heading}"
+
+
+def test_render_markdown_timeseries_csv_roundtrip():
+    md = _render_markdown(_built_ctx())
+    ts_section = md.split("## Timeseries")[1]
+    csv_text = ts_section.split("```csv\n")[1].split("\n```")[0]
+    df = pd.read_csv(io.StringIO(csv_text))
+    assert "timestamp" in df.columns
+    assert "Glorefs" in df.columns
+    assert len(df) > 0
+
+
+def test_render_markdown_no_full_float_repr():
+    md = _render_markdown(_built_ctx())
+    import re as _re
+    assert not _re.search(r"\d+\.\d{4,}", md), "unrounded float leaked into bundle"

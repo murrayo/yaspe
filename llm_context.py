@@ -763,3 +763,183 @@ def export_llm_context(
         json.dump(ctx, fh, indent=2, default=str)
 
     return out_path
+
+
+# ---- Markdown renderer ----
+
+def _fmt_num(v, ratio: bool = False) -> str:
+    """Rounded string form: ratios 2dp, >=100 integer, else 1dp. None -> empty."""
+    if v is None:
+        return ""
+    if isinstance(v, bool) or isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        if ratio:
+            return f"{v:.2f}"
+        if abs(v) >= 100:
+            return f"{v:.0f}"
+        return f"{v:.1f}"
+    return str(v)
+
+
+def _csv_block(records: list, columns: list) -> str:
+    """Fenced csv block; header once, None -> empty cell, floats rounded."""
+    lines = [",".join(columns)]
+    for rec in records:
+        lines.append(",".join(_fmt_num(rec.get(col)) for col in columns))
+    return "```csv\n" + "\n".join(lines) + "\n```"
+
+
+def _ordered_columns(records: list) -> list:
+    cols = ["timestamp"]
+    for rec in records:
+        for key in rec:
+            if key not in cols:
+                cols.append(key)
+    return cols
+
+
+def _yaml_header(ctx: dict) -> str:
+    y = ["---",
+         f'schema_version: "{ctx["schema_version"]}"',
+         f'generated_by: {ctx["generated_by"]}']
+    if ctx.get("context"):
+        y.append(f'context: "{ctx["context"]}"')
+    y.append("system:")
+    for key, value in ctx["system"].items():
+        y.append(f"  {key}: {value if value is not None else 'null'}")
+    coll = ctx["collection"]
+    y.append("collection:")
+    for key in ("start", "end", "n_days", "interval_seconds"):
+        value = coll.get(key)
+        if value is None:
+            y.append(f"  {key}: null")
+        elif key in ("start", "end"):
+            y.append(f'  {key}: "{value}"')     # contains spaces/colons — YAML needs quoting
+        else:
+            y.append(f"  {key}: {value}")
+    y.append(f"  weekdays: [{', '.join(coll.get('weekdays') or [])}]")
+    gaps = coll.get("gaps") or []
+    if gaps:
+        y.append("  gaps:")
+        for gap in gaps:
+            y.append(f'    - ["{gap[0]}", "{gap[1]}"]')
+    else:
+        y.append("  gaps: []")
+    y.append("---")
+    return "\n".join(y)
+
+
+def _render_key_metrics_table(title: str, metrics: dict) -> str:
+    rows = [f"### {title}", "",
+            "| Metric | Mean | p90 | p95 | Max | Value | Basis | Caveat |",
+            "|---|---|---|---|---|---|---|---|"]
+    for name, entry in metrics.items():
+        value = entry.get("value")
+        is_ratio = "_ratio" in name
+        basis = entry.get("basis", "")
+        caveat = entry.get("caveat", "")
+        if isinstance(value, dict):
+            rows.append(
+                f"| {name} | {_fmt_num(value.get('mean'))} | {_fmt_num(value.get('p90'))} "
+                f"| {_fmt_num(value.get('p95'))} | {_fmt_num(value.get('max'))} |  | {basis} | {caveat} |")
+        else:
+            rows.append(f"| {name} |  |  |  |  | {_fmt_num(value, ratio=is_ratio)} | {basis} | {caveat} |")
+    return "\n".join(rows)
+
+
+def _render_markdown(ctx: dict) -> str:
+    parts = [_yaml_header(ctx)]
+    parts.append(
+        "# Performance context bundle\n\n"
+        "Anonymized IRIS/EHR performance capture produced by yaspe. "
+        "Read alongside the companion prompt file (llm_analysis_prompt.md).")
+
+    # Baselines
+    baselines = ctx.get("baselines") or {}
+    if baselines:
+        rows = ["## Baselines", "",
+                "Per IRIS Health Monitor period, from full-resolution mgstat.", "",
+                "| Period | Metric | Mean | Sigma | p95 | Max |", "|---|---|---|---|---|---|"]
+        for period, metrics in baselines.items():
+            for metric, stats in metrics.items():
+                rows.append(f"| {period} | {metric} | {_fmt_num(stats.get('mean'))} "
+                            f"| {_fmt_num(stats.get('sigma'))} | {_fmt_num(stats.get('p95'))} "
+                            f"| {_fmt_num(stats.get('max'))} |")
+        parts.append("\n".join(rows))
+
+    # Findings
+    findings = ctx.get("findings") or []
+    fparts = ["## Findings (pre-computed)", "",
+              "Deterministic breach/correlation detections. Verify against the data; extend, do not parrot."]
+    if findings:
+        for f in findings:
+            fparts.append(f"- **{f['severity']} — {f['metric']}**: {f['observation']}")
+            if f.get("when"):
+                fparts.append(f"  - When: {f['when']}")
+            if f.get("corroborating"):
+                fparts.append(f"  - Corroborating: {'; '.join(f['corroborating'])}")
+            if f.get("hypotheses"):
+                fparts.append(f"  - Hypotheses: {'; '.join(f['hypotheses'])}")
+            if f.get("next_step"):
+                fparts.append(f"  - Next step: {f['next_step']}")
+    else:
+        fparts.append("- No findings triggered.")
+    parts.append("\n".join(fparts))
+
+    # Key metrics
+    km = ctx.get("key_metrics") or {}
+    kparts = ["## Key metrics", "",
+              "Analyst headline scorecard. Ratios are sums-based unless the basis says otherwise."]
+    if km.get("overall"):
+        kparts.append("")
+        kparts.append(_render_key_metrics_table("Overall window", km["overall"]))
+    peak = km.get("peak_period")
+    if peak:
+        kparts.append("")
+        kparts.append(_render_key_metrics_table(
+            f"Peak period — {peak['weekday']} {peak['period']} (highest mean Glorefs)",
+            peak["metrics"]))
+    parts.append("\n".join(kparts))
+
+    # Not available
+    na = ctx.get("not_available") or []
+    if na:
+        rows = ["## Not available", "",
+                "Metrics this dataset cannot provide — candidates for the data-to-request list.", "",
+                "| Metric | Reason | How to collect |", "|---|---|---|"]
+        for entry in na:
+            rows.append(f"| {entry['metric']} | {entry['reason']} | {entry['how_to_collect']} |")
+        parts.append("\n".join(rows))
+
+    # Period statistics
+    ps = ctx.get("period_stats") or []
+    if ps:
+        records = []
+        for entry in ps:
+            for metric, stats in entry["metrics"].items():
+                records.append({"weekday": entry["weekday"], "period": entry["period"],
+                                "metric": metric, **stats})
+        columns = ["weekday", "period", "metric", "mean", "sigma", "p90", "p95", "max", "n_samples"]
+        parts.append("## Period statistics\n\n"
+                     "Per weekday × IRIS period, from full-resolution samples (long format).\n\n"
+                     + _csv_block(records, columns))
+
+    # Timeseries
+    ts = ctx.get("timeseries") or {}
+    tparts = ["## Timeseries", "",
+              f"Resampled to {ts.get('resample_interval')}. {ts.get('aggregation_notes', '')}"]
+    records = ts.get("records") or []
+    if records:
+        tparts.append("")
+        tparts.append("### mgstat + vmstat (merged)")
+        tparts.append("")
+        tparts.append(_csv_block(records, _ordered_columns(records)))
+    for series in ts.get("iostat") or []:
+        tparts.append("")
+        tparts.append(f"### iostat — {series['role']} ({series['device']}), max per interval")
+        tparts.append("")
+        tparts.append(_csv_block(series["records"], _ordered_columns(series["records"])))
+    parts.append("\n".join(tparts))
+
+    return "\n\n".join(parts) + "\n"
