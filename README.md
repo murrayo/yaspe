@@ -182,11 +182,25 @@ If you want simple png files rather than html: smaller and quicker to look throu
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p
 ```
 
-If you care only about a selected list of disks you can optionally add a disk list. A list of devices without the `/dev/` for example:
+### Disk filtering (IRIS disks by default)
+
+When a CPF file is found in the SystemPerformance HTML, `yaspe` automatically stores only the IRIS-related disks — database, primary/alternate journal, and WIJ devices. On Linux these are iostat devices (e.g. `dm-7`); on Windows they are perfmon drive letters (e.g. `F:`). This makes extraction much faster and databases much smaller (a 24-hour file with 72 disks drops from ~55 s / 154 MB to ~7 s / 16 MB).
+
+You will see which disks were selected in the output:
+
+``` plaintext
+Auto disk list from CPF (extraction): ['dm-18', 'dm-17', 'dm-7', 'dm-8']
+```
+
+To override the automatic selection:
+
+- `-d` — choose the disks yourself. A list of devices without the `/dev/` on Linux, or drive letters on Windows:
 
 ``` commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p -x -d dm-0 dm-1
 ```
+
+- `--all-disks` — store every disk (the pre-v0.11 behaviour), for example when investigating a non-IRIS device. Re-running extraction is cheap.
 
 Iostat charts are saved into per-device subfolders by default, creating `{prefix}_metrics/iostat/dm-0/`, `{prefix}_metrics/iostat/dm-1/`, etc. To disable this and place all disk charts flat in a single `iostat/` folder, add `--iostat_no_subfolders`:
 
@@ -219,9 +233,8 @@ To run _yaspe_ over multiple input files, for example a few days or a week, use 
 - Use the `-e` (existing database option) to chart the appended database (also `-x` if you want iostat)
 
 __Note:__ This works by appending data to a database that contains extracted SystemPerformance data.
-If the SystemPerformance files have a short sample period this can result in long run times and large output files with many data points.
-It may be a bit clunky to work with in the browser.
-I suggest you run over a week without iostat (`-x`), then use the method above to deep dive on a day or couple of days.
+Since iostat is filtered to IRIS disks by default (see [Disk filtering](#disk-filtering-iris-disks-by-default)), including `-x` over a full week is fast — a week of 24-hour, 5-second-interval files extracts in well under a minute.
+If the resulting charts have too many data points to be comfortable in the browser, deep dive on a day or two using the method above.
 
 When the combined database spans more than 25 hours, yaspe automatically generates additional supplementary charts for key metrics (see [Long-period charts](#long-period-charts-25-hours-of-data) below): 5-minute and 30-minute smoothed views, a daily 99th percentile bar chart, an hourly heatmap, and per-day business hours peak charts. Day-overlay charts are always produced for Total CPU, Glorefs, and PhyRds; use `--day-overlay` to produce them for all metrics.
 
@@ -250,7 +263,7 @@ docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -e /data/three_d
 - **HTML charts** (default): interactive Plotly charts for all columns in mgstat, vmstat/perfmon, and optionally iostat, written to `./prefix_metrics`. Each chart has a main zoom panel and an overview panel — drag the overview to zoom, double-click to reset. A `combined_overlay.html` (vmstat CPU + mgstat IO) is also written automatically to `{prefix}_metrics/`.
 - **PNG charts** (`-p`): static PNG charts. Use for quick review or when sharing files that will not be opened in a browser.
 - **PNG + HTML** (`-P`): produce both formats. PNG files go into `png/` and HTML files go into `html/` subdirectories within each metric folder (e.g. `vmstat/png/`, `vmstat/html/`). A `combined_overlay.html` is also written automatically to `{prefix}_metrics/`.
-- It is optional to create charts for iostat (`-x`) as this can take a long time if there is a large disk list.
+- It is optional to create charts for iostat (`-x`). Since disks are filtered to IRIS devices by default this is quick; with `--all-disks` and a large disk list it can take a long time.
 - If you do not want the default prefix (html file name), override with `-o your_choice` or `-o ''` for no prefix.
 - If you want a csv file for further processing use the `-c` argument. If you use `-c` with `-o` csv files (for example for multiple days) will append.
 
