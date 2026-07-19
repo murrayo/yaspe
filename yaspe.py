@@ -3251,18 +3251,10 @@ def mainline(
                     output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay,
                 )
 
-            try:
-                row = connection.execute(
-                    "SELECT COUNT(DISTINCT RunDate) FROM mgstat"
-                ).fetchone()
-                is_long_period = row[0] is not None and row[0] > 1
-            except Exception:
-                is_long_period = False
-
         finally:
             close_connection(connection)
 
-        if combined_overlay or (not png_out and (not is_long_period or day_overlay)):
+        if combined_overlay or not png_out:
             yaspe_combined_overlay.run(sql_filename, output_file_path_base, smooth_minutes=smooth_minutes)
 
 
