@@ -793,3 +793,8 @@ def test_scrub_non_string_passthrough():
 def test_scrub_empty_secrets_identity():
     obj = {"a": "unchanged"}
     assert _scrub(obj, []) == obj
+
+
+def test_scrub_redacts_dict_keys():
+    out = _scrub({"acmedb01": {"nested": "on acmedb01"}}, ["acmedb01"])
+    assert out == {"[redacted]": {"nested": "on [redacted]"}}

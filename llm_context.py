@@ -603,7 +603,7 @@ def _scrub(obj, secrets: list):
                 obj = pattern.sub(_REDACTED, obj)
             return obj
         if isinstance(obj, dict):
-            return {k: _scrub(v, secrets) for k, v in obj.items()}
+            return {_scrub(k, secrets): _scrub(v, secrets) for k, v in obj.items()}
         if isinstance(obj, list):
             return [_scrub(v, secrets) for v in obj]
         return obj
