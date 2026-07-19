@@ -64,7 +64,145 @@ def get_last_needed_section(toc_order, operating_system, include_iostat, include
     return None
 
 
-def extract_sections(operating_system, input_file, include_iostat, include_nfsiostat, html_filename, disk_list):
+def build_section_ranges(input_file, needed_markers, chunk_size=4 * 1024 * 1024):
+    """Chunk-scan the file for section start markers and generic 'div id='/'<div '
+    boundaries. Return ascending, line-aligned, non-overlapping [start, end) byte
+    ranges covering (a) the header (byte 0 up to the first boundary) and (b) each
+    needed section up to and including the line of the next boundary after it.
+
+    Returns None whenever the map cannot be trusted (any needed marker missing,
+    unreadable file, or a marker whose line start cannot be located) — the caller
+    must then fall back to a full line-by-line scan. The pre-pass is advisory,
+    never authoritative.
+    """
+    boundary_markers = ["div id=", "<div "]
+    overlap = 8192  # keeps line starts and straddling markers findable
+
+    marker_hits = {m: [] for m in needed_markers}  # marker -> [line-aligned abs offset]
+    boundary_hits = []  # line-aligned abs offsets of all boundaries
+
+    try:
+        with open(input_file, "rb") as fh:
+            buffer = b""
+            buffer_abs_start = 0  # absolute offset of buffer[0]
+            seen = set()  # dedupe hits found twice via the overlap
+            while True:
+                chunk = fh.read(chunk_size)
+                if not chunk:
+                    break
+                buffer += chunk
+                for marker, hits in [(m, marker_hits[m]) for m in needed_markers] + [
+                    (b_m, None) for b_m in boundary_markers
+                ]:
+                    m_bytes = marker.encode("ISO-8859-1")
+                    search_from = 0
+                    while True:
+                        idx = buffer.find(m_bytes, search_from)
+                        if idx == -1:
+                            break
+                        nl = buffer.rfind(b"\n", 0, idx)
+                        if nl == -1 and buffer_abs_start > 0:
+                            # line start lies before our buffer: map unreliable
+                            return None
+                        line_start_abs = buffer_abs_start + nl + 1  # nl == -1 -> offset 0
+                        key = (marker if hits is not None else "boundary", line_start_abs)
+                        if key not in seen:
+                            seen.add(key)
+                            if hits is not None:
+                                hits.append(line_start_abs)
+                            else:
+                                boundary_hits.append(line_start_abs)
+                        search_from = idx + 1
+                # keep a tail so markers/line-starts straddling chunks are found
+                if len(buffer) > overlap:
+                    buffer_abs_start += len(buffer) - overlap
+                    buffer = buffer[-overlap:]
+            file_size = fh.seek(0, 2)
+    except OSError:
+        return None
+
+    # Every needed marker must appear at least once
+    for marker in needed_markers:
+        if not marker_hits[marker]:
+            return None
+
+    boundary_hits.sort()
+
+    def next_boundary_after(offset):
+        for b in boundary_hits:
+            if b > offset:
+                return b
+        return file_size
+
+    # end = start of the line AFTER the next boundary line, i.e. include the
+    # boundary line itself so the parsing loop's own end-detection fires.
+    ranges = []
+    all_marker_offsets = sorted(off for hits in marker_hits.values() for off in hits)
+    header_end = min(all_marker_offsets)
+    ranges.append((0, header_end))
+    for marker in needed_markers:
+        for start in marker_hits[marker]:
+            boundary = next_boundary_after(start)
+            # include the boundary line itself (so the parsing loop's own
+            # end-detection fires) but not the whole next section: the range
+            # ends at the first newline after the boundary line start
+            end = _end_of_line(input_file, boundary, file_size) if boundary < file_size else file_size
+            ranges.append((start, end))
+
+    # merge/validate: ascending, non-overlapping
+    ranges.sort()
+    merged = [ranges[0]]
+    for start, end in ranges[1:]:
+        prev_start, prev_end = merged[-1]
+        if start <= prev_end:
+            merged[-1] = (prev_start, max(prev_end, end))
+        else:
+            merged.append((start, end))
+    for start, end in merged:
+        if start >= end:
+            return None
+    return merged
+
+
+def _end_of_line(input_file, line_start, file_size):
+    """Absolute offset just past the newline of the line beginning at line_start."""
+    with open(input_file, "rb") as fh:
+        fh.seek(line_start)
+        while True:
+            block = fh.read(65536)
+            if not block:
+                return file_size
+            nl = block.find(b"\n")
+            if nl != -1:
+                return fh.tell() - len(block) + nl + 1
+
+
+def read_ranges(input_file, ranges, chunk_size=4 * 1024 * 1024):
+    """Yield decoded lines (ISO-8859-1, '\\n'-terminated like file iteration) from
+    the given [start, end) byte ranges only, streaming in chunks."""
+    with open(input_file, "rb") as fh:
+        for start, end in ranges:
+            fh.seek(start)
+            remaining = end - start
+            partial = b""
+            while remaining > 0:
+                block = fh.read(min(chunk_size, remaining))
+                if not block:
+                    break
+                remaining -= len(block)
+                data = partial + block
+                lines = data.split(b"\n")
+                partial = lines.pop()
+                for raw in lines:
+                    yield (raw + b"\n").decode("ISO-8859-1")
+            if partial:
+                yield partial.decode("ISO-8859-1")
+
+
+def extract_sections(
+    operating_system, input_file, include_iostat, include_nfsiostat, html_filename, disk_list,
+    force_full_scan=False,
+):
     """
     :param operating_system: The operating system on which the data was collected. Possible values are "Linux", "Ubuntu", or "AIX".
     :param input_file: The input file containing the data.
@@ -190,8 +328,36 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
             _needed.add("nfsiostat")
     _completed = set()
 
-    with open(input_file, "r", encoding="ISO-8859-1") as file:
-        for line in file:
+    # Section-seeking pre-pass: map byte ranges of needed sections so the loop
+    # below never touches the (often huge) sections between them. On ANY doubt
+    # build_section_ranges returns None and we fall back to the full scan.
+    _os_l = (operating_system or "").lower()
+    _seek_markers = ["<!-- beg_mgstat -->"]
+    if _os_l == "windows":
+        _seek_markers.append("id=perfmon")
+    elif _os_l == "aix":
+        _seek_markers.append("<!-- beg_vmstat -->")
+        _seek_markers.append("<div id=sar-d>")
+        if include_iostat:
+            _seek_markers.append("id=iostat")
+    else:  # Linux / Ubuntu / default
+        _seek_markers.append("<!-- beg_vmstat -->")
+        _seek_markers.append("div id=free")
+        if include_iostat:
+            _seek_markers.append("id=iostat")
+        if include_nfsiostat:
+            _seek_markers.append("id=nfsiostat")
+
+    _ranges = None if force_full_scan else build_section_ranges(input_file, _seek_markers)
+    if _ranges is not None:
+        print("Section seek: reading only needed sections")
+        _line_source = read_ranges(input_file, _ranges)
+    else:
+        print("Section seek unavailable, full scan")
+        _line_source = open(input_file, "r", encoding="ISO-8859-1")
+
+    try:
+        for line in _line_source:
             # Date data collected is always above other sections
             if "Profile run" in line:
                 line = line.strip()
@@ -738,6 +904,9 @@ def extract_sections(operating_system, input_file, include_iostat, include_nfsio
             if _needed.issubset(_completed):
                 print(f"Early stop: all needed sections collected ({', '.join(sorted(_completed & _needed))}), skipping remainder of file.")
                 break
+    finally:
+        if hasattr(_line_source, "close"):
+            _line_source.close()
 
     if mgstat_header != "":
         # Create dataframe of rows. Shortcut here to creating table columns or later charts etc
