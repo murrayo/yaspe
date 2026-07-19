@@ -75,8 +75,13 @@ def build_section_ranges(input_file, needed_markers, chunk_size=4 * 1024 * 1024)
     must then fall back to a full line-by-line scan. The pre-pass is advisory,
     never authoritative.
     """
+    if not needed_markers:
+        return None  # nothing to seek for: map cannot be trusted, caller full-scans
+
     boundary_markers = ["div id=", "<div "]
-    overlap = 8192  # keeps line starts and straddling markers findable
+    # keeps line starts and straddling markers findable; chunk_size should exceed
+    # overlap in production use (small test chunk_sizes just delay the first trim)
+    overlap = 8192
 
     marker_hits = {m: [] for m in needed_markers}  # marker -> [line-aligned abs offset]
     boundary_hits = []  # line-aligned abs offsets of all boundaries
@@ -113,6 +118,13 @@ def build_section_ranges(input_file, needed_markers, chunk_size=4 * 1024 * 1024)
                             else:
                                 boundary_hits.append(line_start_abs)
                         search_from = idx + 1
+                # Early exit: once every needed marker has a hit AND a boundary
+                # exists beyond the last marker hit (so every marker's end-boundary
+                # is resolvable without file_size), the tail of the file is useless.
+                if all(marker_hits[m] for m in needed_markers):
+                    max_marker_hit = max(off for hits in marker_hits.values() for off in hits)
+                    if any(b > max_marker_hit for b in boundary_hits):
+                        break
                 # keep a tail so markers/line-starts straddling chunks are found
                 if len(buffer) > overlap:
                     buffer_abs_start += len(buffer) - overlap

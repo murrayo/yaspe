@@ -130,6 +130,12 @@ def test_marker_straddles_chunk_boundary(tmp_path):
     assert any("beg_mgstat" in l for l in lines)
 
 
+def test_empty_marker_list_returns_none(tmp_path):
+    """No markers to seek for: the map cannot be trusted, must return None."""
+    path = _write(tmp_path, SYNTH)
+    assert build_section_ranges(path, []) is None
+
+
 def test_disk_list_filters_devices(tmp_path):
     path = _write(tmp_path, SYNTH)
     dfs = extract_sections(
