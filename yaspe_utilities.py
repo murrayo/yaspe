@@ -16,36 +16,55 @@ def check_keyword_exists(data, keyword):
         return False
 
 
+# Set once at import. Calling setlocale per value was the dominant cost of
+# extraction (23.6M calls per 24-hour file). locale.atof below relies on this.
+locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
+
+
 def get_number_type(s):
     # Don't know if a European number or US
-    locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
-
+    if s is None:
+        return None
     try:
         return int(s)
     except (ValueError, TypeError):
-        try:
-            return locale.atof(s)
-        except (ValueError, TypeError):
-            return s
+        pass
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        pass
+    # Grouped numbers like "1,035.70" fall through to locale-aware parsing
+    try:
+        return locale.atof(s)
+    except (ValueError, TypeError, AttributeError):
+        return s
 
 
 def get_aix_wacky_numbers(s):
     try:
         return int(s)
     except (ValueError, TypeError):
-        try:
-            if "K" in s:
-                value = s.split("K")[0]
-                return int(float(value) * 1000)
-            elif "M" in s:
-                value = s.split("M")[0]
-                return int(float(value) * 1000000)
-            elif "S" in s:
-                value = s.split("S")[0]
-                return int(float(value) * 1000)
-            return locale.atof(s)
-        except (ValueError, TypeError):
-            return s
+        pass
+    try:
+        if "K" in s:
+            value = s.split("K")[0]
+            return int(float(value) * 1000)
+        elif "M" in s:
+            value = s.split("M")[0]
+            return int(float(value) * 1000000)
+        elif "S" in s:
+            value = s.split("S")[0]
+            return int(float(value) * 1000)
+    except (ValueError, TypeError):
+        return s
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        pass
+    try:
+        return locale.atof(s)
+    except (ValueError, TypeError):
+        return s
 
 
 def format_date(known_datetime, date_str):
