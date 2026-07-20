@@ -970,3 +970,53 @@ def test_table_cells_escape_pipes():
         {"metric": "x|y", "reason": "a|b", "how_to_collect": "c"})
     md = _render_markdown(ctx)
     assert "x\\|y" in md
+
+
+# ---- Datetime parsing (uniform-format fast path) ----
+import warnings as _warnings
+from llm_context import _parse_datetime_series
+
+
+def test_parse_datetime_series_ampm_no_warning():
+    s = pd.Series(["2026/04/30 12:00:00 AM", "2026/04/30 12:00:05 AM",
+                   "2026/04/30 01:15:00 PM"])
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        out = _parse_datetime_series(s)
+    assert not [w for w in caught if "Could not infer format" in str(w.message)]
+    assert out.tolist() == [pd.Timestamp("2026-04-30 00:00:00"),
+                            pd.Timestamp("2026-04-30 00:00:05"),
+                            pd.Timestamp("2026-04-30 13:15:00")]
+
+
+def test_parse_datetime_series_24h():
+    s = pd.Series(["2026/04/30 23:59:56", "2026/05/01 00:00:01"])
+    out = _parse_datetime_series(s)
+    assert out.tolist() == [pd.Timestamp("2026-04-30 23:59:56"),
+                            pd.Timestamp("2026-05-01 00:00:01")]
+
+
+def test_parse_datetime_series_mixed_falls_back():
+    # Uniform-format fast path can't parse mixed input; must still coerce per-element
+    s = pd.Series(["2026/04/30 10:00:00", "30 April 2026 10:05:00", "garbage"])
+    out = _parse_datetime_series(s)
+    assert out.iloc[0] == pd.Timestamp("2026-04-30 10:00:00")
+    assert out.iloc[1] == pd.Timestamp("2026-04-30 10:05:00")
+    assert pd.isna(out.iloc[2])
+
+
+def test_load_iostat_df_ampm_no_warning():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE iostat (RunDate TEXT, RunTime TEXT, datetime TEXT, Device TEXT, \"r/s\" REAL)")
+    for i in range(5):
+        conn.execute("INSERT INTO iostat VALUES (?,?,?,?,?)",
+                     ("2026/04/30", f"12:00:{i:02d} AM", f"2026/04/30 12:00:{i:02d} AM", "dm-3", 10.0))
+    conn.commit()
+    from llm_context import _load_iostat_df
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        df = _load_iostat_df(conn)
+    assert not [w for w in caught if "Could not infer format" in str(w.message)]
+    assert len(df) == 5
+    assert df["dt"].iloc[0] == pd.Timestamp("2026-04-30 00:00:00")
+    conn.close()

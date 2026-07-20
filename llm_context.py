@@ -7,6 +7,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import warnings
+from datetime import datetime
 from typing import Optional
 
 import numpy as np
@@ -337,6 +339,47 @@ def _compute_period_stats(mg_df: pd.DataFrame, vm_df: pd.DataFrame) -> list:
     return [{"weekday": w, "period": p, "metrics": buckets[(w, p)]} for w, p in keys]
 
 
+# Formats seen in SystemPerformance captures; order matters — month/day before
+# day/month to match dateutil's default resolution of ambiguous dates.
+_DATETIME_FORMATS = (
+    "%Y/%m/%d %H:%M:%S",
+    "%Y/%m/%d %I:%M:%S %p",
+    "%Y-%m-%d %H:%M:%S",
+    "%m/%d/%Y %H:%M:%S",
+    "%m/%d/%Y %I:%M:%S %p",
+    "%d/%m/%Y %H:%M:%S",
+)
+
+
+def _parse_datetime_series(series: pd.Series) -> pd.Series:
+    """
+    Parse a datetime string column. Infers the format once from the first
+    value and parses vectorised (iostat timestamps can be locale 12-hour
+    AM/PM, which pandas cannot infer). Falls back to per-element parsing
+    for mixed-format columns.
+    """
+    s = series.str.strip()
+    first = s.dropna()
+    if not first.empty:
+        sample = first.iloc[0]
+        for fmt in _DATETIME_FORMATS:
+            try:
+                datetime.strptime(sample, fmt)
+            except (ValueError, TypeError):
+                continue
+            parsed = pd.to_datetime(s, format=fmt, errors="coerce")
+            # Uniform column: the matched format parses (almost) everything.
+            if parsed.notna().sum() >= s.notna().sum() * 0.99:
+                return parsed
+            break
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        try:
+            return pd.to_datetime(s, format="mixed", errors="coerce")
+        except (TypeError, ValueError):
+            return pd.to_datetime(s, errors="coerce")
+
+
 def _serialise_finding(f) -> dict:
     """Convert a Finding dataclass to a JSON-safe dict."""
     return {
@@ -356,11 +399,10 @@ def _load_mg_df(connection) -> pd.DataFrame:
         df = pd.read_sql_query("SELECT * FROM mgstat", connection)
         df.dropna(subset=["RunDate", "RunTime"], inplace=True)
         if "datetime" in df.columns:
-            df["dt"] = pd.to_datetime(df["datetime"].str.strip(), errors="coerce")
+            df["dt"] = _parse_datetime_series(df["datetime"])
         else:
-            df["dt"] = pd.to_datetime(
-                df["RunDate"].str.strip() + " " + df["RunTime"].str.strip(),
-                errors="coerce",
+            df["dt"] = _parse_datetime_series(
+                df["RunDate"].str.strip() + " " + df["RunTime"].str.strip()
             )
         return df.dropna(subset=["dt"]).sort_values("dt").reset_index(drop=True)
     except Exception:
@@ -373,11 +415,10 @@ def _load_vm_df(connection) -> pd.DataFrame:
         df = pd.read_sql_query("SELECT * FROM vmstat", connection)
         df.dropna(subset=["RunDate", "RunTime"], inplace=True)
         if "datetime" in df.columns:
-            df["dt"] = pd.to_datetime(df["datetime"].str.strip(), errors="coerce")
+            df["dt"] = _parse_datetime_series(df["datetime"])
         else:
-            df["dt"] = pd.to_datetime(
-                df["RunDate"].str.strip() + " " + df["RunTime"].str.strip(),
-                errors="coerce",
+            df["dt"] = _parse_datetime_series(
+                df["RunDate"].str.strip() + " " + df["RunTime"].str.strip()
             )
         return df.dropna(subset=["dt"]).sort_values("dt").reset_index(drop=True)
     except Exception:
@@ -649,11 +690,10 @@ def _load_iostat_df(connection) -> pd.DataFrame:
         if df.empty:
             return pd.DataFrame()
         if "datetime" in df.columns:
-            df["dt"] = pd.to_datetime(df["datetime"].str.strip(), errors="coerce")
+            df["dt"] = _parse_datetime_series(df["datetime"])
         else:
-            df["dt"] = pd.to_datetime(
-                df["RunDate"].str.strip() + " " + df["RunTime"].str.strip(),
-                errors="coerce",
+            df["dt"] = _parse_datetime_series(
+                df["RunDate"].str.strip() + " " + df["RunTime"].str.strip()
             )
         return df.dropna(subset=["dt"]).reset_index(drop=True)
     except Exception:
