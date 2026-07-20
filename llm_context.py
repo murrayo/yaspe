@@ -132,9 +132,23 @@ application load.
 | Rdratio | baseline | sustained fall to < ~10% of norm | declining trend |
 | PhyRds | ~17/s | > 2x norm sustained | > 1.6x norm |
 | PhyWrs | baseline | > 2x norm | > 1.6x norm |
-| WDQsz | 0 | growing across consecutive write-daemon cycles | persistently non-zero |
+| WDQsz | see note below | growing cycle-over-cycle (not bounded oscillation) | frequently hits GWDQMax (WD wakes early) |
 | Jrnwrts | ~17/s | > 2x norm | > 1.6x norm |
 | RouLaS | ~0 warm | sustained high (routine buffer undersized) | persistently > 0 |
+
+**WDQsz not reaching zero between write-daemon cycles is normal on a busy
+system, not a fault.** Each cycle the write daemon copies a consistent
+subset of dirty buffers (WDQ) into a separate write set (WDSECQ) and spends
+the cycle writing only that set; buffers modified while the WD is writing
+return to WDQ for a future cycle. So new dirty buffers accumulate in WDQ
+continuously while the system is busy — a lightly loaded system may drain to
+zero between cycles, a normally busy production system usually will not.
+Judge the **trend, not the floor**: investigate only if WDQsz grows cycle
+over cycle rather than oscillating around a steady level, if it frequently
+hits GWDQMax (forcing the WD to wake early instead of waiting the normal
+~80s), or if elevated WDQsz coincides with rising write latency. That
+combination points at the storage subsystem (or occasionally the update
+workload) not keeping up — not at WDQsz merely being non-zero.
 
 ### iostat (IRIS-role disks; general guidance)
 | Metric | Healthy (flash-era) | Concerning |
@@ -150,8 +164,9 @@ application load.
    not rising = upstream/application cause.
 2. **Buffer pool pressure** — Rdratio trending down while PhyRds trends up:
    global buffers undersized for the working set. Quantify (first vs last day).
-3. **Write daemon strain** — WDQsz non-zero between cycles + rising wa +
-   PhyWrs at norm: write-path (storage/WIJ/journal) latency.
+3. **Write daemon strain** — WDQsz growing cycle-over-cycle (not merely
+   non-zero — see the WDQsz note in section 3) + rising wa + PhyWrs at norm:
+   write-path (storage/WIJ/journal) latency.
 4. **Memory danger** — free trending down + cache shrinking + any si/so:
    flag prominently even without user impact yet.
 5. **Contention vs throughput** — Seize rising in proportion to Glorefs is

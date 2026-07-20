@@ -280,6 +280,8 @@ def test_export_llm_context_writes_bundle_and_prompt():
         assert "consecutive" in prompt.lower()      # methodology present
         assert "Glorefs" in prompt                  # KPI tables present
         assert "illustrate" in prompt.lower()        # chart-illustration guidance present
+        assert "GWDQMax" in prompt                  # WDQsz trend-not-floor guidance present
+        assert "WDSECQ" in prompt
     conn.close()
 
 
