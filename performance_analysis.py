@@ -6,8 +6,6 @@ Consumed by llm_context.py. Linux only.
 """
 from __future__ import annotations
 
-import os
-import sqlite3
 from dataclasses import dataclass, field
 from datetime import time as dtime
 from datetime import timedelta

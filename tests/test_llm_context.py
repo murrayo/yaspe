@@ -955,6 +955,15 @@ def test_yaml_header_context_with_quotes_parses():
     assert 'slow' in parsed["context"]
 
 
+def test_yaml_header_survives_redacted_system_value():
+    ctx = _built_ctx()
+    ctx["system"]["version"] = "[redacted] 2022.1 (Build 205)"
+    md = _render_markdown(ctx)
+    import yaml
+    parsed = yaml.safe_load(md.split("---")[1])
+    assert parsed["system"]["version"] == "[redacted] 2022.1 (Build 205)"
+
+
 def test_table_cells_escape_pipes():
     ctx = _built_ctx()
     ctx["not_available"].append(

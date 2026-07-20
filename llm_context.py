@@ -1,6 +1,6 @@
 """
 LLM context export for yaspe.
-Produces a compact JSON file for use as LLM input for performance analysis.
+Produces an anonymized markdown context bundle plus a companion LLM analysis prompt.
 """
 from __future__ import annotations
 
@@ -338,7 +338,7 @@ def _compute_period_stats(mg_df: pd.DataFrame, vm_df: pd.DataFrame) -> list:
 
 
 def _serialise_finding(f) -> dict:
-    """Convert a Finding dataclass to a JSON-safe dict, dropping chart_request."""
+    """Convert a Finding dataclass to a JSON-safe dict."""
     return {
         "metric":        f.metric,
         "severity":      f.severity,
@@ -424,8 +424,8 @@ def _db_disk_metrics(iostat_df: pd.DataFrame, devices: list) -> dict:
                 entries["db_disk_read_write_ratio"] = {
                     "value": ratio, "basis": "sum(r/s) / sum(w/s) on Database-role devices"}
 
-    for col, name, label in (("r_await", "db_disk_read_response_ms", "read"),
-                             ("w_await", "db_disk_write_response_ms", "write")):
+    for col, name in (("r_await", "db_disk_read_response_ms"),
+                      ("w_await", "db_disk_write_response_ms")):
         if col not in sub.columns:
             continue
         worst, worst_dev = None, None
@@ -966,6 +966,8 @@ def _yaml_header(ctx: dict) -> str:
             y.append(f"  {key}: null")
         elif isinstance(value, float):
             y.append(f"  {key}: {_fmt_num(value)}")
+        elif isinstance(value, str):
+            y.append(f"  {key}: {json.dumps(value)}")
         else:
             y.append(f"  {key}: {value}")
     coll = ctx["collection"]
@@ -974,10 +976,10 @@ def _yaml_header(ctx: dict) -> str:
         value = coll.get(key)
         if value is None:
             y.append(f"  {key}: null")
-        elif key in ("start", "end"):
-            y.append(f'  {key}: "{value}"')     # contains spaces/colons — YAML needs quoting
         elif isinstance(value, float):
             y.append(f"  {key}: {_fmt_num(value)}")
+        elif isinstance(value, str):
+            y.append(f"  {key}: {json.dumps(value)}")
         else:
             y.append(f"  {key}: {value}")
     y.append(f"  weekdays: [{', '.join(coll.get('weekdays') or [])}]")
@@ -985,7 +987,7 @@ def _yaml_header(ctx: dict) -> str:
     if gaps:
         y.append("  gaps:")
         for gap in gaps:
-            y.append(f'    - ["{gap[0]}", "{gap[1]}"]')
+            y.append(f'    - [{json.dumps(gap[0])}, {json.dumps(gap[1])}]')
     else:
         y.append("  gaps: []")
     y.append("---")

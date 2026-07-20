@@ -6,3 +6,8 @@ test_samples/
 test_samples/differnet_servers/*_SystemPerformance.sqlite
 test_samples/differnet_servers/compare_overlay/
 combined_overlay.html
+
+# LLM context export: customer databases and generated bundles
+*_SystemPerformance.sqlite
+*performance_context_*.md
+*llm_analysis_prompt.md
