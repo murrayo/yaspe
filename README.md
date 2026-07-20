@@ -323,13 +323,19 @@ All instances on this host:
 
 `--llm-context` exports two files alongside the SQLite database:
 
-- `{prefix}performance_context_{start}_{end}.md` — an anonymized data bundle:
+- `performance_context_{start}_{end}.md` — an anonymized data bundle:
   system facts, per-period statistics, an analyst key-metrics scorecard,
   pre-computed findings, and resampled mgstat/vmstat/iostat timeseries as CSV
   blocks. Customer name, hostnames, and instance names are redacted so the
   bundle can be used with public LLMs.
-- `{prefix}llm_analysis_prompt.md` — the companion prompt: methodology,
+- `llm_analysis_prompt.md` — the companion prompt: methodology,
   KPI thresholds, and the required output shape for a performance review.
+
+Unlike every other yaspe output, these two filenames **never** carry the
+`-o` output prefix — `-o` normally defaults to the input HTML filename, which
+typically embeds the hostname and instance, and that name would otherwise
+travel with the file when you upload it to a public LLM. Only the dates in
+the bundle filename come from the data.
 
 Attach **both** files to your LLM chat of choice. Use `--context "note"` to
 embed a free-text note (it is redacted like everything else) and `--resample`

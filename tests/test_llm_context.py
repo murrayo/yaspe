@@ -270,8 +270,7 @@ def test_export_llm_context_writes_bundle_and_prompt():
     conn = _make_sqlite_with_data()
     with tempfile.TemporaryDirectory() as tmpdir:
         bundle_path, prompt_path = export_llm_context(
-            connection=conn, sp_dict={"number cpus": "4"},
-            output_prefix="test_", filepath=tmpdir)
+            connection=conn, sp_dict={"number cpus": "4"}, filepath=tmpdir)
         assert os.path.isfile(bundle_path) and bundle_path.endswith(".md")
         assert os.path.isfile(prompt_path) and prompt_path.endswith("llm_analysis_prompt.md")
         content = open(bundle_path).read()
@@ -286,7 +285,7 @@ def test_export_llm_context_writes_bundle_and_prompt():
 def test_export_llm_context_filename_contains_dates():
     conn = _make_sqlite_with_data()
     with tempfile.TemporaryDirectory() as tmpdir:
-        bundle_path, _ = export_llm_context(conn, {}, output_prefix="", filepath=tmpdir)
+        bundle_path, _ = export_llm_context(conn, {}, filepath=tmpdir)
         fname = os.path.basename(bundle_path)
         assert fname.startswith("performance_context_")
         assert fname.endswith(".md")
@@ -294,12 +293,25 @@ def test_export_llm_context_filename_contains_dates():
     conn.close()
 
 
+def test_export_llm_context_filenames_carry_no_site_prefix():
+    """
+    Filenames must never carry a site-derived prefix (yaspe.py defaults
+    output_prefix from the input HTML filename, which typically embeds
+    hostname/instance) — these two files are meant to leave the building.
+    """
+    conn = _make_sqlite_with_data()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        bundle_path, prompt_path = export_llm_context(conn, {}, filepath=tmpdir)
+        assert os.path.basename(bundle_path) == "performance_context_2024-01-15_2024-01-15.md"
+        assert os.path.basename(prompt_path) == "llm_analysis_prompt.md"
+    conn.close()
+
+
 def test_export_llm_context_invalid_interval_raises():
     conn = _make_sqlite_with_data()
     with tempfile.TemporaryDirectory() as tmpdir:
         with pytest.raises(ValueError):
-            export_llm_context(conn, {}, output_prefix="", filepath=tmpdir,
-                               resample_interval="bogus")
+            export_llm_context(conn, {}, filepath=tmpdir, resample_interval="bogus")
     conn.close()
 
 

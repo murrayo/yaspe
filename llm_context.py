@@ -917,7 +917,6 @@ def build_llm_context(
 def export_llm_context(
     connection,
     sp_dict: dict,
-    output_prefix: str,
     filepath: str,
     resample_interval: Optional[str] = None,
     context: Optional[str] = None,
@@ -925,6 +924,14 @@ def export_llm_context(
     """
     Build and write the LLM context bundle and companion prompt.
     resample_interval None = auto (scaled to window length).
+
+    Filenames deliberately carry no output_prefix: yaspe's default prefix
+    is derived from the input HTML filename, which typically embeds
+    hostname/instance (e.g. "trakprod1svr_MEKKESHLIVETCA_..."). These two
+    files are meant to leave the building for a public LLM, so the
+    filename itself must not be a second leak channel alongside the
+    (already anonymized) content.
+
     Returns (bundle_path, prompt_path).
     """
     if resample_interval is not None:
@@ -943,12 +950,11 @@ def export_llm_context(
 
     os.makedirs(filepath, exist_ok=True)
 
-    bundle_path = os.path.join(
-        filepath, f"{output_prefix}performance_context_{start_str}_{end_str}.md")
+    bundle_path = os.path.join(filepath, f"performance_context_{start_str}_{end_str}.md")
     with open(bundle_path, "w", encoding="utf-8") as fh:
         fh.write(_render_markdown(ctx))
 
-    prompt_path = os.path.join(filepath, f"{output_prefix}llm_analysis_prompt.md")
+    prompt_path = os.path.join(filepath, "llm_analysis_prompt.md")
     with open(prompt_path, "w", encoding="utf-8") as fh:
         fh.write(PROMPT_TEMPLATE)
 

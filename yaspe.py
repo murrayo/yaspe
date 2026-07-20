@@ -3127,7 +3127,6 @@ def mainline(
             bundle_path, prompt_path = _llm_context.export_llm_context(
                 connection=llm_conn,
                 sp_dict=sp_dict,
-                output_prefix=output_prefix,
                 filepath=filepath,
                 resample_interval=resample_interval,
                 context=context,
