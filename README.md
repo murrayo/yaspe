@@ -71,7 +71,7 @@ usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a]
              [--iostat_no_subfolders] [-l "string to split on"] [--peak_chart]
              [--no_peak_chart] [-C "/path/to/directory"] [-B]
              [--smooth-minutes N] [--day-overlay] [--bh-charts]
-             [--long-period-smooth N] [--analysis]
+             [--long-period-smooth N]
              [--context "context string"] [--llm-context]
              [--resample INTERVAL]
 
@@ -148,16 +148,16 @@ options:
   --long-period-smooth N
                         Rolling average window in minutes for multi-day charts
                         (default: 5).
-  --analysis            Run performance analysis report (implies -s). Writes a
-                        narrative markdown summary.
   --context "context string"
-                        Optional context note for the analysis report (e.g.
-                        "users reported slowness Tuesday").
-  --llm-context         Export a compact JSON context file for LLM-based
-                        performance analysis. Can be used with or without
-                        --analysis.
-  --resample INTERVAL   Resample interval for timeseries in --llm-context
-                        output (default: 5min). Examples: 5min, 10min, 1min.
+                        Optional context note included in the LLM context
+                        bundle (e.g. "users reported slowness Tuesday").
+  --llm-context         Export an anonymized markdown context bundle plus
+                        analysis prompt for LLM-based performance review
+                        (implies -s).
+  --resample INTERVAL   Resample interval for timeseries in the LLM context
+                        bundle. Default: auto — 5min for up to 2 days of data,
+                        15min for 3-4, 30min for 5+. Examples: 5min, 10min,
+                        30min.
 
 Be safe, "quote the path".
 ```
@@ -354,124 +354,29 @@ All instances on this host:
 
 # Performance Analysis
 
-## Rule-based analysis (`--analysis`)
+## LLM-assisted performance review
 
-`--analysis` runs a rule-based check against mgstat and vmstat data and writes a Markdown report to the output directory. It runs for all modes (`-i`, `-e`, append).
+`--llm-context` exports two files alongside the SQLite database:
 
-``` commandline
-./yaspe.py -e yaspe_SystemPerformance.sqlite --analysis -o yaspe
-```
+- `{prefix}performance_context_{start}_{end}.md` — an anonymized data bundle:
+  system facts, per-period statistics, an analyst key-metrics scorecard,
+  pre-computed findings, and resampled mgstat/vmstat/iostat timeseries as CSV
+  blocks. Customer name, hostnames, and instance names are redacted so the
+  bundle can be used with public LLMs.
+- `{prefix}llm_analysis_prompt.md` — the companion prompt: methodology,
+  KPI thresholds, and the required output shape for a performance review.
 
-Output: `yaspe_performance_analysis_YYYY-MM-DD_YYYY-MM-DD.md`
-
-Use `--context` to add a free-text note (e.g. "users reported slowness at 14:00") that appears at the top of the report:
-
-``` commandline
-./yaspe.py -e yaspe_SystemPerformance.sqlite --analysis --context "batch job runs 02:00-04:00" -o yaspe
-```
-
-> **NOTE:** `--analysis` currently supports Linux only (mgstat + vmstat).
-
-## LLM context export (`--llm-context`)
-
-`--llm-context` exports a compact JSON file containing resampled timeseries, pre-computed findings, baselines, and system facts. The file is intended as input for an LLM to deepen the performance analysis beyond what the rule-based checks cover.
+Attach **both** files to your LLM chat of choice. Use `--context "note"` to
+embed a free-text note (it is redacted like everything else) and `--resample`
+to override the timeseries interval (default: auto — 5min for up to 2 days,
+15min for 3–4, 30min for 5+, so multi-day bundles stay LLM-sized).
 
 ``` commandline
 ./yaspe.py -e yaspe_SystemPerformance.sqlite --llm-context -o yaspe
 ```
 
-Output: `yaspe_performance_context_YYYY-MM-DD_YYYY-MM-DD.json`
-
-Can be combined with `--analysis` in a single run:
-
-``` commandline
-./yaspe.py -e yaspe_SystemPerformance.sqlite --analysis --llm-context -o yaspe
-```
-
-Use `--resample` to change the timeseries aggregation interval (default `5min`):
-
-``` commandline
-./yaspe.py -e yaspe_SystemPerformance.sqlite --llm-context --resample 10min -o yaspe
-```
-
-The JSON contains:
-- `schema_version`, `system` (vCPUs, RAM, IRIS buffer size), `collection` (date range, sample interval, gaps)
-- `baselines` — per-metric statistical baselines computed from the full collection
-- `findings` — rule-based findings (severity, observation, hypotheses, next steps)
-- `timeseries.records` — resampled records outer-joining mgstat and vmstat; throughput metrics as mean, queue/saturation metrics (`WDQsz`, `r`, `b`) as max
-- `timeseries.iostat` — per-device records for IRIS-role devices (Database, Primary Journal, etc.); metrics `r_s`, `w_s`, `rkB_s`, `wkB_s`, `r_await`, `w_await`, `aqu_sz`, `util` aggregated as max. Only present when IRIS disk roles are configured and iostat was collected (use `-x` when building the SQLite).
-
-> **NOTE:** `--llm-context` currently supports Linux only (mgstat + vmstat + iostat).
-
-### Sample LLM prompts
-
-Paste (or attach) the JSON as context, then use a prompt like one of these:
-
-**General analysis**
-```
-Here is a performance context file from an InterSystems IRIS system.
-Review the findings, baselines, and timeseries and give me a prioritised
-summary of what is happening and what to investigate first.
-```
-
-**Correlating a user complaint**
-```
-Users reported slowness between 14:00 and 15:00. The context file covers
-that period. What does the data show during that window, and what is the
-most likely cause?
-```
-
-**Explaining findings to a non-technical audience**
-```
-Translate the findings in this context file into plain English for a
-manager. Focus on business impact and what action is needed, not
-technical metrics.
-```
-
-**Hypothesis testing**
-```
-The findings flag elevated WDQsz and wa. Is the evidence consistent with
-a storage throughput bottleneck, or could this be something else?
-Walk through the timeseries and tell me what would confirm or rule out
-each hypothesis.
-```
-
-**Capacity planning**
-```
-Based on the baselines and timeseries in this file, at what point will
-this system run out of headroom on CPU, memory, and IO if current growth
-continues? What metrics are closest to their limits now?
-```
-
-**Batch window detection**
-```
-Is there evidence of a batch or maintenance window in this data?
-If so, when does it run, how long does it last, and does it overlap
-with business hours?
-```
-
-**Storage latency deep dive** *(requires iostat in the JSON)*
-```
-The timeseries.iostat section contains per-device IO metrics for the
-IRIS storage roles. For each role, identify the peak r_await and w_await
-values, when they occurred, and whether they correlate with elevated WDQsz
-or wa in the mgstat/vmstat records at the same timestamps. Summarise
-which role shows the worst latency and what it suggests about the storage tier.
-```
-
-**Comparing two periods**
-```
-I have two context files: one from a normal week and one from a problem
-week. Compare the baselines and findings and tell me what changed.
-```
-*(attach both JSON files as context)*
-
-Tip: use `--context` to embed a note directly in the JSON so the LLM sees it alongside the data:
-
-``` commandline
-./yaspe.py -e yaspe_SystemPerformance.sqlite --llm-context \
-    --context "users reported slowness at 14:00" -o yaspe
-```
+Anonymization is best-effort — eyeball the bundle before sharing it
+externally.
 
 # My workflow
 
