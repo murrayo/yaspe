@@ -393,6 +393,41 @@ def test_user_stall_detects_drop_with_wa():
     assert result.severity in ("Yellow", "Red")
 
 
+def test_write_daemon_strain_no_finding_when_busy_but_steady():
+    # WDQsz staying non-zero (steady oscillation, never draining to zero) is
+    # normal on a busy system — the write daemon copies a subset into WDSECQ
+    # each cycle while new dirty buffers keep landing in WDQ. Must NOT fire
+    # even with wa elevated, since WDQsz itself shows no growth trend.
+    wdqsz = [50.0, 60.0, 45.0, 55.0, 50.0] * 4
+    wa    = [15.0] * 20
+    df = _make_joined_df(WDQsz=wdqsz, wa=wa)
+    result = _test_write_daemon_strain(df)
+    assert result is None
+
+
+def test_write_daemon_strain_detects_growth_with_elevated_wa():
+    # WDQsz growing cycle-over-cycle (not bounded oscillation) with wa above
+    # the documented warning threshold: this is the real strain signal.
+    n = 20
+    wdqsz = [50.0 + i * 20 for i in range(n)]
+    wa    = [15.0] * n
+    df = _make_joined_df(n=n, WDQsz=wdqsz, wa=wa)
+    result = _test_write_daemon_strain(df)
+    assert result is not None
+    assert result.severity == "Yellow"
+
+
+def test_write_daemon_strain_no_finding_when_growth_but_wa_not_elevated():
+    # Growth alone, without concurrent elevated wa, should not fire —
+    # matches the existing "growing + rising wa" correlation requirement.
+    n = 20
+    wdqsz = [50.0 + i * 20 for i in range(n)]
+    wa    = [2.0] * n
+    df = _make_joined_df(n=n, WDQsz=wdqsz, wa=wa)
+    result = _test_write_daemon_strain(df)
+    assert result is None
+
+
 def test_buffer_pressure_no_finding_when_healthy():
     df = _make_joined_df()
     result = _test_buffer_pressure(df)

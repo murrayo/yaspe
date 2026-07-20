@@ -46,7 +46,12 @@ METRIC_THRESHOLDS = {
     "PhyRds":   {"baseline_relative": True,  "warn_mult": 1.6, "max_mult": 2.0, "label": "PhyRds"},
     "PhyWrs":   {"baseline_relative": True,  "warn_mult": 1.6, "max_mult": 2.0, "label": "PhyWrs"},
     "Jrnwrts":  {"baseline_relative": True,  "warn_mult": 1.6, "max_mult": 2.0, "label": "Jrnwrts"},
-    "WDQsz":    {"fixed_warn": 0.0,   "fixed_alert": 0.0,   "baseline_relative": False, "label": "WDQsz"},
+    # WDQsz not reaching zero between write-daemon cycles is normal on a busy
+    # system; there is no meaningful fixed threshold. Not used by
+    # _dynamic_thresholds — the real trend-based logic lives directly in
+    # _analyse_mgstat and _test_write_daemon_strain below. Present here only
+    # so callers can check metric membership (e.g. "WDQsz" in METRIC_THRESHOLDS).
+    "WDQsz":    {"fixed_warn": None,  "fixed_alert": None,  "baseline_relative": False, "label": "WDQsz"},
     "Rdratio":  {"baseline_relative": True,  "warn_mult": 1.6, "max_mult": 2.0, "label": "Rdratio", "invert": True},
     "RouLaS":   {"fixed_warn": 0.0,   "fixed_alert": None,  "baseline_relative": False, "label": "RouLaS"},
 }
@@ -682,35 +687,52 @@ def _test_buffer_pressure(df: pd.DataFrame) -> Optional[Finding]:
 
 
 def _test_write_daemon_strain(df: pd.DataFrame) -> Optional[Finding]:
-    """Test 3: WDQsz non-zero between cycles + rising wa."""
+    """
+    Test 3: WDQsz growing cycle-over-cycle (not merely non-zero — that is
+    normal on a busy system, since the write daemon copies a subset into
+    WDSECQ each cycle while new dirty buffers keep landing in WDQ) with
+    concurrent elevated wa: write-path (storage/WIJ/journal) latency.
+    """
     if "WDQsz" not in df.columns:
         return None
 
     df = df.sort_values("dt").reset_index(drop=True)
     wdqsz = pd.to_numeric(df["WDQsz"], errors="coerce").fillna(0)
-    warn_runs = _find_breaches(wdqsz, df["dt"], 0.0, WARN_CONSECUTIVE)
-    if not warn_runs:
+    nonzero_runs = _find_breaches(wdqsz, df["dt"], 0.0, WARN_CONSECUTIVE)
+    if not nonzero_runs:
         return None
 
-    start, end, count = warn_runs[0]
-    window = df[(df["dt"] >= start) & (df["dt"] <= end)]
-    wa_mean = pd.to_numeric(window.get("wa", pd.Series([0])), errors="coerce").mean()
+    wa_warn = METRIC_THRESHOLDS.get("wa", {}).get("fixed_warn", 10.0)
 
-    if wa_mean < 5.0:
-        return None
+    for start, end, count in nonzero_runs:
+        window = df[(df["dt"] >= start) & (df["dt"] <= end)]
+        run_vals = pd.to_numeric(window["WDQsz"], errors="coerce").fillna(0)
+        third = max(1, len(run_vals) // 3)
+        first_mean = run_vals.iloc[:third].mean()
+        last_mean = run_vals.iloc[-third:].mean()
+        growing = last_mean > first_mean * 1.5 and last_mean > first_mean + 100
+        if not growing:
+            continue
 
-    return Finding(
-        metric="WDQsz + wa (write daemon strain)",
-        severity="Yellow",
-        observation=f"WDQsz non-zero for {count} consecutive samples with concurrent wa={wa_mean:.1f}% — "
-                    f"write path under strain.",
-        when=f"{pd.Timestamp(start).strftime('%Y-%m-%d %H:%M:%S')} – "
-             f"{pd.Timestamp(end).strftime('%Y-%m-%d %H:%M:%S')}",
-        corroborating=[f"wa averaged {wa_mean:.1f}% during WDQsz event"],
-        hypotheses=["hypothesis: storage write latency causing write daemon queue growth",
-                    "hypothesis: WIJ or journal device saturated"],
-        next_step="Check iostat await on WIJ and journal devices during recurrence.",
-    )
+        wa_mean = pd.to_numeric(window.get("wa", pd.Series([0])), errors="coerce").mean()
+        if wa_mean < wa_warn:
+            continue
+
+        return Finding(
+            metric="WDQsz + wa (write daemon strain)",
+            severity="Yellow",
+            observation=f"WDQsz grew from {_fmt_n(first_mean)} to {_fmt_n(last_mean)} over "
+                        f"{count} consecutive samples (not a bounded oscillation) with concurrent "
+                        f"wa={wa_mean:.1f}% (warning >= {wa_warn:.0f}%) — write path under strain.",
+            when=f"{pd.Timestamp(start).strftime('%Y-%m-%d %H:%M:%S')} – "
+                 f"{pd.Timestamp(end).strftime('%Y-%m-%d %H:%M:%S')}",
+            corroborating=[f"wa averaged {wa_mean:.1f}% during WDQsz growth"],
+            hypotheses=["hypothesis: storage write latency causing write daemon queue growth",
+                        "hypothesis: WIJ or journal device saturated"],
+            next_step="Check iostat await on WIJ and journal devices during recurrence.",
+        )
+
+    return None
 
 
 def _test_memory_danger(df: pd.DataFrame) -> Optional[Finding]:
