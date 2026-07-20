@@ -3268,7 +3268,7 @@ if __name__ == "__main__":
         prog="yaspe", description="Performance file review.", epilog='Be safe, "quote the path"'
     )
 
-    current_version = "0.12.1"
+    current_version = "0.13.0"
     parser.add_argument("-v", "--version", action="version", version=current_version)
 
     parser.add_argument(
