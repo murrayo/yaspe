@@ -19,27 +19,15 @@ However, if you find bugs, or are looking for enhancements let me know!
 >- Windows (Perfmon)
 >- AIX (vmstat, iostat, sar -d)
 
-## Recent version at Docker Hub
+## Create the docker container image
 
-### Apple ARM
+Build the `yaspe` image on your own system — it works the same on Apple silicon and Intel:
 
-For Apple ARM (M1, M2 etc): `docker pull murray1oldfield/yaspe:latest_M1`
+- Download the source files (`git clone https://github.com/murrayo/yaspe.git`, or download and unzip the source)
+- `cd` to the folder with the source files (keep it separate from the folder holding your SystemPerformance files)
+- Build the `yaspe` container image: `docker build --no-cache -t yaspe .`
 
-### Intel x86
-
-Note: I don't have desktop access to an Intel server, so this image can fall behind. I suggest **Create docker container image** below.
-
-For Intel: `docker pull murray1oldfield/yaspe:latest`
-
-
-## Create docker container image for latest version
-
-To create a docker image **_on your own system_** (i.e. Not use the image on Docker Hub):
-
-- Download the source files
-- logon to docker with: `docker login`
-- `cd` to folder with source files
-- Build `yaspe` container image: `docker build --no-cache -t yaspe .`
+No Docker Hub account or `docker login` is needed — the build is entirely local.
 
 There are also instructions for [running without docker](#Running-without-a-container)
 
@@ -47,21 +35,13 @@ There are also instructions for [running without docker](#Running-without-a-cont
 
 ## Run the command over a pButtons or SystemPerformance file
 
-See the help text (note the differences in image name depending on your situation):
-
-For docker hub version:
-
-For Apple ARM:
-
-`docker run -v "$(pwd)":/data --rm --name yaspe murray1oldfield/yaspe:latest_M1 ./yaspe.py -h`
-
-For Intel:
-
-`docker run -v "$(pwd)":/data --rm --name yaspe murray1oldfield/yaspe:latest ./yaspe.py -h`
-
-For local version:
+See the help text:
 
 `docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -h`
+
+> **Linux hosts:** the container runs as root, so output files land owned by root.
+> Add `--user "$(id -u):$(id -g)"` to any `docker run` command to have outputs
+> owned by you. (Not needed on Docker Desktop for macOS or Windows.)
 
 ``` commandline
 usage: yaspe [-h] [-v] [-i "/path/file.html"] [-x] [-n] [-a]
@@ -164,16 +144,8 @@ Be safe, "quote the path".
 
 For example, change to the folder with a SystemPerformance html file and run the command:
 
-### Local
-
 ``` commandline
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
-```
-
-### For intel container
-
-``` commandline
-docker run -v "$(pwd)":/data --rm --name yaspe murray1oldfield/yaspe:latest ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
 ```
 
 If you want simple png files rather than html: smaller and quicker to look through: Use the `-p` option.
@@ -208,16 +180,6 @@ Iostat charts are saved into per-device subfolders by default, creating `{prefix
 docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html -p -x --iostat_no_subfolders
 ```
 
-### For Apple ARM container
-
-The difference is `_M1`
-
-``` commandline
-docker run -v "$(pwd)":/data --rm --name yaspe murray1oldfield/yaspe:latest_M1 ./yaspe.py -i /data/mysystems_systemperformance_24hour_1sec.html
-```
-
-<hr>
-
 Or put the path to the folder with the html file in the docker volume parameter and put the html file name after `-i /data/` 
 
 ``` commandline
@@ -245,7 +207,7 @@ Example of running over multiple days;
 - change to the folder with the html files and run the commands, run:
 
 ``` commandline
-for i in `ls *.html`;do docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/"${i}" -a -o "three_days"; done
+for i in *.html; do docker run -v "$(pwd)":/data --rm --name yaspe yaspe ./yaspe.py -i /data/"${i}" -a -o "three_days"; done
 ```
 
 The resulting database file will use the prefix, in this example; `three_days_SystemPerformance.sqlite`
@@ -302,9 +264,12 @@ For single-day or short multi-day runs (8–25 hours), yaspe produces:
 
 # Updates
 
-Remove the old image and create a new one with updated source code
+To update, remove the old image, download the latest source, and rebuild:
 
-`docker rmi yaspe`
+``` commandline
+docker rmi yaspe
+docker build --no-cache -t yaspe .
+```
 
 [logo]: https://github.com/murrayo/yaspe/blob/main/yaspe.gif "Example"
 

@@ -1,0 +1,22 @@
+# Never bake data files into the image — SystemPerformance captures can
+# contain customer-identifying information and are huge
+*.html
+*_SystemPerformance.sqlite
+*.sqlite
+*performance_context_*.md
+*llm_analysis_prompt.md
+*_metrics/
+test_samples/
+
+# Repo/build noise
+.git/
+.gitignore
+.dockerignore
+Dockerfile
+.superpowers/
+docs/
+__pycache__/
+*.pyc
+.DS_Store
+*.csv
+*.mgst
