@@ -266,31 +266,30 @@ def test_build_llm_context_json_serialisable():
 from llm_context import export_llm_context
 
 
-def test_export_llm_context_writes_file():
+def test_export_llm_context_writes_bundle_and_prompt():
     conn = _make_sqlite_with_data()
     with tempfile.TemporaryDirectory() as tmpdir:
-        path = export_llm_context(
-            connection=conn,
-            sp_dict={"number cpus": "4"},
-            output_prefix="test_",
-            filepath=tmpdir,
-        )
-        assert os.path.isfile(path)
-        assert path.endswith(".json")
-        with open(path) as fh:
-            data = json.load(fh)
-        assert data["schema_version"] == "2.0"
+        bundle_path, prompt_path = export_llm_context(
+            connection=conn, sp_dict={"number cpus": "4"},
+            output_prefix="test_", filepath=tmpdir)
+        assert os.path.isfile(bundle_path) and bundle_path.endswith(".md")
+        assert os.path.isfile(prompt_path) and prompt_path.endswith("llm_analysis_prompt.md")
+        content = open(bundle_path).read()
+        assert 'schema_version: "2.0"' in content
+        assert "## Timeseries" in content
+        prompt = open(prompt_path).read()
+        assert "consecutive" in prompt.lower()      # methodology present
+        assert "Glorefs" in prompt                  # KPI tables present
     conn.close()
 
 
 def test_export_llm_context_filename_contains_dates():
     conn = _make_sqlite_with_data()
     with tempfile.TemporaryDirectory() as tmpdir:
-        path = export_llm_context(conn, {}, output_prefix="", filepath=tmpdir)
-        fname = os.path.basename(path)
+        bundle_path, _ = export_llm_context(conn, {}, output_prefix="", filepath=tmpdir)
+        fname = os.path.basename(bundle_path)
         assert fname.startswith("performance_context_")
-        assert fname.endswith(".json")
-        # filename should contain a date like 2024-01-15
+        assert fname.endswith(".md")
         assert "2024-01-15" in fname
     conn.close()
 
@@ -298,8 +297,9 @@ def test_export_llm_context_filename_contains_dates():
 def test_export_llm_context_invalid_interval_raises():
     conn = _make_sqlite_with_data()
     with tempfile.TemporaryDirectory() as tmpdir:
-        with pytest.raises(ValueError, match="Invalid resample interval"):
-            export_llm_context(conn, {}, output_prefix="", filepath=tmpdir, resample_interval="garbage")
+        with pytest.raises(ValueError):
+            export_llm_context(conn, {}, output_prefix="", filepath=tmpdir,
+                               resample_interval="bogus")
     conn.close()
 
 

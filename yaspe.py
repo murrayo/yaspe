@@ -2952,7 +2952,7 @@ def mainline(
     long_period_smooth=5,
     context=None,
     llm_context=False,
-    resample_interval="5min",
+    resample_interval=None,
     combined_overlay=False,
     all_disks=False,
 ):
@@ -3124,7 +3124,7 @@ def mainline(
                 except Exception:
                     sp_dict = {}
             import llm_context as _llm_context
-            ctx_path = _llm_context.export_llm_context(
+            bundle_path, prompt_path = _llm_context.export_llm_context(
                 connection=llm_conn,
                 sp_dict=sp_dict,
                 output_prefix=output_prefix,
@@ -3132,7 +3132,8 @@ def mainline(
                 resample_interval=resample_interval,
                 context=context,
             )
-            print(f"LLM context: {ctx_path}")
+            print(f"LLM context bundle: {bundle_path}")
+            print(f"LLM analysis prompt: {prompt_path}")
         finally:
             close_connection(llm_conn)
 
@@ -3475,7 +3476,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--context",
         dest="context",
-        help='Optional context note for the analysis report (e.g. "users reported slowness Tuesday").',
+        help='Optional context note included in the LLM context bundle '
+             '(e.g. "users reported slowness Tuesday").',
         action="store",
         default=None,
         metavar='"context string"',
@@ -3484,18 +3486,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--llm-context",
         dest="llm_context",
-        help="Export a compact JSON context file for LLM-based performance analysis. "
-             "Can be used with or without --analysis.",
+        help="Export an anonymized markdown context bundle plus analysis prompt "
+             "for LLM-based performance review (implies -s).",
         action="store_true",
     )
 
     parser.add_argument(
         "--resample",
         dest="resample_interval",
-        help="Resample interval for timeseries in --llm-context output (default: 5min). "
-             "Examples: 5min, 10min, 1min.",
+        help="Resample interval for timeseries in the LLM context bundle. "
+             "Default: auto — 5min for up to 2 days of data, 15min for 3-4, "
+             "30min for 5+. Examples: 5min, 10min, 30min.",
         action="store",
-        default="5min",
+        default=None,
         metavar="INTERVAL",
     )
 
