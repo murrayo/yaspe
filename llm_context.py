@@ -41,8 +41,50 @@ _IOSTAT_COL_MAP = {
     "r_await": "r_await",
     "w_await": "w_await",
     "aqu-sz": "aqu_sz",
+    "avgqu-sz": "aqu_sz",
     "%util": "util",
 }
+
+
+def _mark_gaps(records: list) -> list:
+    """
+    Mark the last row before a collection gap with _gap_after: true.
+    A gap is any consecutive interval that exceeds 3× the median interval.
+    All other rows get _gap_after: false.
+    Returns the same list (mutated in-place for efficiency).
+    """
+    if len(records) < 2:
+        for r in records:
+            r["_gap_after"] = "false"
+        return records
+
+    timestamps = []
+    for r in records:
+        try:
+            timestamps.append(datetime.strptime(r["timestamp"], "%Y-%m-%d %H:%M:%S"))
+        except (ValueError, TypeError):
+            timestamps.append(None)
+
+    diffs = []
+    for i in range(1, len(timestamps)):
+        if timestamps[i] is not None and timestamps[i - 1] is not None:
+            diffs.append((timestamps[i] - timestamps[i - 1]).total_seconds())
+
+    if not diffs:
+        for r in records:
+            r["_gap_after"] = "false"
+        return records
+
+    median_interval = float(np.median(diffs))
+    threshold = 3.0 * median_interval if median_interval > 0 else float("inf")
+
+    for i, record in enumerate(records):
+        if i < len(records) - 1 and i < len(diffs):
+            record["_gap_after"] = "true" if diffs[i] > threshold else "false"
+        else:
+            record["_gap_after"] = "false"
+
+    return records
 
 
 PROMPT_TEMPLATE = """\
@@ -86,6 +128,14 @@ note is present in the bundle header, treat it as the reviewer's own framing.
   maxima; iostat blocks are per-interval maxima for IRIS-role disks only.
   Use the timeseries for shape, timing, and cross-metric correlation — not
   for precise statistics (the resampling already smoothed the peaks).
+
+**Platform note:** This capture may be from Linux (vmstat/iostat present),
+Windows (Perfmon counters; no vmstat/wa/r columns), or AIX (sar-based I/O;
+different iostat column names). If vmstat sections are absent, do not flag
+them as data gaps — they are absent by design on that platform. Windows
+captures substitute Perfmon CPU/disk metrics; AIX substitutes sar metrics.
+The "Not available" section in the bundle lists exactly which metric types
+were not collected.
 
 ## 2. Method
 
@@ -182,6 +232,13 @@ workload) not keeping up — not at WDQsz merely being non-zero.
 2. **Collection overview**: window, interval, gaps, data-quality caveats.
 3. **Workload profile**: peak periods with timestamps, day-over-day
    consistency, the batch window, key-metrics scorecard commentary.
+   3a. **"Normal for this site" baseline**: before discussing findings, state
+   what the period statistics show for the site's typical Glorefs, CPU
+   (us+sy), and PhyWrs levels during business hours — quantified (e.g.
+   "Typical business-hours Glorefs: 45,000–72,000/s in the 09:00–11:30
+   period"). Anchor all subsequent severity judgements to these site
+   baselines, not to generic IRIS norms. If the capture covers a single
+   day, note that the baseline is provisional and lower your confidence.
 4. **Findings by severity** — each with value, threshold, duration, timestamps
    and recurrence, corroborating metrics, ranked hypotheses (observation vs
    inference clearly separated), and a concrete next step.
@@ -199,23 +256,89 @@ and the question that would discriminate between them.
 
 ## 6. Illustrate with charts, if you can
 
-If your environment can execute code or render charts, plot the CSV blocks
-to illustrate your key findings — this is a supplement to the written
-analysis, not a substitute for it. Useful charts, chosen by what your
-narrative actually discusses (do not chart every column):
+Charts are evidence supporting the narrative, not decorations. Only
+produce a chart when it directly substantiates a finding you have already
+described in text. Every chart must be referenced by figure number in the
+prose and followed immediately by a two-to-four sentence interpretation
+explaining why this chart is included and what conclusion the reader
+should draw. Do not generate charts for metrics that are healthy unless
+that health anchors a comparative argument. Prefer three to six
+high-quality charts over a larger set of repetitive or marginal ones.
 
-- The metric behind your headline finding over the collection window
-  (e.g. Glorefs, wa, or r), with the alert/warning threshold as a reference
-  line and the breach period(s) you describe annotated or shaded.
-- Two related metrics on a shared time axis when a correlation pattern
-  (section 4) is central to a finding — e.g. CPU (us+sy) with run queue
-  (r), or WDQsz with iostat w_await on the Database-role device.
-- A per-period bar or box view (from the period-statistics CSV) when the
-  finding is about a recurring time-of-day pattern rather than a single
-  event.
+### Chart quality standards
 
-If your environment cannot render charts, say so briefly and continue with
-the narrative only — do not block the review on it.
+For every chart you produce:
+
+- Add a descriptive title and label both axes with units.
+- Mark timestamps of significant events (peaks, breaches, job starts) with
+  vertical reference lines or callout annotations.
+- Draw warning and alert threshold lines as horizontal dashed references
+  where published thresholds exist (e.g. wa > 20 %, WDQsz > 0 sustained,
+  r > 2× vCPU count).
+- Shade business-hours windows where the finding involves time-of-day
+  patterns, so day/night contrast is immediately visible.
+- Use a consistent colour scheme throughout the report: green for healthy,
+  amber for warning-range, red for alert-range. Apply these to reference
+  lines, shading, and annotation text.
+- When two metrics are strongly correlated, overlay them on a shared time
+  axis with a dual y-axis rather than producing two separate charts.
+
+### Recommended chart catalogue
+
+Choose from this list based on what your findings actually discuss.
+Do not produce a chart type that has no corresponding finding.
+
+1. **Headline timeline** — the primary metric driving your top finding
+   (e.g. Glorefs, wa%, or CPU us+sy) over the full collection window, with
+   alert/warning thresholds marked and breach periods shaded or annotated.
+
+2. **CPU + run queue** — CPU utilisation (us+sy) on the left axis and run
+   queue depth (r) on the right axis, on a shared time axis. Annotate any
+   period where r consistently exceeds the vCPU count.
+
+3. **Glorefs timeline with business hours** — Glorefs over time with
+   business-hours periods shaded. Annotate peak Glorefs values and any
+   correlation with CPU or latency spikes.
+
+4. **WDQsz + write latency** — WDQsz on the left axis and iostat w_await
+   on the Database-role device on the right axis. A non-zero WDQsz that
+   tracks with rising w_await confirms write-daemon back-pressure. Mark
+   the zero line for WDQsz — sustained non-zero is the signal.
+
+5. **Storage latency, queue depth and utilisation** — r_await and w_await
+   on the primary axis, %util and avgqu-sz as secondary series, for the
+   Database-role device. Include alert thresholds for await (e.g. > 8 ms
+   read, > 4 ms write for NVMe; adjust for the device class observed).
+
+6. **Rdratio + PhyRds** — Rdratio and PhyRds on a shared time axis when
+   discussing buffer pool pressure or disk-read spikes. A rising Rdratio
+   alongside elevated PhyRds confirms the buffer pool is undersized or
+   under pressure for the workload at that moment.
+
+7. **Period bar or box chart** — per-collection-period bars or box plots
+   (from the period-statistics CSV) for the key metric when the finding is
+   about a recurring workload pattern (e.g. peak every morning at 09:00)
+   rather than a single event. Box plots are preferred when variance across
+   periods is as important as the median.
+
+8. **Weekday × Health Monitor period heatmap** — a heatmap with weekday on
+   one axis and Health Monitor collection period on the other, coloured by
+   mean (or peak) value of the key workload metric. This reveals structural
+   patterns invisible on a linear timeline.
+
+9. **Executive summary dashboard** — a single summary panel showing the
+   overall health assessment for CPU, Memory, Storage I/O, Database Cache,
+   and an Overall Health score, each rendered as a colour-coded tile
+   (green / amber / red) with the single most relevant statistic beneath
+   it. Include this as the first figure when the audience is likely to
+   include non-technical readers.
+
+### If charts are unavailable
+
+If your environment cannot execute code or render charts, state this once
+briefly (one sentence) at the start of the section and continue with the
+narrative only. Do not repeat the disclaimer or allow it to interrupt the
+analysis.
 
 ---
 *Prompt generated by yaspe --llm-context. Methodology source:
@@ -249,7 +372,7 @@ def _resample_mgstat(mg_df: pd.DataFrame, interval: str) -> list:
     resampled["timestamp"] = resampled["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
 
     records = resampled.where(resampled.notna(), None).to_dict(orient="records")
-    return records
+    return _mark_gaps(records)
 
 
 def _resample_vmstat(vm_df: pd.DataFrame, interval: str) -> list:
@@ -281,7 +404,7 @@ def _resample_vmstat(vm_df: pd.DataFrame, interval: str) -> list:
     resampled["timestamp"] = resampled["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
 
     records = resampled.where(resampled.notna(), None).to_dict(orient="records")
-    return records
+    return _mark_gaps(records)
 
 
 def _merge_timeseries(mg_records: list, vm_records: list) -> list:
@@ -309,6 +432,15 @@ def _merge_timeseries(mg_records: list, vm_records: list) -> list:
 _PERIOD_MG_COLS = ["Glorefs", "Gloupds", "PhyRds", "PhyWrs", "Jrnwrts", "Rdratio", "WDQsz", "PPGupds"]
 _PERIOD_VM_COLS = ["r", "b", "sy", "wa", "si", "so"]
 _WEEKDAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+# IRIS Health Monitor periods that are considered business hours (Mon–Fri only).
+# Period names use en-dash (–) as in performance_analysis.IRIS_PERIODS.
+_BUSINESS_HOURS_PERIODS = frozenset([
+    "09:00–11:30",
+    "11:45–13:15",
+    "13:30–16:00",
+    "16:15–18:00",
+])
 
 
 def _series_stats(vals) -> Optional[dict]:
@@ -695,10 +827,21 @@ def _resample_iostat(iostat_df: pd.DataFrame, device: str, interval: str) -> lis
     """
     Resample iostat DataFrame for one device to interval.
     All 8 metrics aggregated as max. Returns [] if device not present.
+
+    aqu-sz / avgqu-sz alias: if both columns are present, aqu-sz is preferred
+    and avgqu-sz is dropped.  If only avgqu-sz is present, it is used and maps
+    to the aqu_sz key.
     """
     df = iostat_df[iostat_df["Device"] == device].copy()
     if df.empty:
         return []
+
+    # Resolve the aqu-sz / avgqu-sz alias before indexing.
+    if "aqu-sz" in df.columns and "avgqu-sz" in df.columns:
+        df.drop(columns=["avgqu-sz"], inplace=True)
+    elif "avgqu-sz" in df.columns:
+        # rename so the generic loop below finds it via _IOSTAT_COL_MAP
+        df.rename(columns={"avgqu-sz": "aqu-sz"}, inplace=True)
 
     df = df.set_index("dt").sort_index()
 
@@ -715,7 +858,8 @@ def _resample_iostat(iostat_df: pd.DataFrame, device: str, interval: str) -> lis
     resampled.rename(columns={"dt": "timestamp"}, inplace=True)
     resampled["timestamp"] = resampled["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
 
-    return resampled.where(resampled.notna(), None).to_dict(orient="records")
+    records = resampled.where(resampled.notna(), None).to_dict(orient="records")
+    return _mark_gaps(records)
 
 
 def _load_iostat_df(connection) -> pd.DataFrame:
@@ -1162,10 +1306,18 @@ def _render_markdown(ctx: dict) -> str:
     if ps:
         records = []
         for entry in ps:
+            weekday = entry["weekday"]
+            period = entry["period"]
+            is_biz = (
+                weekday in ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+                and period in _BUSINESS_HOURS_PERIODS
+            )
+            biz_str = "true" if is_biz else "false"
             for metric, stats in entry["metrics"].items():
-                records.append({"weekday": entry["weekday"], "period": entry["period"],
-                                "metric": metric, **stats})
-        columns = ["weekday", "period", "metric", "mean", "sigma", "p90", "p95", "max", "n_samples"]
+                records.append({"weekday": weekday, "period": period,
+                                "business_hours": biz_str, "metric": metric, **stats})
+        columns = ["weekday", "period", "business_hours", "metric",
+                   "mean", "sigma", "p90", "p95", "max", "n_samples"]
         parts.append("## Period statistics\n\n"
                      "Per weekday × IRIS period, from full-resolution samples (long format).\n\n"
                      + _csv_block(records, columns))

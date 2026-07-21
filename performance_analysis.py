@@ -196,24 +196,28 @@ def _label_period(time_str: str) -> Optional[str]:
 
 def _compute_baselines(df: pd.DataFrame, metrics: list) -> dict:
     """
-    Compute per-period mean/σ/p95/max for each metric column in df.
+    Compute per-(weekday, period) mean/σ/p95/max for each metric column in df.
     df must have a 'dt' column of datetime64.
-    Returns: {period_name: {metric: {mean, sigma, p95, max}}}
+    Returns: {(weekday_name, period_name): {metric: {mean, sigma, p95, max}}}
+    weekday_name is the full English name (e.g. "Monday").
+    Combinations with fewer than 3 samples are skipped.
     """
     df = df.copy()
-    df["_period"] = df["dt"].dt.strftime("%H:%M").apply(_label_period)
+    df["_period"]  = df["dt"].dt.strftime("%H:%M").apply(_label_period)
+    df["_weekday"] = df["dt"].dt.strftime("%A")
     df = df.dropna(subset=["_period"])
 
     result = {}
-    for period_name, group in df.groupby("_period"):
-        result[period_name] = {}
+    for (weekday_name, period_name), group in df.groupby(["_weekday", "_period"]):
+        key = (weekday_name, period_name)
+        result[key] = {}
         for metric in metrics:
             if metric not in group.columns:
                 continue
             vals = pd.to_numeric(group[metric], errors="coerce").dropna()
-            if vals.empty:
+            if len(vals) < 3:
                 continue
-            result[period_name][metric] = {
+            result[key][metric] = {
                 "mean":  float(vals.mean()),
                 "sigma": float(vals.std(ddof=1)) if len(vals) > 1 else 0.0,
                 "p95":   float(np.percentile(vals, 95)),
@@ -250,6 +254,28 @@ def _find_breaches(
     return runs
 
 
+def _fmt_breach_when(runs, fmt_ts):
+    """
+    Format all breach runs into a when string.
+    Returns (when_str, n_events, primary_run) where primary_run is (start, end, count)
+    of the worst (longest) run.
+    """
+    n = len(runs)
+    if n == 0:
+        return "", 0, None
+    worst = max(runs, key=lambda r: r[2])
+    if n == 1:
+        s, e, c = runs[0]
+        return f"{fmt_ts(s)} – {fmt_ts(e)}", 1, runs[0]
+    if n <= 3:
+        when = ", ".join(f"{fmt_ts(s)} – {fmt_ts(e)} (×{c} samples)" for s, e, c in runs)
+    else:
+        first = runs[0]
+        when = (f"{n} breach events; first {fmt_ts(first[0])} – {fmt_ts(first[1])} (×{first[2]} samples), "
+                f"worst {fmt_ts(worst[0])} – {fmt_ts(worst[1])} (×{worst[2]} samples)")
+    return when, n, worst
+
+
 def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
     """
     Evaluate vmstat KPIs. Returns list[Finding] — one per metric that
@@ -269,15 +295,18 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
         warn_runs = _find_breaches(vals, df["dt"], 10.0, WARN_CONSECUTIVE)
         interval_secs_wa = df["dt"].diff().median().total_seconds()
         if red_runs:
-            start, end, count = red_runs[0]
+            when, n_events, primary = _fmt_breach_when(red_runs, _fmt_ts)
+            start, end, count = primary
             duration_s = count * interval_secs_wa
+            recurrence = f" Occurred {n_events} time(s) across the collection window." if n_events > 1 else ""
             findings.append(Finding(
                 metric="wa (I/O wait %)",
                 severity="Red",
                 observation=f"wa exceeded 20% (alert) for {count} consecutive samples (~{duration_s:.0f}s). "
-                            f"Peak: {vals.max():.1f}%. "
+                            f"Peak: {vals.max():.1f}%."
+                            f"{recurrence} "
                             f"iostat device latency is required to confirm storage-side cause.",
-                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                when=when,
                 hypotheses=["hypothesis: storage latency — requires iostat await/svctm to confirm "
                             "(database/journal writes target 1–2 ms; wa alone does not prove latency)",
                             "hypothesis: excessive write-back I/O from dirty page flush"],
@@ -285,15 +314,18 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                           "wa > 20% is significant but requires device-level confirmation.",
             ))
         elif warn_runs:
-            start, end, count = warn_runs[0]
+            when, n_events, primary = _fmt_breach_when(warn_runs, _fmt_ts)
+            start, end, count = primary
             duration_s = count * interval_secs_wa
+            recurrence = f" Occurred {n_events} time(s) across the collection window." if n_events > 1 else ""
             findings.append(Finding(
                 metric="wa (I/O wait %)",
                 severity="Yellow",
                 observation=f"wa exceeded 10% (warning) for {count} consecutive samples (~{duration_s:.0f}s). "
-                            f"Peak: {vals.max():.1f}%. "
+                            f"Peak: {vals.max():.1f}%."
+                            f"{recurrence} "
                             f"Possible intermittent I/O pressure — iostat needed to confirm.",
-                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                when=when,
                 hypotheses=["hypothesis: possible intermittent storage latency — "
                             "correlate with iostat await before concluding"],
                 next_step="Check iostat device latency and queue depth during this window. "
@@ -308,16 +340,19 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
         warn_runs = _find_breaches(us_sy, df["dt"], 75.0, WARN_CONSECUTIVE)
         interval_secs = df["dt"].diff().median().total_seconds()
         if red_runs:
-            start, end, count = red_runs[0]
+            when, n_events, primary = _fmt_breach_when(red_runs, _fmt_ts)
+            start, end, count = primary
             duration_s = count * interval_secs
+            recurrence = f" Occurred {n_events} time(s) across the collection window." if n_events > 1 else ""
             findings.append(Finding(
                 metric="us+sy (CPU %)",
                 severity="Red",
                 observation=f"us+sy exceeded 85% for {count} consecutive samples "
-                            f"(~{duration_s:.0f}s). Peak: {us_sy.max():.1f}%. "
+                            f"(~{duration_s:.0f}s). Peak: {us_sy.max():.1f}%."
+                            f"{recurrence} "
                             f"Verify duration and impact before treating as sustained pressure — "
                             f"a short burst during batch or report generation may be expected.",
-                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                when=when,
                 hypotheses=["hypothesis: CPU-bound workload burst (batch, report, or SQL) — correlate with Glorefs",
                             "hypothesis: runaway process — check run queue (r) and process list",
                             "hypothesis: VM CPU ready/steal — check steal time (st) if virtualised"],
@@ -326,14 +361,16 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                           "Check steal time (st) if virtualised. Use History Monitor for CPU/GloRefs trend.",
             ))
         elif warn_runs:
-            start, end, count = warn_runs[0]
+            when, n_events, primary = _fmt_breach_when(warn_runs, _fmt_ts)
+            start, end, count = primary
             duration_s = count * interval_secs
+            recurrence = f" Occurred {n_events} time(s) across the collection window." if n_events > 1 else ""
             findings.append(Finding(
                 metric="us+sy (CPU %)",
                 severity="Yellow",
                 observation=f"us+sy exceeded 75% for {count} consecutive samples (~{duration_s:.0f}s). "
-                            f"Peak: {us_sy.max():.1f}%.",
-                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                            f"Peak: {us_sy.max():.1f}%.{recurrence}",
+                when=when,
                 hypotheses=["hypothesis: elevated workload — correlate with Glorefs and run queue"],
                 next_step="Monitor trend across collections. Check History Monitor CPU and GloRefs together.",
             ))
@@ -347,25 +384,29 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
         red_runs  = _find_breaches(sy_pct, df["dt"], 50.0, ALERT_CONSECUTIVE)
         warn_runs = _find_breaches(sy_pct, df["dt"], 30.0, WARN_CONSECUTIVE)
         if red_runs:
-            start, end, count = red_runs[0]
+            when, n_events, primary = _fmt_breach_when(red_runs, _fmt_ts)
+            start, end, count = primary
+            recurrence = f" Occurred {n_events} time(s) across the collection window." if n_events > 1 else ""
             findings.append(Finding(
                 metric="sy (% of total CPU)",
                 severity="Red",
                 observation=f"Kernel CPU exceeded 50% of total CPU for {count} consecutive samples. "
-                            f"Peak sy fraction: {sy_pct.max():.1f}%.",
-                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                            f"Peak sy fraction: {sy_pct.max():.1f}%.{recurrence}",
+                when=when,
                 hypotheses=["hypothesis: HugePages not configured — IRIS managing own TLB",
                             "hypothesis: NUMA cross-socket traffic",
                             "hypothesis: high interrupt/softirq rate"],
                 next_step="Check HugePages configuration. Review /proc/interrupts during a repeat event.",
             ))
         elif warn_runs:
-            start, end, count = warn_runs[0]
+            when, n_events, primary = _fmt_breach_when(warn_runs, _fmt_ts)
+            start, end, count = primary
+            recurrence = f" Occurred {n_events} time(s) across the collection window." if n_events > 1 else ""
             findings.append(Finding(
                 metric="sy (% of total CPU)",
                 severity="Yellow",
-                observation=f"Kernel CPU exceeded 30% of total CPU for {count} consecutive samples.",
-                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                observation=f"Kernel CPU exceeded 30% of total CPU for {count} consecutive samples.{recurrence}",
+                when=when,
                 hypotheses=["hypothesis: elevated system-call rate or kernel overhead"],
                 next_step="Monitor; check HugePages setting.",
             ))
@@ -378,23 +419,27 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
         red_runs  = _find_breaches(r_vals, df["dt"], alert_thr, ALERT_CONSECUTIVE)
         warn_runs = _find_breaches(r_vals, df["dt"], warn_thr,  WARN_CONSECUTIVE)
         if red_runs:
-            start, end, count = red_runs[0]
+            when, n_events, primary = _fmt_breach_when(red_runs, _fmt_ts)
+            start, end, count = primary
+            recurrence = f" Occurred {n_events} time(s) across the collection window." if n_events > 1 else ""
             findings.append(Finding(
                 metric="r (run queue)",
                 severity="Red",
                 observation=f"Run queue exceeded {_fmt_n(alert_thr)} (2× vCPUs={vcpus}) for "
-                            f"{count} consecutive samples. Peak: {_fmt_n(r_vals.max())}.",
-                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                            f"{count} consecutive samples. Peak: {_fmt_n(r_vals.max())}.{recurrence}",
+                when=when,
                 hypotheses=["hypothesis: CPU saturation — more runnable threads than cores"],
                 next_step="Cross-reference with us+sy. If us+sy < 80%, suspect lock contention rather than CPU shortage.",
             ))
         elif warn_runs:
-            start, end, count = warn_runs[0]
+            when, n_events, primary = _fmt_breach_when(warn_runs, _fmt_ts)
+            start, end, count = primary
+            recurrence = f" Occurred {n_events} time(s) across the collection window." if n_events > 1 else ""
             findings.append(Finding(
                 metric="r (run queue)",
                 severity="Yellow",
-                observation=f"Run queue exceeded {_fmt_n(warn_thr)} (1× vCPUs={vcpus}) for {count} consecutive samples.",
-                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                observation=f"Run queue exceeded {_fmt_n(warn_thr)} (1× vCPUs={vcpus}) for {count} consecutive samples.{recurrence}",
+                when=when,
                 hypotheses=["hypothesis: intermittent CPU pressure"],
                 next_step="Monitor trend.",
             ))
@@ -405,17 +450,96 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
             vals = pd.to_numeric(df[col], errors="coerce").fillna(0)
             red_runs = _find_breaches(vals, df["dt"], 0.0, ALERT_CONSECUTIVE)
             if red_runs:
-                start, end, count = red_runs[0]
+                when, n_events, primary = _fmt_breach_when(red_runs, _fmt_ts)
+                start, end, count = primary
+                recurrence = f" Occurred {n_events} time(s) across the collection window." if n_events > 1 else ""
                 findings.append(Finding(
                     metric=label,
                     severity="Red",
                     observation=f"Sustained {col} > 0 for {count} consecutive samples — "
-                                f"IRIS shared memory segment is paging. Peak: {_fmt_n(vals.max())} KB/s.",
-                    when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                                f"IRIS shared memory segment is paging. Peak: {_fmt_n(vals.max())} KB/s.{recurrence}",
+                    when=when,
                     hypotheses=["confirmed: memory pressure causing IRIS shared memory to page out"],
                     next_step="URGENT: Reduce global buffer allocation or add RAM. "
                               "Any sustained swap on a dedicated IRIS server is critical.",
                 ))
+
+    # --- b (blocked processes) — vCPU-relative ---
+    if "b" in df.columns and vcpus is not None:
+        b_vals = pd.to_numeric(df["b"], errors="coerce").fillna(0)
+        alert_thr_b = max(10.0, vcpus * 0.25)
+        warn_thr_b  = max(2.0,  vcpus * 0.10)
+        red_runs  = _find_breaches(b_vals, df["dt"], alert_thr_b, ALERT_CONSECUTIVE)
+        warn_runs = _find_breaches(b_vals, df["dt"], warn_thr_b,  WARN_CONSECUTIVE)
+        if red_runs:
+            when, n_events, primary = _fmt_breach_when(red_runs, _fmt_ts)
+            start, end, count = primary
+            recurrence = f" Occurred {n_events} time(s) across the collection window." if n_events > 1 else ""
+            findings.append(Finding(
+                metric="b (blocked processes)",
+                severity="Red",
+                observation=f"Blocked processes exceeded {_fmt_n(alert_thr_b)} for {count} consecutive samples. "
+                            f"Peak: {_fmt_n(b_vals.max())}.{recurrence} "
+                            f"Sustained blocked processes alongside high wa confirms a storage-side stall.",
+                when=when,
+                hypotheses=["hypothesis: storage I/O stall — cross-reference wa and iostat w_await",
+                            "hypothesis: lock contention (if wa is low, storage is not the cause)",
+                            "hypothesis: memory pressure (check si/so for swap activity)"],
+                next_step="Correlate b with wa: if both elevated = storage stall; "
+                          "if b elevated but wa low = lock or lock-table contention.",
+            ))
+        elif warn_runs:
+            when, n_events, primary = _fmt_breach_when(warn_runs, _fmt_ts)
+            start, end, count = primary
+            recurrence = f" Occurred {n_events} time(s) across the collection window." if n_events > 1 else ""
+            findings.append(Finding(
+                metric="b (blocked processes)",
+                severity="Yellow",
+                observation=f"Blocked processes exceeded {_fmt_n(warn_thr_b)} for {count} consecutive samples. "
+                            f"Peak: {_fmt_n(b_vals.max())}.{recurrence}",
+                when=when,
+                hypotheses=["hypothesis: intermittent storage I/O stall or lock contention"],
+                next_step="Correlate with wa. If wa is also elevated, check iostat await on database/journal devices.",
+            ))
+
+    # --- st (steal time) — virtualised hosts only ---
+    if "st" in df.columns:
+        st_vals = pd.to_numeric(df["st"], errors="coerce").fillna(0)
+        red_runs  = _find_breaches(st_vals, df["dt"], 15.0, ALERT_CONSECUTIVE)
+        warn_runs = _find_breaches(st_vals, df["dt"],  5.0, WARN_CONSECUTIVE)
+        if red_runs:
+            when, n_events, primary = _fmt_breach_when(red_runs, _fmt_ts)
+            start, end, count = primary
+            recurrence = f" Occurred {n_events} time(s) across the collection window." if n_events > 1 else ""
+            findings.append(Finding(
+                metric="st (CPU steal time)",
+                severity="Red",
+                observation=f"CPU steal time exceeded 15% (alert) for {count} consecutive samples. "
+                            f"Peak: {st_vals.max():.1f}%.{recurrence} "
+                            f"vCPU is being withheld by the hypervisor; user-visible latency is "
+                            f"unrelated to IRIS workload.",
+                when=when,
+                hypotheses=["hypothesis: noisy neighbour on shared host",
+                            "hypothesis: VM overcommit — hypervisor has more vCPUs scheduled than pCPUs",
+                            "hypothesis: hypervisor resource cap applied to this VM"],
+                next_step="Check hypervisor resource allocation and VM CPU reservation settings. "
+                          "Correlate with wa and r to distinguish steal-induced latency from genuine "
+                          "storage/CPU pressure within the VM.",
+            ))
+        elif warn_runs:
+            when, n_events, primary = _fmt_breach_when(warn_runs, _fmt_ts)
+            start, end, count = primary
+            recurrence = f" Occurred {n_events} time(s) across the collection window." if n_events > 1 else ""
+            findings.append(Finding(
+                metric="st (CPU steal time)",
+                severity="Yellow",
+                observation=f"CPU steal time exceeded 5% (warning) for {count} consecutive samples. "
+                            f"Peak: {st_vals.max():.1f}%.{recurrence} "
+                            f"Hypervisor is intermittently withholding vCPU time.",
+                when=when,
+                hypotheses=["hypothesis: noisy neighbour or VM overcommit on shared host"],
+                next_step="Check hypervisor resource allocation. Correlate with wa and r.",
+            ))
 
     if not findings:
         findings.append(Finding(
@@ -441,17 +565,30 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
     def _fmt_ts(dt):
         return pd.Timestamp(dt).strftime("%Y-%m-%d %H:%M:%S")
 
-    def _dynamic_thresholds(metric, period_name):
-        """Return (warn_level, alert_level) for a baseline-relative metric."""
-        if period_name not in baselines or metric not in baselines.get(period_name, {}):
-            return None, None
-        b = baselines[period_name][metric]
+    def _dynamic_thresholds(metric, wd, per):
+        """Return (warn_level, alert_level) for a baseline-relative metric.
+        Looks up (wd, per) key; falls back to any period match if no
+        weekday-specific baseline exists.
+        """
+        key = (wd, per)
+        if key in baselines and metric in baselines[key]:
+            b = baselines[key][metric]
+        else:
+            # Fallback: find any key whose period matches (ignores weekday)
+            b = None
+            for k, v in baselines.items():
+                if isinstance(k, tuple) and k[1] == per and metric in v:
+                    b = v[metric]
+                    break
+            if b is None:
+                return None, None
+        assert b is not None
         mean, sigma, highest = b["mean"], b["sigma"], b["max"]
         cfg = METRIC_THRESHOLDS.get(metric, {})
-        warn_mult = cfg.get("warn_mult", 1.6)
-        max_mult  = cfg.get("max_mult", 2.0)
-        warn_level  = warn_mult  * max(mean, mean + 2 * sigma, highest)
-        alert_level = max_mult   * max(mean + 3 * sigma, highest + sigma)
+        warn_mult = float(cfg.get("warn_mult", 1.6) or 1.6)
+        max_mult  = float(cfg.get("max_mult",  2.0) or 2.0)
+        warn_level  = warn_mult * max(mean, mean + 2 * sigma, highest)
+        alert_level = max_mult  * max(mean + 3 * sigma, highest + sigma)
         return warn_level, alert_level
 
     # --- WDQsz ---
@@ -503,16 +640,19 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
         bh_dts  = df["dt"][bh_mask].reset_index(drop=True)
         warn_runs = _find_breaches(bh_vals, bh_dts, 0.0, WARN_CONSECUTIVE) if not bh_vals.empty else []
         if warn_runs:
-            start, end, count = warn_runs[0]
+            when, n_events, primary = _fmt_breach_when(warn_runs, _fmt_ts)
+            start, end, count = primary
+            recurrence = f" Occurred {n_events} time(s) during business hours." if n_events > 1 else ""
             findings.append(Finding(
                 metric="RouLaS (routine cache misses)",
                 severity="Yellow",
                 observation=f"RouLaS was non-zero during business hours for {count} consecutive samples "
-                            f"(max {_fmt_n(bh_vals.max())}). Routine cache misses during production workload — "
-                            f"may indicate routine buffer is undersized.",
-                when=f"{_fmt_ts(start)} – {_fmt_ts(end)}",
+                            f"(max {_fmt_n(bh_vals.max())}).{recurrence} "
+                            f"Routine buffer load/save active — routine buffer size may be undersized for the working set.",
+                when=when,
                 hypotheses=["hypothesis: routine buffer (routines= in CPF) too small for working set during peak"],
-                next_step="Review routines= setting in CPF. Only increase if misses persist across multiple "
+                next_step="Check ^IRIS.Temp.RoutineMgr and consider increasing routine buffer size. "
+                          "Only increase if misses persist across multiple "
                           "business-hours collections — transient startup/batch activity is normal.",
             ))
 
@@ -521,42 +661,75 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
         if metric not in df.columns:
             continue
         vals = pd.to_numeric(df[metric], errors="coerce").fillna(0)
-        df["_period_tmp"] = df["dt"].dt.strftime("%H:%M").apply(_label_period)
+        df["_period_tmp"]  = df["dt"].dt.strftime("%H:%M").apply(_label_period)
+        df["_weekday_tmp"] = df["dt"].dt.strftime("%A")
 
         period_findings = []
-        for period_name, group_idx in df.groupby("_period_tmp").groups.items():
+        for (weekday_name, period_name), group_idx in df.groupby(["_weekday_tmp", "_period_tmp"]).groups.items():
             group_vals = vals.iloc[group_idx]
             group_dts  = df["dt"].iloc[group_idx]
-            warn_level, alert_level = _dynamic_thresholds(metric, period_name)
+            warn_level, alert_level = _dynamic_thresholds(metric, weekday_name, period_name)
             if warn_level is None:
                 continue
             red_runs  = _find_breaches(group_vals, group_dts, alert_level, ALERT_CONSECUTIVE)
             warn_runs = _find_breaches(group_vals, group_dts, warn_level,  WARN_CONSECUTIVE)
             if red_runs:
-                start, end, count = red_runs[0]
+                when, n_events, primary = _fmt_breach_when(red_runs, _fmt_ts)
+                start, end, count = primary
+                recurrence = f" Occurred {n_events} time(s) in this period." if n_events > 1 else ""
                 period_findings.append(Finding(
                     metric=metric,
                     severity="Red",
                     observation=f"{metric} exceeded alert level {_fmt_n(alert_level)} "
                                 f"(2× period norm) for {count} consecutive samples. "
-                                f"Peak: {_fmt_n(group_vals.max())}.",
-                    when=f"{_fmt_ts(start)} – {_fmt_ts(end)} ({period_name})",
+                                f"Peak: {_fmt_n(group_vals.max())}.{recurrence}",
+                    when=f"{when} ({period_name})",
                     hypotheses=[f"hypothesis: abnormal workload spike in {metric}"],
                     next_step=f"Correlate with vmstat and other mgstat metrics in the same window.",
                 ))
             elif warn_runs:
-                start, end, count = warn_runs[0]
+                when, n_events, primary = _fmt_breach_when(warn_runs, _fmt_ts)
+                start, end, count = primary
+                recurrence = f" Occurred {n_events} time(s) in this period." if n_events > 1 else ""
                 period_findings.append(Finding(
                     metric=metric,
                     severity="Yellow",
                     observation=f"{metric} exceeded warning level {_fmt_n(warn_level)} "
                                 f"(1.6× period norm) for {count} consecutive samples. "
-                                f"Peak: {_fmt_n(group_vals.max())}.",
-                    when=f"{_fmt_ts(start)} – {_fmt_ts(end)} ({period_name})",
+                                f"Peak: {_fmt_n(group_vals.max())}.{recurrence}",
+                    when=f"{when} ({period_name})",
                     hypotheses=[f"hypothesis: elevated {metric} during {period_name}"],
                     next_step="Monitor trend across multiple days.",
                 ))
         findings.extend(period_findings)
+
+    # --- Seize / ASeize contention ratio ---
+    if "Seize" in df.columns and "ASeize" in df.columns and "Glorefs" in df.columns:
+        glorefs_vals = pd.to_numeric(df["Glorefs"], errors="coerce").fillna(0)
+        aseize_vals  = pd.to_numeric(df["ASeize"],  errors="coerce").fillna(0)
+        # aseize_pct = ASeize as % of Glorefs (guard divide-by-zero)
+        aseize_pct = aseize_vals.where(glorefs_vals > 0, 0) / glorefs_vals.where(glorefs_vals > 0, 1) * 100
+
+        # 10-minute rolling window (approximate: use 10 rows; adjust if interval known)
+        rolling_p95 = aseize_pct.rolling(window=10, min_periods=3).quantile(0.95)
+        breach_mask = rolling_p95 > 1.0
+        if breach_mask.any():
+            breach_dts = df["dt"][breach_mask]
+            peak_pct   = rolling_p95.max()
+            first_dt   = breach_dts.iloc[0]
+            last_dt    = breach_dts.iloc[-1]
+            findings.append(Finding(
+                metric="ASeize/Glorefs (lock contention ratio)",
+                severity="Yellow",
+                observation=f"ASeize/Glorefs ratio p95 reached {peak_pct:.2f}% over a rolling 10-sample window. "
+                            f"Seize rising proportionally to Glorefs is normal scaling; "
+                            f"ASeize fraction > 1% of Glorefs suggests lock contention on a hot global.",
+                when=f"{_fmt_ts(first_dt)} – {_fmt_ts(last_dt)}",
+                hypotheses=["hypothesis: lock contention on a hot global — review with IRIS lock manager",
+                            "hypothesis: large object journal overhead inflating ASeize"],
+                next_step="Use IRIS lock manager output (^SystemPerformance) and review "
+                          "^SystemPerformance history to identify the contended resource.",
+            ))
 
     if not findings:
         findings.append(Finding(
@@ -702,7 +875,7 @@ def _test_write_daemon_strain(df: pd.DataFrame) -> Optional[Finding]:
     if not nonzero_runs:
         return None
 
-    wa_warn = METRIC_THRESHOLDS.get("wa", {}).get("fixed_warn", 10.0)
+    wa_warn = float(METRIC_THRESHOLDS.get("wa", {}).get("fixed_warn", 10.0) or 10.0)
 
     for start, end, count in nonzero_runs:
         window = df[(df["dt"] >= start) & (df["dt"] <= end)]
@@ -714,7 +887,8 @@ def _test_write_daemon_strain(df: pd.DataFrame) -> Optional[Finding]:
         if not growing:
             continue
 
-        wa_mean = pd.to_numeric(window.get("wa", pd.Series([0])), errors="coerce").mean()
+        wa_col = window["wa"] if "wa" in window.columns else pd.Series([0.0] * len(window))
+        wa_mean = float(pd.to_numeric(wa_col, errors="coerce").mean() or 0.0)
         if wa_mean < wa_warn:
             continue
 
@@ -882,7 +1056,6 @@ def _test_batch_window(df: pd.DataFrame) -> Optional[Finding]:
         return None
 
     phywrs  = pd.to_numeric(df.get("PhyWrs",  pd.Series([0.0]*len(df))), errors="coerce").fillna(0)
-    jrnwrts = pd.to_numeric(df.get("Jrnwrts", pd.Series([0.0]*len(df))), errors="coerce").fillna(0)
 
     overnight_pw  = pd.to_numeric(overnight.get("PhyWrs",  pd.Series([0.0])), errors="coerce").mean()
     business_pw   = pd.to_numeric(business.get("PhyWrs",   pd.Series([0.0])), errors="coerce").mean() if not business.empty else 0
