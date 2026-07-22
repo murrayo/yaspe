@@ -2142,6 +2142,7 @@ def chart_vmstat(
     # *** NEW CODE: Pre-process datetime conversion once ***
     # Create a cached datetime column
     df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
+    df.sort_values("datetime_parsed", inplace=True)
 
     png_filepath, html_filepath = _split_filepath(filepath, png_html_out)
 
@@ -2259,6 +2260,7 @@ def chart_mgstat(
     # *** NEW CODE: Pre-process datetime conversion once ***
     # Create a cached datetime column - do this once for all charts
     df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
+    df.sort_values("datetime_parsed", inplace=True)
 
     # Format the data for Altair
     # Cut down the df to just the list of categorical data we care about (columns)
@@ -2374,6 +2376,7 @@ def chart_perfmon(
 
     # Parse the datetime column once for all charts
     df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
+    df.sort_values("datetime_parsed", inplace=True)
 
     # Format the data for Altair
     # Cut down the df to just the list of categorical data we care about (columns)
@@ -2509,6 +2512,7 @@ def chart_iostat(
         # *** NEW CODE: Pre-process datetime conversion once ***
         # Create a cached datetime column - do this once for all charts
         df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
+        df.sort_values(["datetime_parsed", "Device"], inplace=True)
 
         # Format the data for Altair
         # Cut down the df to just the list of categorical data we care about (columns)
@@ -2873,6 +2877,7 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
 
     # Pre-process datetime conversion once
     df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
+    df.sort_values("datetime_parsed", inplace=True)
 
     # Format the data for charting
     columns_to_chart = list(df.columns)
