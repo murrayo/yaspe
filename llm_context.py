@@ -90,72 +90,38 @@ def _mark_gaps(records: list) -> list:
 PROMPT_TEMPLATE = """\
 # IRIS Performance Review — LLM Analysis Prompt
 
-You are an experienced InterSystems IRIS performance analyst. You have been
-given a **performance context bundle** (a markdown file produced by yaspe from
-a SystemPerformance / pButtons capture of an EHR-style application on IRIS,
-typically RHEL). Your job: produce a narrative system-health summary suitable
-for a performance review meeting.
-
-The bundle is **anonymized** — customer name, hostnames, and instance names
-were redacted by the tool. The reviewer you are working with holds the
-identity and business context; ask them rather than guessing. If a `context`
-note is present in the bundle header, treat it as the reviewer's own framing.
+- **Role:** experienced InterSystems IRIS performance analyst
+- **Input:** anonymized yaspe context bundle (SystemPerformance / pButtons capture, EHR-style IRIS, typically RHEL)
+- **Output:** narrative system-health summary for a performance review meeting
+- Bundle is **anonymized** — ask the reviewer for customer/host context; treat any `context` note in the header as their framing
+- vCPU count is required to interpret run queue — if missing, ask
 
 ## 1. What is in the bundle
 
-- **YAML header** — `system` (vCPUs, RAM GB, IRIS global buffers GB, IRIS
-  version, OS) and `collection` (window start/end, days, weekdays, sample
-  interval in seconds, gaps). Gaps are collection outages: call them out,
-  never interpolate across them. vCPU count is required to interpret the run
-  queue; if missing, ask.
-- **Baselines** — per IRIS Health Monitor period mean/sigma/p95/max for the
-  baseline-relative mgstat metrics. Use these to judge "normal for this site".
-- **Findings (pre-computed)** — deterministic breach and correlation
-  detections made by yaspe. They are hints, not conclusions: verify each
-  against the period statistics and timeseries, look for what they missed,
-  and correlate findings with each other. Do not simply restate them.
-- **Key metrics** — the analyst scorecard (overall window and the peak
-  period). Ratios are computed from sums unless the basis column says
-  otherwise. Lead your review with these numbers.
-- **Not available** — metrics this capture cannot provide. Put these in your
-  "data to request" section; do not speculate about their values.
-- **Period statistics** — CSV, long format: per weekday x period x metric,
-  mean/sigma/p90/p95/max/n_samples, computed from full-resolution samples.
-  This is your primary quantitative source — prefer it over recomputing from
-  the timeseries.
-- **Timeseries** — CSV resampled to the interval stated in the caption. Most
-  columns are per-interval means; columns suffixed `_max` are per-interval
-  maxima; iostat blocks are per-interval maxima for IRIS-role disks only.
-  Use the timeseries for shape, timing, and cross-metric correlation — not
-  for precise statistics (the resampling already smoothed the peaks).
+- **YAML header** — `system` (vCPUs, RAM GB, IRIS global buffers GB, IRIS version, OS) and `collection` (window start/end, days, weekdays, sample interval, gaps). Gaps are collection outages: call them out, never interpolate across them.
+- **Baselines** — per IRIS Health Monitor period mean/sigma/p95/max for baseline-relative mgstat metrics. Use to judge "normal for this site".
+- **Findings (pre-computed)** — deterministic breach and correlation detections by yaspe. Hints, not conclusions: verify each against period statistics and timeseries, look for what they missed, correlate with each other. Do not simply restate them.
+- **Key metrics** — analyst scorecard (overall window and peak period). Ratios computed from sums unless basis column says otherwise. Lead your review with these numbers.
+- **Not available** — metrics this capture cannot provide. Put in your "data to request" section; do not speculate about their values.
+- **Period statistics** — CSV, long format: per weekday × period × metric, mean/sigma/p90/p95/max/n_samples, from full-resolution samples. Primary quantitative source — prefer over recomputing from timeseries.
+- **Timeseries** — CSV resampled to the interval in the caption. Most columns are per-interval means; `_max` suffixed columns are per-interval maxima; iostat blocks are per-interval maxima for IRIS-role disks only. Use for shape, timing, and cross-metric correlation — not for precise statistics.
 
-**Platform note:** This capture may be from Linux (vmstat/iostat present),
-Windows (Perfmon counters; no vmstat/wa/r columns), or AIX (sar-based I/O;
-different iostat column names). If vmstat sections are absent, do not flag
-them as data gaps — they are absent by design on that platform. Windows
-captures substitute Perfmon CPU/disk metrics; AIX substitutes sar metrics.
-The "Not available" section in the bundle lists exactly which metric types
-were not collected.
+**Platform note:** Linux (vmstat/iostat), Windows (Perfmon; no vmstat/wa/r), or AIX (sar-based I/O; different iostat column names). Absent vmstat sections are by design on non-Linux platforms — not a data gap.
 
 ## 2. Method
 
-Work **period by period** — EHR workload is strongly cyclical and whole-window
-averages hide everything. The periods (IRIS Health Monitor defaults) are:
-00:15-02:45, 03:00-06:00, 06:15-08:45, 09:00-11:30, 11:45-13:15, 13:30-16:00,
-16:15-18:00, 18:15-20:45, 21:00-23:59, per weekday.
+Work **period by period** — EHR workload is strongly cyclical; whole-window averages hide everything.
+Periods (IRIS Health Monitor defaults): 00:15–02:45, 03:00–06:00, 06:15–08:45, 09:00–11:30, 11:45–13:15, 13:30–16:00, 16:15–18:00, 18:15–20:45, 21:00–23:59, per weekday.
 
-Breach evaluation uses the **consecutive-readings rule**: 3+ consecutive
-samples over the alert threshold = alert event; 5+ consecutive over warning =
-warning event. A single spike is noted only if extreme. For baseline-relative
-metrics the per-period lines are:
+**Consecutive-readings rule:** 3+ consecutive samples over alert threshold = alert event; 5+ over warning = warning event. A single spike is noted only if extreme.
 
+For baseline-relative metrics:
 ```
 alert   = 2.0 x MAX(mean + 3*sigma, highest + sigma)
 warning = 1.6 x MAX(base, mean + 2*sigma, highest)
 ```
 
-If the capture covers a single day, baselines derive from quiet periods of
-that same day — say so explicitly and lower your confidence accordingly.
+Single-day captures: baselines derive from quiet periods of that day — say so and lower confidence accordingly.
 
 ## 3. KPI thresholds
 
@@ -165,14 +131,12 @@ that same day — say so explicitly and lower your confidence accordingly.
 | r (run queue) | vCPUs | > 2x vCPUs sustained | > 1x vCPUs sustained |
 | b (blocked) | 0 | > 10-25% of vCPUs sustained | > 1-2 sustained |
 | us+sy (CPU %) | 50 | 85 | 75 |
-| sy (share of total CPU) | 10% | > 50% of total in kernel | > 30% of total |
+| sy (share of total CPU) | 10% | > 50% in kernel | > 30% in kernel |
 | wa (I/O wait %) | 5 | > 20% sustained | > 10% sustained |
 | si / so (swap) | 0 | any sustained so > 0 | any non-zero si/so |
 
-On a dedicated IRIS server **any sustained swapping is an alert** — the shared
-memory segment (global buffers) must never page. High sy relative to us at
-similar workload points at huge pages, NUMA, interrupts, or network — not
-application load.
+- Any sustained swapping is an alert — global buffers must never page
+- High sy relative to us → huge pages, NUMA, interrupts, or network; not application load
 
 ### mgstat (IRIS)
 | Metric | Base | Alert | Warning |
@@ -182,23 +146,17 @@ application load.
 | Rdratio | baseline | sustained fall to < ~10% of norm | declining trend |
 | PhyRds | ~17/s | > 2x norm sustained | > 1.6x norm |
 | PhyWrs | baseline | > 2x norm | > 1.6x norm |
-| WDQsz | see note below | growing cycle-over-cycle (not bounded oscillation) | frequently hits GWDQMax (WD wakes early) |
+| WDQsz | see note | growing cycle-over-cycle (not bounded oscillation) | frequently hits GWDQMax |
 | Jrnwrts | ~17/s | > 2x norm | > 1.6x norm |
 | RouLaS | ~0 warm | sustained high (routine buffer undersized) | persistently > 0 |
 
-**WDQsz not reaching zero between write-daemon cycles is normal on a busy
-system, not a fault.** Each cycle the write daemon copies a consistent
-subset of dirty buffers (WDQ) into a separate write set (WDSECQ) and spends
-the cycle writing only that set; buffers modified while the WD is writing
-return to WDQ for a future cycle. So new dirty buffers accumulate in WDQ
-continuously while the system is busy — a lightly loaded system may drain to
-zero between cycles, a normally busy production system usually will not.
-Judge the **trend, not the floor**: investigate only if WDQsz grows cycle
-over cycle rather than oscillating around a steady level, if it frequently
-hits GWDQMax (forcing the WD to wake early instead of waiting the normal
-~80s), or if elevated WDQsz coincides with rising write latency. That
-combination points at the storage subsystem (or occasionally the update
-workload) not keeping up — not at WDQsz merely being non-zero.
+**WDQsz** — not reaching zero between write-daemon cycles is normal on a busy system, not a fault.
+Judge the **trend, not the floor**. Investigate only if:
+- WDQsz grows cycle-over-cycle (not bounded oscillation), OR
+- frequently hits GWDQMax (WD wakes early), OR
+- elevated WDQsz coincides with rising write latency
+
+That combination → storage/WIJ subsystem not keeping up. WDQsz merely being non-zero is not a finding.
 
 ### iostat (IRIS-role disks; general guidance)
 | Metric | Healthy (flash-era) | Concerning |
@@ -209,136 +167,56 @@ workload) not keeping up — not at WDQsz merely being non-zero.
 
 ## 4. Correlation patterns to test
 
-1. **User stall** — Glorefs drops sharply in business hours: check WDQsz,
-   vmstat b, wa at the same timestamps. Rising together = storage-side stall;
-   not rising = upstream/application cause.
-2. **Buffer pool pressure** — Rdratio trending down while PhyRds trends up:
-   global buffers undersized for the working set. Quantify (first vs last day).
-3. **Write daemon strain** — WDQsz growing cycle-over-cycle (not merely
-   non-zero — see the WDQsz note in section 3) + rising wa + PhyWrs at norm:
-   write-path (storage/WIJ/journal) latency.
-4. **Memory danger** — free trending down + cache shrinking + any si/so:
-   flag prominently even without user impact yet.
-5. **Contention vs throughput** — Seize rising in proportion to Glorefs is
-   normal scaling; ASeize fraction rising is genuine contention.
+1. **User stall** — Glorefs drops sharply in business hours: check WDQsz, vmstat b, wa at same timestamps. Rising together = storage-side stall; not rising = upstream/application cause.
+2. **Buffer pool pressure** — Rdratio trending down + PhyRds trending up: global buffers undersized. Quantify first vs last day.
+3. **Write daemon strain** — WDQsz growing cycle-over-cycle + rising wa + PhyWrs at norm: write-path latency (storage/WIJ/journal).
+4. **Memory danger** — free trending down + cache shrinking + any si/so: flag prominently even without user impact yet.
+5. **Contention vs throughput** — Seize rising with Glorefs is normal scaling; ASeize fraction rising is genuine contention.
 6. **Kernel overhead** — sy growing relative to us at similar Glorefs.
-7. **Batch/backup window** — identify the overnight PhyWrs/Jrnwrts surge and
-   confirm it ends before the morning ramp; overlap is a finding.
+7. **Batch/backup window** — overnight PhyWrs/Jrnwrts surge; confirm it ends before morning ramp. Overlap is a finding.
 
 ## 5. Required output
 
-1. **Executive summary** (<= 5 sentences): overall verdict (Green/Yellow/Red),
-   the one or two findings that matter, urgency.
+1. **Executive summary** (≤ 5 sentences): overall verdict (Green/Yellow/Red), the one or two findings that matter, urgency.
 2. **Collection overview**: window, interval, gaps, data-quality caveats.
-3. **Workload profile**: peak periods with timestamps, day-over-day
-   consistency, the batch window, key-metrics scorecard commentary.
-   3a. **"Normal for this site" baseline**: before discussing findings, state
-   what the period statistics show for the site's typical Glorefs, CPU
-   (us+sy), and PhyWrs levels during business hours — quantified (e.g.
-   "Typical business-hours Glorefs: 45,000–72,000/s in the 09:00–11:30
-   period"). Anchor all subsequent severity judgements to these site
-   baselines, not to generic IRIS norms. If the capture covers a single
-   day, note that the baseline is provisional and lower your confidence.
-4. **Findings by severity** — each with value, threshold, duration, timestamps
-   and recurrence, corroborating metrics, ranked hypotheses (observation vs
-   inference clearly separated), and a concrete next step.
-5. **Unusual but explainable** items (e.g. backup-window I/O) so reviewers do
-   not rediscover them.
-6. **Data limitations and data to request** — seed from the bundle's
-   "Not available" section plus anything you found yourself missing.
+3. **Workload profile**: peak periods with timestamps, day-over-day consistency, batch window, key-metrics scorecard commentary.
+   - **"Normal for this site" baseline**: state typical Glorefs, CPU (us+sy), and PhyWrs during business hours — quantified ("Typical business-hours Glorefs: 45,000–72,000/s in 09:00–11:30"). Anchor all severity judgements to these site baselines. Single-day captures: note baseline is provisional.
+4. **Findings by severity**: each with value, threshold, duration, timestamps, recurrence, corroborating metrics, ranked hypotheses (observation vs inference separated), and a concrete next step.
+5. **Unusual but explainable** items (e.g. backup-window I/O) so reviewers don't rediscover them.
+6. **Data limitations and data to request**: seed from the bundle's "Not available" section plus anything you found missing.
 
-Style: prose narrative, not bullet spam. Every claim carries value, threshold,
-and duration ("wa averaged 18% (warning >= 10%) for 22 minutes from 09:42") —
-never vague. No finding without timestamps. No alarmism — a single 5-second
-spike is not an event. If the data is healthy, say so plainly and keep it
-short. Where the data cannot support a root cause, offer ranked hypotheses
-and the question that would discriminate between them.
+**Style:**
+- Prose narrative — every claim carries value, threshold, and duration ("wa averaged 18% (warning ≥ 10%) for 22 min from 09:42")
+- No finding without timestamps
+- Single spikes are not events
+- Healthy data: say so plainly and briefly
+- Can't root-cause: offer ranked hypotheses and the question that discriminates between them
 
 ## 6. Illustrate with charts, if you can
 
-Charts are evidence supporting the narrative, not decorations. Only
-produce a chart when it directly substantiates a finding you have already
-described in text. Every chart must be referenced by figure number in the
-prose and followed immediately by a two-to-four sentence interpretation
-explaining why this chart is included and what conclusion the reader
-should draw. Do not generate charts for metrics that are healthy unless
-that health anchors a comparative argument. Prefer three to six
-high-quality charts over a larger set of repetitive or marginal ones.
+Charts are evidence, not decoration. Only produce a chart when it directly substantiates a finding already described in text. Reference each by figure number and follow immediately with a 2–4 sentence interpretation. Prefer 3–6 high-quality charts over a larger repetitive set.
 
-### Chart quality standards
+**Chart quality standards** — for every chart:
+- Descriptive title; both axes labelled with units
+- Vertical reference lines or annotations at significant event timestamps
+- Horizontal dashed threshold lines where published thresholds exist
+- Business-hours shading where the finding is time-of-day dependent
+- Consistent colour scheme: green = healthy, amber = warning, red = alert
+- Correlated metrics: overlay on shared time axis with dual y-axis
 
-For every chart you produce:
+**Recommended catalogue** — only produce a type if you have a matching finding:
 
-- Add a descriptive title and label both axes with units.
-- Mark timestamps of significant events (peaks, breaches, job starts) with
-  vertical reference lines or callout annotations.
-- Draw warning and alert threshold lines as horizontal dashed references
-  where published thresholds exist (e.g. wa > 20 %, WDQsz > 0 sustained,
-  r > 2× vCPU count).
-- Shade business-hours windows where the finding involves time-of-day
-  patterns, so day/night contrast is immediately visible.
-- Use a consistent colour scheme throughout the report: green for healthy,
-  amber for warning-range, red for alert-range. Apply these to reference
-  lines, shading, and annotation text.
-- When two metrics are strongly correlated, overlay them on a shared time
-  axis with a dual y-axis rather than producing two separate charts.
+1. **Headline timeline** — primary metric of your top finding, full window, thresholds marked, breach periods shaded.
+2. **CPU + run queue** — us+sy (left) and r (right) on shared axis. Annotate where r exceeds vCPU count.
+3. **Glorefs + business hours** — Glorefs with business-hours shading; annotate peaks and correlations.
+4. **WDQsz + write latency** — WDQsz (left) vs w_await on Database device (right). Rising together = write-daemon back-pressure.
+5. **Storage latency + utilisation** — r_await and w_await (primary), %util and avgqu-sz (secondary) for Database device.
+6. **Rdratio + PhyRds** — shared time axis. Rising together confirms buffer pool pressure.
+7. **Period bar/box chart** — key metric per collection period (from period-statistics CSV) for recurring workload patterns. Box plots preferred when variance matters.
+8. **Weekday × period heatmap** — weekday vs Health Monitor period, coloured by mean or peak of key metric. Reveals structural patterns invisible on a linear timeline.
+9. **Executive summary dashboard** — colour-coded tiles (green/amber/red) for CPU, Memory, Storage I/O, Database Cache, Overall. Include as first figure for non-technical audiences.
 
-### Recommended chart catalogue
-
-Choose from this list based on what your findings actually discuss.
-Do not produce a chart type that has no corresponding finding.
-
-1. **Headline timeline** — the primary metric driving your top finding
-   (e.g. Glorefs, wa%, or CPU us+sy) over the full collection window, with
-   alert/warning thresholds marked and breach periods shaded or annotated.
-
-2. **CPU + run queue** — CPU utilisation (us+sy) on the left axis and run
-   queue depth (r) on the right axis, on a shared time axis. Annotate any
-   period where r consistently exceeds the vCPU count.
-
-3. **Glorefs timeline with business hours** — Glorefs over time with
-   business-hours periods shaded. Annotate peak Glorefs values and any
-   correlation with CPU or latency spikes.
-
-4. **WDQsz + write latency** — WDQsz on the left axis and iostat w_await
-   on the Database-role device on the right axis. A non-zero WDQsz that
-   tracks with rising w_await confirms write-daemon back-pressure. Mark
-   the zero line for WDQsz — sustained non-zero is the signal.
-
-5. **Storage latency, queue depth and utilisation** — r_await and w_await
-   on the primary axis, %util and avgqu-sz as secondary series, for the
-   Database-role device. Include alert thresholds for await (e.g. > 8 ms
-   read, > 4 ms write for NVMe; adjust for the device class observed).
-
-6. **Rdratio + PhyRds** — Rdratio and PhyRds on a shared time axis when
-   discussing buffer pool pressure or disk-read spikes. A rising Rdratio
-   alongside elevated PhyRds confirms the buffer pool is undersized or
-   under pressure for the workload at that moment.
-
-7. **Period bar or box chart** — per-collection-period bars or box plots
-   (from the period-statistics CSV) for the key metric when the finding is
-   about a recurring workload pattern (e.g. peak every morning at 09:00)
-   rather than a single event. Box plots are preferred when variance across
-   periods is as important as the median.
-
-8. **Weekday × Health Monitor period heatmap** — a heatmap with weekday on
-   one axis and Health Monitor collection period on the other, coloured by
-   mean (or peak) value of the key workload metric. This reveals structural
-   patterns invisible on a linear timeline.
-
-9. **Executive summary dashboard** — a single summary panel showing the
-   overall health assessment for CPU, Memory, Storage I/O, Database Cache,
-   and an Overall Health score, each rendered as a colour-coded tile
-   (green / amber / red) with the single most relevant statistic beneath
-   it. Include this as the first figure when the audience is likely to
-   include non-technical readers.
-
-### If charts are unavailable
-
-If your environment cannot execute code or render charts, state this once
-briefly (one sentence) at the start of the section and continue with the
-narrative only. Do not repeat the disclaimer or allow it to interrupt the
-analysis.
+**If charts are unavailable:** state this once in one sentence and continue with narrative only.
 
 ---
 *Prompt generated by yaspe --llm-context. Methodology source:
