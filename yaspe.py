@@ -2144,6 +2144,129 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     plt.close("all")
 
 
+def simple_chart_ws_rs_iostat(data, device, title, filepath, output_prefix, **kwargs):
+    file_prefix = kwargs.get("file_prefix", "")
+    subtitle = kwargs.get("subtitle", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
+
+    png_data = data.copy()
+
+    if "datetime_parsed" in png_data.columns:
+        png_data.set_index("datetime_parsed", inplace=True)
+    else:
+        png_data.loc[:, "datetime"] = pd.to_datetime(
+            data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
+        )
+        png_data.set_index("datetime", inplace=True)
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    palette = plt.get_cmap("Set1")
+
+    fig, ax = plt.subplots(figsize=(16, 6))
+
+    date_str = png_data.index[0].strftime("%a %d-%b-%y")
+    ax.set_title(f"{title} - {date_str}", fontsize=16, pad=22 if subtitle else 6)
+    if subtitle:
+        ax.text(0.5, 1.0, subtitle, transform=ax.transAxes,
+                ha="center", va="bottom", fontsize=14, color="dimgray")
+
+    ax.plot(png_data.index, png_data["r/s"], color=palette(1), alpha=0.7,
+            label=f"r/s  (max {png_data['r/s'].max():,.0f})")
+    ax.plot(png_data.index, png_data["w/s"], color=palette(0), alpha=0.7,
+            label=f"w/s  (max {png_data['w/s'].max():,.0f})")
+
+    ax.set_ylabel("IOPS", fontsize=14)
+    ax.set_ylim(bottom=0)
+    ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    ax.legend(loc="upper left")
+    ax.grid(which="major", axis="both", linestyle="--")
+    ax.tick_params(labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
+
+    locator = plt_dates.AutoDateLocator()
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(plt_dates.AutoDateFormatter(locator=locator, defaultfmt="%H:%M"))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    plt.savefig(
+        f"{filepath}{output_prefix}{file_prefix}_{device}_z_Read and Write IOPS.png",
+        format="png", dpi=150,
+    )
+    plt.close("all")
+
+
+def simple_chart_dual_axis_iostat(data, device, title, filepath, output_prefix, **kwargs):
+    file_prefix = kwargs.get("file_prefix", "")
+    subtitle = kwargs.get("subtitle", "")
+    if file_prefix != "":
+        file_prefix = f"{file_prefix}_"
+
+    png_data = data.copy()
+
+    if "datetime_parsed" in png_data.columns:
+        png_data.set_index("datetime_parsed", inplace=True)
+    else:
+        png_data.loc[:, "datetime"] = pd.to_datetime(
+            data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
+        )
+        png_data.set_index("datetime", inplace=True)
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    palette = plt.get_cmap("Set1")
+
+    fig, ax1 = plt.subplots(figsize=(16, 6))
+
+    date_str = png_data.index[0].strftime("%a %d-%b-%y")
+    ax1.set_title(f"{title} - {date_str}", fontsize=16, pad=22 if subtitle else 6)
+    if subtitle:
+        ax1.text(0.5, 1.0, subtitle, transform=ax1.transAxes,
+                 ha="center", va="bottom", fontsize=14, color="dimgray")
+
+    color_ws = palette(0)
+    color_r_await = palette(1)
+
+    line1 = ax1.plot(
+        png_data.index, png_data["w/s"], color=color_ws, alpha=0.7,
+        label=f"w/s  (max {png_data['w/s'].max():,.0f})",
+    )
+    ax1.set_ylabel("w/s (Writes per sec)", fontsize=14, color=color_ws)
+    ax1.tick_params(axis="y", labelcolor=color_ws, labelsize=14)
+    ax1.set_ylim(bottom=0)
+    ax1.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+
+    ax2 = ax1.twinx()
+    line2 = ax2.plot(
+        png_data.index, png_data["r_await"], color=color_r_await, alpha=0.7,
+        label=f"r_await  (max {png_data['r_await'].max():,.2f} ms)",
+    )
+    threshold_line = ax2.axhline(y=1, color="red", linestyle="--", alpha=0.5,
+                                  label="1 ms latency target")
+    ax2.set_ylabel("r_await (ms)", fontsize=14, color=color_r_await)
+    ax2.tick_params(axis="y", labelcolor=color_r_await, labelsize=14)
+    ax2.set_ylim(bottom=0)
+    ax2.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.2f}"))
+
+    lines = line1 + line2 + [threshold_line]
+    labels = [l.get_label() for l in lines]
+    ax1.legend(lines, labels, loc="upper left")
+
+    ax1.grid(which="major", axis="both", linestyle="--")
+    ax1.tick_params(axis="x", labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
+
+    locator = plt_dates.AutoDateLocator()
+    ax1.xaxis.set_major_locator(locator)
+    ax1.xaxis.set_major_formatter(plt_dates.AutoDateFormatter(locator=locator, defaultfmt="%H:%M"))
+    plt.setp(ax1.get_xticklabels(), rotation=45, ha="right")
+
+    plt.savefig(
+        f"{filepath}{output_prefix}{file_prefix}_{device}_z_Write IOPS and Read Latency.png",
+        format="png", dpi=150,
+    )
+    plt.close("all")
+
+
 def chart_vmstat(
     connection,
     filepath,
@@ -2627,12 +2750,25 @@ def chart_iostat(
                             subtitle=subtitle,
                         )
 
+                        _rs_ws_title = f"{device} : Read and Write IOPS - {customer}"
+                        simple_chart_ws_rs_iostat(
+                            device_df, device, _rs_ws_title, dev_png_fp, output_prefix,
+                            subtitle=subtitle,
+                        )
+
                         if "r_await" in device_df.columns and "w_await" in device_df.columns:
                             _lat_title = f"{device} : Latency - {customer}"
                             # Column name : check for non-zero column
                             columns_to_histogram = {"r_await": "r/s", "w_await": "w/s"}
                             simple_chart_histogram_iostat(
                                 device_df, columns_to_histogram, device, _lat_title, dev_png_fp, output_prefix,
+                                subtitle=subtitle,
+                            )
+
+                        if "r_await" in device_df.columns:
+                            _dual_title = f"{device} : Write IOPS and Read Latency - {customer}"
+                            simple_chart_dual_axis_iostat(
+                                device_df, device, _dual_title, dev_png_fp, output_prefix,
                                 subtitle=subtitle,
                             )
 
