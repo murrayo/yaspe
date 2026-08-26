@@ -1641,6 +1641,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     business_hours_chart = kwargs.get("business_hours_chart", False)  # Generate business-hours peak chart
     bh_charts = kwargs.get("bh_charts", False)  # Generate per-day BH peak charts for multi-day data
     long_period_smooth = kwargs.get("long_period_smooth", 30)
+    benchmark_rolling_avg = kwargs.get("benchmark_rolling_avg", False)
     chart_label = kwargs.get("chart_label", [])  # List of strings for right-side annotation
     subtitle = kwargs.get("subtitle", "")
     if file_prefix != "":
@@ -1720,6 +1721,26 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
             alpha=0.7,
         )
 
+    # 5-minute rolling average overlay (benchmark mode, non-long-period only)
+    if benchmark_rolling_avg and not is_long_period:
+        sorted_for_avg = png_data.set_index(datetime_column)["metric"].sort_index()
+        rolling_avg = sorted_for_avg.rolling("5min", min_periods=1).mean()
+        # Trim warm-up: only show after first full 5-minute window has accumulated
+        warmup_cutoff = sorted_for_avg.index[0] + pd.Timedelta("5min")
+        rolling_trimmed = rolling_avg[rolling_avg.index >= warmup_cutoff]
+        if not rolling_trimmed.empty:
+            ax.plot(rolling_trimmed.index, rolling_trimmed.values,
+                    color="darkorange", alpha=0.9, linewidth=2,
+                    label="5 min rolling avg")
+        # Horizontal baseline: mean of the last 5 minutes
+        last_5min_cutoff = sorted_for_avg.index[-1] - pd.Timedelta("5min")
+        last_5min_mean = sorted_for_avg[sorted_for_avg.index >= last_5min_cutoff].mean()
+        ax.axhline(y=last_5min_mean, color="purple", linestyle="--", linewidth=1.5, alpha=0.85,
+                   label=f"Last 5 min avg: {last_5min_mean:,.0f}")
+        # Cap y-axis at 99th percentile × 1.1 to prevent startup spikes compressing steady-state view
+        p99_cap = png_data["metric"].quantile(0.99) * 1.1
+        ax.set_ylim(top=p99_cap)
+
     # Add min/max legend if requested
     if min_max and not is_long_period:
         # Only show min/max for periods <= 25 hours
@@ -1742,19 +1763,20 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
             adj_min = filtered_data["metric"].min()
             adj_max = filtered_data["metric"].max()
 
-            # Suppress lines that sit on zero — they just clutter the x-axis
-            if abs_min > 0:
-                ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Abs Min: {abs_min:,.0f}")
-            if adj_min > 0:
-                ax.axhline(y=adj_min, color="red", linestyle="--", alpha=0.7,
-                           label=f"98th pct Min (outliers removed): {adj_min:,.0f}")
+            # In benchmark mode suppress min lines — they reflect startup ramp-up, not steady state
+            if not benchmark_rolling_avg:
+                if abs_min > 0:
+                    ax.axhline(y=abs_min, color="darkred", linestyle=":", alpha=0.7, label=f"Abs Min: {abs_min:,.0f}")
+                if adj_min > 0:
+                    ax.axhline(y=adj_min, color="red", linestyle="--", alpha=0.7,
+                               label=f"98th pct Min (outliers removed): {adj_min:,.0f}")
             if abs_max > 0:
                 ax.axhline(y=abs_max, color="darkgreen", linestyle=":", alpha=0.7, label=f"Abs Max: {abs_max:,.0f}")
             if adj_max > 0:
                 ax.axhline(y=adj_max, color="green", linestyle="--", alpha=0.7,
                            label=f"99th pct Max (outliers removed): {adj_max:,.0f}")
         else:
-            if abs_min > 0:
+            if not benchmark_rolling_avg and abs_min > 0:
                 ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Min: {abs_min:,.0f}")
             ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Max: {abs_max:,.0f}")
 
@@ -2280,6 +2302,7 @@ def chart_vmstat(
     bh_charts=False,
     long_period_smooth=5,
     subtitle="",
+    benchmark=False,
 ):
     # print(f"vmstat...")
     # Get useful
@@ -2384,6 +2407,7 @@ def chart_vmstat(
                     bh_charts=bh_charts,
                     long_period_smooth=long_period_smooth,
                     subtitle=subtitle,
+                    benchmark_rolling_avg=(benchmark and column_name == "Total CPU"),
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
@@ -2396,7 +2420,7 @@ def chart_vmstat(
 
 
 def chart_mgstat(
-    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=True, day_overlay=False, bh_charts=False, long_period_smooth=5, subtitle="",
+    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=True, day_overlay=False, bh_charts=False, long_period_smooth=5, subtitle="", benchmark=False,
 ):
     """
     Chart mgstat data. Returns the Glorefs peak window (start, end) if available, otherwise (None, None).
@@ -2497,6 +2521,7 @@ def chart_mgstat(
                     bh_charts=bh_charts,
                     long_period_smooth=long_period_smooth,
                     subtitle=subtitle,
+                    benchmark_rolling_avg=(benchmark and column_name in ("Glorefs", "PhyRds", "Jrnwrts")),
                 )
                 # Capture Glorefs peak window
                 if column_name == "Glorefs" and peak_start is not None:
@@ -2635,6 +2660,7 @@ def chart_iostat(
     long_period_smooth=5,
     device_labels=None,
     subtitle="",
+    benchmark=False,
 ):
     # print(f"iostat...")
 
@@ -2822,6 +2848,7 @@ def chart_iostat(
                             long_period_smooth=long_period_smooth,
                             chart_label=_chart_label,
                             subtitle=subtitle,
+                            benchmark_rolling_avg=(benchmark and column_name in ("r/s", "r_await")),
                         )
                         if png_html_out:
                             linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
@@ -3167,6 +3194,7 @@ def mainline(
     combined_overlay=False,
     all_disks=False,
     subtitle="",
+    benchmark=False,
 ):
     input_error = False
     sp_dict = None
@@ -3367,6 +3395,7 @@ def mainline(
                 connection, _make_chart_dir(output_file_path_base, "mgstat"),
                 output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart, day_overlay, bh_charts, long_period_smooth,
                 subtitle=subtitle,
+                benchmark=benchmark,
             )
 
             # No need to go further for .mgst file
@@ -3425,6 +3454,7 @@ def mainline(
                     connection, _make_chart_dir(output_file_path_base, "vmstat"),
                     output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay, bh_charts, long_period_smooth,
                     subtitle=subtitle,
+                    benchmark=benchmark,
                 )
 
                 if is_linux:
@@ -3441,6 +3471,7 @@ def mainline(
                         disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders, day_overlay, bh_charts, long_period_smooth,
                         device_labels=device_labels,
                         subtitle=subtitle,
+                        benchmark=benchmark,
                     )
 
                     if operating_system == "AIX":
@@ -3728,6 +3759,13 @@ if __name__ == "__main__":
         default="",
         metavar='"subtitle text"',
     )
+    parser.add_argument(
+        "--benchmark",
+        dest="benchmark",
+        help="Benchmark mode: adds a 5-minute rolling average line to the Glorefs chart.",
+        action="store_true",
+        default=False,
+    )
 
     args = parser.parse_args()
 
@@ -3798,6 +3836,7 @@ if __name__ == "__main__":
             args.combined_overlay,
             all_disks=args.all_disks,
             subtitle=args.subtitle,
+            benchmark=args.benchmark,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))
