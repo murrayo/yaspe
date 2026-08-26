@@ -1358,6 +1358,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     png_path = kwargs.get("png_path", filepath)
     day_overlay = kwargs.get("day_overlay", False)
     chart_label = kwargs.get("chart_label", [])  # List of strings for right-side annotation
+    subtitle = kwargs.get("subtitle", "")
 
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
@@ -1382,8 +1383,11 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
             line=dict(width=1),
         ))
         _apply_ref_lines(png_fig, data, min_max, threshold, row=None)
+        _title_dict = dict(text=title, font=dict(size=16), x=0.5, xanchor="center")
+        if subtitle:
+            _title_dict["subtitle"] = dict(text=subtitle, font=dict(size=14))
         png_fig.update_layout(
-            title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
+            title=_title_dict,
             xaxis=dict(title="", tickfont=dict(size=13)),
             yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
             legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
@@ -1438,8 +1442,11 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
             borderpad=4,
         ))
 
+    _title_dict = dict(text=title, font=dict(size=16), x=0.5, xanchor="center")
+    if subtitle:
+        _title_dict["subtitle"] = dict(text=subtitle, font=dict(size=14))
     fig.update_layout(
-        title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
+        title=_title_dict,
         xaxis=dict(title="", tickfont=dict(size=13)),
         xaxis2=dict(title="Drag box here to zoom ↑", tickfont=dict(size=11)),
         yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
@@ -1468,8 +1475,11 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
             line=dict(width=1),
         ))
         _apply_ref_lines(png_fig, data, min_max, threshold, row=None)
+        _png_title_dict = dict(text=title, font=dict(size=16), x=0.5, xanchor="center")
+        if subtitle:
+            _png_title_dict["subtitle"] = dict(text=subtitle, font=dict(size=14))
         png_fig.update_layout(
-            title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
+            title=_png_title_dict,
             xaxis=dict(title="", tickfont=dict(size=13)),
             yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
             legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
@@ -1488,6 +1498,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
     """Interactive HTML chart for index-based data: drag overview (bottom) to zoom main chart (top)."""
     file_prefix = kwargs.get("file_prefix", "")
+    subtitle = kwargs.get("subtitle", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
     write_png = kwargs.get("write_png", False)
@@ -1505,8 +1516,11 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
             mode="lines", name=column_name,
             line=dict(width=1),
         ))
+        _title_dict = dict(text=title, font=dict(size=16), x=0.5, xanchor="center")
+        if subtitle:
+            _title_dict["subtitle"] = dict(text=subtitle, font=dict(size=14))
         png_fig.update_layout(
-            title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
+            title=_title_dict,
             xaxis=dict(title="Sample", tickfont=dict(size=13)),
             yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
             legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
@@ -1542,8 +1556,11 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
         hoverinfo="skip",
     ), row=2, col=1)
 
+    _html_title_dict = dict(text=title, font=dict(size=16), x=0.5, xanchor="center")
+    if subtitle:
+        _html_title_dict["subtitle"] = dict(text=subtitle, font=dict(size=14))
     fig.update_layout(
-        title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
+        title=_html_title_dict,
         xaxis=dict(title="", tickfont=dict(size=13)),
         xaxis2=dict(title="Drag box here to zoom ↑", tickfont=dict(size=11)),
         yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
@@ -1569,8 +1586,11 @@ def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
             mode="lines", name=column_name,
             line=dict(width=1),
         ))
+        _png_title_dict = dict(text=title, font=dict(size=16), x=0.5, xanchor="center")
+        if subtitle:
+            _png_title_dict["subtitle"] = dict(text=subtitle, font=dict(size=14))
         png_fig.update_layout(
-            title=dict(text=title, font=dict(size=16), x=0.5, xanchor="center"),
+            title=_png_title_dict,
             xaxis=dict(title="Sample", tickfont=dict(size=13)),
             yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
             legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
@@ -1622,6 +1642,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     bh_charts = kwargs.get("bh_charts", False)  # Generate per-day BH peak charts for multi-day data
     long_period_smooth = kwargs.get("long_period_smooth", 30)
     chart_label = kwargs.get("chart_label", [])  # List of strings for right-side annotation
+    subtitle = kwargs.get("subtitle", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -1742,13 +1763,14 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     ax.grid(which="major", axis="both", linestyle="--")
 
     # Adjust title and x-axis formatting based on time period
+    _title_pad = 22 if subtitle else 6
     if is_long_period:
         # For long periods, add date range to title and use day of week on x-axis
         start_date = png_data[datetime_column].min()
         end_date = png_data[datetime_column].max()
         start_str = start_date.strftime("%d-%b-%y")
         end_str = end_date.strftime("%d-%b-%y")
-        ax.set_title(f"{title} - {start_str} to {end_str}", fontsize=16)
+        ax.set_title(f"{title} - {start_str} to {end_str}", fontsize=16, pad=_title_pad)
 
         _shade_days(ax, start_date, end_date)
 
@@ -1766,13 +1788,17 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         # For short periods, add date to title in DD-MMM-YY format, use only time on x-axis
         start_date = png_data[datetime_column].min()
         date_str = start_date.strftime("%a %d-%b-%y")
-        ax.set_title(f"{title} - {date_str}", fontsize=16)
+        ax.set_title(f"{title} - {date_str}", fontsize=16, pad=_title_pad)
         locator = plt_dates.AutoDateLocator()
         ax.xaxis.set_major_locator(locator)
         ax.xaxis.set_major_formatter(plt_dates.DateFormatter("%H:%M"))
 
         # Keep rotation for time labels (they can be crowded)
         plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    if subtitle:
+        ax.text(0.5, 1.0, subtitle, transform=ax.transAxes,
+                ha="center", va="bottom", fontsize=14, color="dimgray")
 
     ax.set_ylabel(column_name, fontsize=14)
     ax.tick_params(labelsize=14)
@@ -1867,6 +1893,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
 
 def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
     file_prefix = kwargs.get("file_prefix", "")
+    subtitle = kwargs.get("subtitle", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -1885,7 +1912,10 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
         png_data["id_key"], png_data["metric"], label=column_name, color=color, marker=".", linestyle="-", alpha=0.7
     )
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(title, fontsize=16)
+    ax.set_title(title, fontsize=16, pad=22 if subtitle else 6)
+    if subtitle:
+        ax.text(0.5, 1.0, subtitle, transform=ax.transAxes,
+                ha="center", va="bottom", fontsize=14, color="dimgray")
     ax.set_ylabel(column_name, fontsize=14)
     ax.tick_params(labelsize=14)
     plt.subplots_adjust(bottom=0.15)
@@ -1912,6 +1942,7 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
 def simple_chart_stacked(data, column_names, title, max_y, filepath, output_prefix, **kwargs):
     file_prefix = kwargs.get("file_prefix", "")
+    subtitle = kwargs.get("subtitle", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -1943,7 +1974,10 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
 
     ax.grid(which="major", axis="both", linestyle="--")
     date_str = png_data.index[0].strftime("%a %d-%b-%y")
-    ax.set_title(f"{title} - {date_str}", fontsize=16)
+    ax.set_title(f"{title} - {date_str}", fontsize=16, pad=22 if subtitle else 6)
+    if subtitle:
+        ax.text(0.5, 1.0, subtitle, transform=ax.transAxes,
+                ha="center", va="bottom", fontsize=14, color="dimgray")
     ax.set_ylabel("CPU Utilisation %", fontsize=14)
     ax.legend(loc="upper left", reverse=True, fontsize=14)
     ax.tick_params(labelsize=14)
@@ -1967,6 +2001,7 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
 
 def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, filepath, output_prefix, **kwargs):
     file_prefix = kwargs.get("file_prefix", "")
+    subtitle = kwargs.get("subtitle", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -2006,7 +2041,10 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
 
     ax.grid(which="major", axis="both", linestyle="--")
     date_str = png_data.index[0].strftime("%a %d-%b-%y")
-    ax.set_title(f"{title} - {date_str}", fontsize=16)
+    ax.set_title(f"{title} - {date_str}", fontsize=16, pad=22 if subtitle else 6)
+    if subtitle:
+        ax.text(0.5, 1.0, subtitle, transform=ax.transAxes,
+                ha="center", va="bottom", fontsize=14, color="dimgray")
     ax.set_ylabel("Total IOPS", fontsize=14)
     ax.legend(loc="upper left", reverse=True)
     ax.tick_params(labelsize=14)
@@ -2030,6 +2068,7 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
 
 def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title, filepath, output_prefix, **kwargs):
     file_prefix = kwargs.get("file_prefix", "")
+    subtitle = kwargs.get("subtitle", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -2066,7 +2105,10 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     ax.hist(reads, bins=10, edgecolor="black")
 
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(f"Read {title}", fontsize=16)
+    ax.set_title(f"Read {title}", fontsize=16, pad=22 if subtitle else 6)
+    if subtitle:
+        ax.text(0.5, 1.0, subtitle, transform=ax.transAxes,
+                ha="center", va="bottom", fontsize=14, color="dimgray")
     ax.set_xlabel(f"Latency ms ({column_0}) non-zero {column_0_non_zero} values only", fontsize=10)
     ax.set_ylabel("Frequency", fontsize=14)
 
@@ -2086,7 +2128,10 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     ax.hist(writes, bins=10, edgecolor="black")
 
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.set_title(f"Write {title}", fontsize=16)
+    ax.set_title(f"Write {title}", fontsize=16, pad=22 if subtitle else 6)
+    if subtitle:
+        ax.text(0.5, 1.0, subtitle, transform=ax.transAxes,
+                ha="center", va="bottom", fontsize=14, color="dimgray")
     ax.set_xlabel(f"Latency ms ({column_1}) non-zero {column_1_non_zero} values only", fontsize=10)
     ax.set_ylabel("Frequency", fontsize=14)
 
@@ -2111,6 +2156,7 @@ def chart_vmstat(
     day_overlay=False,
     bh_charts=False,
     long_period_smooth=5,
+    subtitle="",
 ):
     # print(f"vmstat...")
     # Get useful
@@ -2151,7 +2197,7 @@ def chart_vmstat(
         if "sy" in df.columns and "wa" in df.columns and "us" in df.columns:
             title = f"CPU utilisation % - {customer}"
             title += f"\n{number_cpus} cores ({processor})"
-            simple_chart_stacked(df, "sy, wa, us", title, 100, png_filepath, output_prefix)
+            simple_chart_stacked(df, "sy, wa, us", title, 100, png_filepath, output_prefix, subtitle=subtitle)
 
     # Format the data for Altair
     # Cut down the df to just the list of categorical data we care about (columns)
@@ -2214,17 +2260,20 @@ def chart_vmstat(
                     day_overlay=day_overlay,
                     bh_charts=bh_charts,
                     long_period_smooth=long_period_smooth,
+                    subtitle=subtitle,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
-                                 min_max=min_max, threshold=threshold, day_overlay=day_overlay)
+                                 min_max=min_max, threshold=threshold, day_overlay=day_overlay,
+                                 subtitle=subtitle)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                             min_max=min_max, threshold=threshold, day_overlay=day_overlay)
+                             min_max=min_max, threshold=threshold, day_overlay=day_overlay,
+                             subtitle=subtitle)
 
 
 def chart_mgstat(
-    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=True, day_overlay=False, bh_charts=False, long_period_smooth=5,
+    connection, filepath, output_prefix, png_out, png_html_out, mgstat_file, peak_chart=True, line_chart=True, day_overlay=False, bh_charts=False, long_period_smooth=5, subtitle="",
 ):
     """
     Chart mgstat data. Returns the Glorefs peak window (start, end) if available, otherwise (None, None).
@@ -2324,16 +2373,17 @@ def chart_mgstat(
                     day_overlay=day_overlay,
                     bh_charts=bh_charts,
                     long_period_smooth=long_period_smooth,
+                    subtitle=subtitle,
                 )
                 # Capture Glorefs peak window
                 if column_name == "Glorefs" and peak_start is not None:
                     glorefs_peak_window = (peak_start, peak_end)
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
-                                 min_max=min_max, day_overlay=day_overlay)
+                                 min_max=min_max, day_overlay=day_overlay, subtitle=subtitle)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                             min_max=min_max, day_overlay=day_overlay)
+                             min_max=min_max, day_overlay=day_overlay, subtitle=subtitle)
 
     return glorefs_peak_window
 
@@ -2350,6 +2400,7 @@ def chart_perfmon(
     day_overlay=False,
     bh_charts=False,
     long_period_smooth=5,
+    subtitle="",
 ):
     # print(f"perfmon...")
 
@@ -2434,14 +2485,14 @@ def chart_perfmon(
                     data, column_name, title, max_y, png_filepath, output_prefix,
                     min_max=min_max, peak_chart=peak_chart, glorefs_peak_window=glorefs_peak_window,
                     line_chart=line_chart, business_hours_chart=min_max, day_overlay=day_overlay,
-                    bh_charts=bh_charts, long_period_smooth=long_period_smooth,
+                    bh_charts=bh_charts, long_period_smooth=long_period_smooth, subtitle=subtitle,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
-                                 min_max=min_max, day_overlay=day_overlay)
+                                 min_max=min_max, day_overlay=day_overlay, subtitle=subtitle)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                             min_max=min_max, day_overlay=day_overlay)
+                             min_max=min_max, day_overlay=day_overlay, subtitle=subtitle)
 
 
 def chart_iostat(
@@ -2460,6 +2511,7 @@ def chart_iostat(
     bh_charts=False,
     long_period_smooth=5,
     device_labels=None,
+    subtitle="",
 ):
     # print(f"iostat...")
 
@@ -2554,14 +2606,16 @@ def chart_iostat(
                         title = f"{device} : Total IOPS - {customer}"
                         columns_to_stack = {"read rps": "Reads per sec", "write wps": "Writes per sec"}
                         simple_chart_stacked_iostat(
-                            device_df, columns_to_stack, device, title, 0, dev_png_fp, output_prefix
+                            device_df, columns_to_stack, device, title, 0, dev_png_fp, output_prefix,
+                            subtitle=subtitle,
                         )
 
                         if "read avg serv" in device_df.columns and "write avg serv" in device_df.columns:
                             title = f"{device} : Latency - {customer}"
                             columns_to_histogram = {"read avg serv": "read rps", "write avg serv": "write wps"}
                             simple_chart_histogram_iostat(
-                                device_df, columns_to_histogram, device, title, dev_png_fp, output_prefix
+                                device_df, columns_to_histogram, device, title, dev_png_fp, output_prefix,
+                                subtitle=subtitle,
                             )
 
                 else:
@@ -2569,7 +2623,8 @@ def chart_iostat(
                         _stacked_title = f"{device} : Total IOPS - {customer}"
                         columns_to_stack = {"r/s": "Reads per sec", "w/s": "Writes per sec"}
                         simple_chart_stacked_iostat(
-                            device_df, columns_to_stack, device, _stacked_title, 0, dev_png_fp, output_prefix
+                            device_df, columns_to_stack, device, _stacked_title, 0, dev_png_fp, output_prefix,
+                            subtitle=subtitle,
                         )
 
                         if "r_await" in device_df.columns and "w_await" in device_df.columns:
@@ -2577,7 +2632,8 @@ def chart_iostat(
                             # Column name : check for non-zero column
                             columns_to_histogram = {"r_await": "r/s", "w_await": "w/s"}
                             simple_chart_histogram_iostat(
-                                device_df, columns_to_histogram, device, _lat_title, dev_png_fp, output_prefix
+                                device_df, columns_to_histogram, device, _lat_title, dev_png_fp, output_prefix,
+                                subtitle=subtitle,
                             )
 
             # unpivot the dataframe; include both datetime and datetime_parsed as id_vars
@@ -2629,15 +2685,18 @@ def chart_iostat(
                             bh_charts=bh_charts,
                             long_period_smooth=long_period_smooth,
                             chart_label=_chart_label,
+                            subtitle=subtitle,
                         )
                         if png_html_out:
                             linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
                                          file_prefix=device, min_max=min_max, threshold=threshold,
-                                         day_overlay=day_overlay, chart_label=_chart_label)
+                                         day_overlay=day_overlay, chart_label=_chart_label,
+                                         subtitle=subtitle)
                     else:
                         linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
                                      file_prefix=device, min_max=min_max, threshold=threshold,
-                                     day_overlay=day_overlay, chart_label=_chart_label)
+                                     day_overlay=day_overlay, chart_label=_chart_label,
+                                     subtitle=subtitle)
 
     else:
         # No date or time, chart all columns, index is x axis
@@ -2689,21 +2748,25 @@ def chart_iostat(
 
                     if png_out:
                         simple_chart_no_time(
-                            data, column_name, title, max_y, device_filepath, output_prefix, file_prefix=device
+                            data, column_name, title, max_y, device_filepath, output_prefix,
+                            file_prefix=device, subtitle=subtitle,
                         )
                     elif png_html_out:
                         simple_chart_no_time(
-                            data, column_name, title, max_y, dev_png_fp, output_prefix, file_prefix=device
+                            data, column_name, title, max_y, dev_png_fp, output_prefix,
+                            file_prefix=device, subtitle=subtitle,
                         )
                         linked_chart_no_time(
-                            data, column_name, title, max_y, dev_html_fp, output_prefix, file_prefix=device
+                            data, column_name, title, max_y, dev_html_fp, output_prefix,
+                            file_prefix=device, subtitle=subtitle,
                         )
                     else:
                         linked_chart_no_time(data, column_name, title, max_y,
-                                             device_filepath, output_prefix, file_prefix=device)
+                                             device_filepath, output_prefix,
+                                             file_prefix=device, subtitle=subtitle)
 
 
-def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out, peak_chart=True, line_chart=True, iostat_subfolders=False):
+def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_out, png_html_out, peak_chart=True, line_chart=True, iostat_subfolders=False, subtitle=""):
     # print(f"iostat...")
 
     customer = get_chart_title_base(connection)
@@ -2758,12 +2821,15 @@ def chart_nfsiostat(connection, filepath, output_prefix, operating_system, png_o
                 pfx = "" if iostat_subfolders else device.replace("/", "_")
 
                 if png_out or png_html_out:
-                    simple_chart_no_time(data, column_name, title, max_y, dev_png_fp, output_prefix, file_prefix=pfx)
+                    simple_chart_no_time(data, column_name, title, max_y, dev_png_fp, output_prefix,
+                                         file_prefix=pfx, subtitle=subtitle)
                     if png_html_out:
-                        linked_chart_no_time(data, column_name, title, max_y, dev_html_fp, output_prefix, file_prefix=pfx)
+                        linked_chart_no_time(data, column_name, title, max_y, dev_html_fp, output_prefix,
+                                             file_prefix=pfx, subtitle=subtitle)
                 else:
                     linked_chart_no_time(data, column_name, title, max_y,
-                                         device_filepath, output_prefix, file_prefix=pfx)
+                                         device_filepath, output_prefix,
+                                         file_prefix=pfx, subtitle=subtitle)
 
 
 def chart_aix_sar_d(
@@ -2778,6 +2844,7 @@ def chart_aix_sar_d(
     line_chart=True,
     iostat_subfolders=False,
     day_overlay=False,
+    subtitle="",
 ):
     customer = get_chart_title_base(connection)
 
@@ -2847,16 +2914,19 @@ def chart_aix_sar_d(
                     simple_chart(data, column_name, title, max_y, dev_png_fp, output_prefix,
                                  file_prefix=pfx, peak_chart=peak_chart, line_chart=line_chart,
                                  min_max=min_max, business_hours_chart=min_max, day_overlay=day_overlay,
-                                 bh_charts=bh_charts, long_period_smooth=long_period_smooth)
+                                 bh_charts=bh_charts, long_period_smooth=long_period_smooth,
+                                 subtitle=subtitle)
                     if png_html_out:
                         linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
-                                     file_prefix=pfx, min_max=min_max, day_overlay=day_overlay)
+                                     file_prefix=pfx, min_max=min_max, day_overlay=day_overlay,
+                                     subtitle=subtitle)
                 else:
                     linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
-                                 file_prefix=pfx, min_max=min_max, day_overlay=day_overlay)
+                                 file_prefix=pfx, min_max=min_max, day_overlay=day_overlay,
+                                 subtitle=subtitle)
 
 
-def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True, line_chart=True, day_overlay=False):
+def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out, peak_chart=True, line_chart=True, day_overlay=False, subtitle=""):
     customer = get_chart_title_base(connection)
 
     # Read in to dataframe, drop any bad rows
@@ -2909,14 +2979,14 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
                 simple_chart(
                     data, column_name, title, max_y, png_filepath, output_prefix,
                     min_max=min_max, peak_chart=peak_chart, line_chart=line_chart,
-                    business_hours_chart=min_max, day_overlay=day_overlay,
+                    business_hours_chart=min_max, day_overlay=day_overlay, subtitle=subtitle,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
-                                 min_max=min_max, day_overlay=day_overlay)
+                                 min_max=min_max, day_overlay=day_overlay, subtitle=subtitle)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                             min_max=min_max, day_overlay=day_overlay)
+                             min_max=min_max, day_overlay=day_overlay, subtitle=subtitle)
 
 
 def _make_chart_dir(base, name):
@@ -2960,6 +3030,7 @@ def mainline(
     resample_interval=None,
     combined_overlay=False,
     all_disks=False,
+    subtitle="",
 ):
     input_error = False
     sp_dict = None
@@ -3159,6 +3230,7 @@ def mainline(
             glorefs_peak_window = chart_mgstat(
                 connection, _make_chart_dir(output_file_path_base, "mgstat"),
                 output_prefix, png_out, png_html_out, mgstat_file, peak_chart, line_chart, day_overlay, bh_charts, long_period_smooth,
+                subtitle=subtitle,
             )
 
             # No need to go further for .mgst file
@@ -3216,12 +3288,14 @@ def mainline(
                 chart_vmstat(
                     connection, _make_chart_dir(output_file_path_base, "vmstat"),
                     output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay, bh_charts, long_period_smooth,
+                    subtitle=subtitle,
                 )
 
                 if is_linux:
                     chart_free_memory(
                         connection, _make_chart_dir(output_file_path_base, "free_memory"),
                         output_prefix, png_out, png_html_out, peak_chart, line_chart, day_overlay,
+                        subtitle=subtitle,
                     )
 
                 if include_iostat:
@@ -3230,6 +3304,7 @@ def mainline(
                         output_prefix, operating_system, png_out, png_html_out,
                         disk_list, peak_chart, glorefs_peak_window, line_chart, iostat_subfolders, day_overlay, bh_charts, long_period_smooth,
                         device_labels=device_labels,
+                        subtitle=subtitle,
                     )
 
                     if operating_system == "AIX":
@@ -3237,6 +3312,7 @@ def mainline(
                             connection, _make_chart_dir(output_file_path_base, "sar_d"),
                             output_prefix, operating_system, png_out, png_html_out,
                             disk_list, peak_chart, line_chart, iostat_subfolders, day_overlay,
+                            subtitle=subtitle,
                         )
 
                 if include_nfsiostat:
@@ -3244,12 +3320,14 @@ def mainline(
                         connection, _make_chart_dir(output_file_path_base, "nfsiostat"),
                         output_prefix, operating_system, png_out, png_html_out, peak_chart, line_chart,
                         iostat_subfolders,
+                        subtitle=subtitle,
                     )
 
             if operating_system == "Windows":
                 chart_perfmon(
                     connection, _make_chart_dir(output_file_path_base, "perfmon"),
                     output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay,
+                    subtitle=subtitle,
                 )
 
         finally:
@@ -3506,6 +3584,15 @@ if __name__ == "__main__":
         metavar="INTERVAL",
     )
 
+    parser.add_argument(
+        "--subtitle",
+        dest="subtitle",
+        help="Optional subtitle displayed below the chart title on all charts (2pt smaller than title).",
+        action="store",
+        default="",
+        metavar='"subtitle text"',
+    )
+
     args = parser.parse_args()
 
     if args.compare_dir is not None:
@@ -3574,6 +3661,7 @@ if __name__ == "__main__":
             args.resample_interval,
             args.combined_overlay,
             all_disks=args.all_disks,
+            subtitle=args.subtitle,
         )
     except OSError as e:
         print("Could not process files because: {}".format(str(e)))

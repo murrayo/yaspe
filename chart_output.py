@@ -21,6 +21,7 @@ def chart_iostat(df, site_survey_input, **kwargs):
     if not title_comment == "":
         title_comment = f" - {title_comment}"
 
+    user_subtitle = kwargs.get("user_subtitle", "")
     date_string = get_date_string(df)
 
     disk_list = site_survey_input["Disk List"]
@@ -53,6 +54,7 @@ def chart_iostat(df, site_survey_input, **kwargs):
                 charts_path=charts_path,
                 percentile_field=percentile_field,
                 extra_subtitle=date_string,
+                user_subtitle=user_subtitle,
                 sub_folder=f"iostat/{device}",
                 extra_horizontal=extra_horizontal,
                 left_y_axis_label=counter,
@@ -68,6 +70,7 @@ def chart_iostat(df, site_survey_input, **kwargs):
                 base_file_path=base_file_path,
                 charts_path=charts_path,
                 extra_subtitle=date_string,
+                user_subtitle=user_subtitle,
                 sub_folder=f"iostat/{device}",
                 left_y_axis_label="IOPS",
             )
@@ -80,6 +83,7 @@ def chart_iostat(df, site_survey_input, **kwargs):
                 base_file_path=base_file_path,
                 charts_path=charts_path,
                 extra_subtitle=date_string,
+                user_subtitle=user_subtitle,
                 sub_folder=f"iostat/{device}",
                 left_y_axis_label="IOPS",
             )
@@ -93,6 +97,7 @@ def chart_iostat(df, site_survey_input, **kwargs):
                 base_file_path=base_file_path,
                 charts_path=charts_path,
                 extra_subtitle=date_string,
+                user_subtitle=user_subtitle,
                 sub_folder=f"iostat/{device}",
                 left_y_axis_label="Throughput kB/s",
             )
@@ -116,6 +121,8 @@ def chart_vmstat(df, site_survey_input, **kwargs):
         extra_subtitle += f" "
 
     extra_subtitle += get_date_string(df)
+
+    user_subtitle = kwargs.get("user_subtitle", "")
 
     vmstat_columns = site_survey_input["vmstat columns"]
     vmstat_columns.append("Total CPU")
@@ -146,6 +153,7 @@ def chart_vmstat(df, site_survey_input, **kwargs):
             charts_path=charts_path,
             percentile_field=percentile_field,
             extra_subtitle=extra_subtitle,
+            user_subtitle=user_subtitle,
             left_y_axis_max=left_y_axis_max,
             sub_folder="vmstat",
             extra_horizontal=extra_horizontal,
@@ -166,6 +174,7 @@ def chart_mgstat(df, site_survey_input, **kwargs):
 
     date_string = get_date_string(df)
 
+    user_subtitle = kwargs.get("user_subtitle", "")
     mgstat_columns = site_survey_input["mgstat columns"]
 
     for counter in mgstat_columns:
@@ -183,6 +192,7 @@ def chart_mgstat(df, site_survey_input, **kwargs):
             charts_path=charts_path,
             percentile_field=percentile_field,
             extra_subtitle=date_string,
+            user_subtitle=user_subtitle,
             sub_folder="mgstat",
             left_y_axis_label=counter,
         )

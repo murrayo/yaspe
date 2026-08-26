@@ -206,7 +206,11 @@ def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name
     # plt.gcf().set_dpi(plot_d["DPI"])
 
     ax1.grid(which="major", axis="both", linestyle="--")
-    ax1.set_title(TITLE, fontsize=14)
+    _subtitle = plot_d.get("subtitle", "")
+    ax1.set_title(TITLE, fontsize=14, pad=18 if _subtitle else 6)
+    if _subtitle:
+        ax1.text(0.5, 1.0, _subtitle, transform=ax1.transAxes,
+                 ha="center", va="bottom", fontsize=12, color="dimgray")
     line1 = ax1.plot(df_master[column_d["Name"]], color=color, alpha=0.7)
 
     if plot_d["MEDIAN"]:
@@ -252,7 +256,10 @@ def zoom_chart(df_master, df_master_zoom, plot_d, column_d, disk_type, disk_name
     TITLE = column_d["Text"] + " Zoom In "
 
     color = palette(2)
-    ax2.set_title(TITLE, fontsize=14)
+    ax2.set_title(TITLE, fontsize=14, pad=18 if _subtitle else 6)
+    if _subtitle:
+        ax2.text(0.5, 1.0, _subtitle, transform=ax2.transAxes,
+                 ha="center", va="bottom", fontsize=12, color="dimgray")
     line2 = ax2.plot(df_master_zoom[column_d["Name"]], color=color, alpha=0.5)
     if plot_d["MEDIAN"]:
         ax2.plot(
@@ -363,8 +370,12 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
     plt.gcf().set_size_inches(plot_d["WIDTH"], plot_d["HEIGHT"])
     # plt.gcf().set_dpi(plot_d["DPI"])
 
+    _subtitle = plot_d.get("subtitle", "")
     ax1.grid(which="major", axis="both", linestyle="--")
-    ax1.set_title(TITLE, fontsize=14)
+    ax1.set_title(TITLE, fontsize=14, pad=18 if _subtitle else 6)
+    if _subtitle:
+        ax1.text(0.5, 1.0, _subtitle, transform=ax1.transAxes,
+                 ha="center", va="bottom", fontsize=12, color="dimgray")
 
     # This where the left hand plot happens
     colour_count = 1
@@ -398,9 +409,9 @@ def free_chart(df_master, plot_d, columns_to_show, TITLE, y_label_l, y_label_r, 
             colour_count = colour_count + 1
 
     if plot_d["limit_yaxis"]:
-        ax1.set_title("3 Sigma " + TITLE, fontsize=14)
+        ax1.set_title("3 Sigma " + TITLE, fontsize=14, pad=18 if _subtitle else 6)
     else:
-        ax1.set_title(TITLE, fontsize=14)
+        ax1.set_title(TITLE, fontsize=14, pad=18 if _subtitle else 6)
 
     ax1.set_ylabel(y_label_l, fontsize=14)
     ax1.tick_params(labelsize=14)
@@ -840,6 +851,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "-l", "--limit_yaxis", help="limit y axis to 3 sigma maximum", required=False, action="store_true"
     )
+    parser.add_argument(
+        "--subtitle",
+        dest="subtitle",
+        help="Optional subtitle displayed below each chart title (2pt smaller than title).",
+        action="store",
+        default="",
+        metavar='"subtitle text"',
+    )
     args = parser.parse_args()
 
     if args.db_filename is not None:
@@ -887,6 +906,7 @@ if __name__ == "__main__":
     # Set some constants
     plot_d["output csv"] = args.output_csv_file
     plot_d["limit_yaxis"] = args.limit_yaxis
+    plot_d["subtitle"] = args.subtitle
 
     plot_d["ZOOM_TITLE"] = zoom_start.replace(":", "") + " to " + zoom_end.replace(":", "")
     plot_d["ZOOM_TO"] = zoom_start.replace(":", "") + "_" + zoom_end.replace(":", "")

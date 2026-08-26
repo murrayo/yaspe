@@ -54,6 +54,7 @@ def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
 
     percentile_field = kwargs.get("percentile_field", "")
     extra_subtitle = kwargs.get("extra_subtitle", "")
+    user_subtitle = kwargs.get("user_subtitle", "")
     left_y_axis_max = kwargs.get("left_y_axis_max", 0)
     left_y_axis_label = kwargs.get("left_y_axis_label", "")
     sub_folder = kwargs.get("sub_folder", "")
@@ -108,7 +109,11 @@ def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
         fig.suptitle(extra_subtitle)
 
     # make a plot
-    plt.title(chart_title)
+    plt.title(chart_title, pad=22 if user_subtitle else 6)
+
+    if user_subtitle:
+        ax1.text(0.5, 1.0, user_subtitle, transform=ax1.transAxes,
+                 ha="center", va="bottom", fontsize=ax1.title.get_fontsize() - 2, color="dimgray")
 
     max_max_y = left_y_axis_max
     for field_name in field_names:
