@@ -247,6 +247,8 @@ def create_sections(
                 mgstat_df.to_csv(mgstat_output_csv, mode="a", header=False, index=False, encoding="utf-8")
 
     if not vmstat_df.empty:
+        if "id" in vmstat_df.columns:
+            vmstat_df["Total CPU"] = 100 - vmstat_df["id"]
         align_table_columns(connection, "vmstat", vmstat_df)
         vmstat_df.to_sql("vmstat", connection, if_exists="append", index=True, index_label="id_key")
         connection.commit()
@@ -2289,6 +2291,186 @@ def simple_chart_dual_axis_iostat(data, device, title, filepath, output_prefix, 
     plt.close("all")
 
 
+def simple_chart_dual_axis_glorefs_cpu(data, title, filepath, output_prefix, **kwargs):
+    subtitle = kwargs.get("subtitle", "")
+
+    png_data = data.copy()
+    if "datetime_parsed" in png_data.columns:
+        png_data.set_index("datetime_parsed", inplace=True)
+    else:
+        png_data["datetime_parsed"] = pd.to_datetime(
+            png_data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
+        )
+        png_data.set_index("datetime_parsed", inplace=True)
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    palette = plt.get_cmap("Set1")
+
+    fig, ax1 = plt.subplots(figsize=(16, 6))
+
+    date_str = png_data.index[0].strftime("%a %d-%b-%y")
+    ax1.set_title(f"{title} - {date_str}", fontsize=16, pad=22 if subtitle else 6)
+    if subtitle:
+        ax1.text(0.5, 1.0, subtitle, transform=ax1.transAxes,
+                 ha="center", va="bottom", fontsize=14, color="dimgray")
+
+    color_glorefs = palette(0)
+    color_cpu = palette(1)
+
+    line1 = ax1.plot(
+        png_data.index, png_data["Glorefs"], color=color_glorefs, alpha=0.7,
+        label=f"Glorefs  (max {png_data['Glorefs'].max():,.0f})",
+    )
+    ax1.set_ylabel("Glorefs (per sec)", fontsize=14, color=color_glorefs)
+    ax1.tick_params(axis="y", labelcolor=color_glorefs, labelsize=14)
+    ax1.set_ylim(bottom=0)
+    ax1.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+
+    ax2 = ax1.twinx()
+    line2 = ax2.plot(
+        png_data.index, png_data["Total CPU"], color=color_cpu, alpha=0.7,
+        label=f"Total CPU %  (max {png_data['Total CPU'].max():,.1f}%)",
+    )
+    threshold_line = ax2.axhline(y=80, color="red", linestyle="--", alpha=0.5, label="80% CPU threshold")
+    ax2.set_ylabel("Total CPU %", fontsize=14, color=color_cpu)
+    ax2.tick_params(axis="y", labelcolor=color_cpu, labelsize=14)
+    ax2.set_ylim(0, 100)
+    ax2.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+
+    lines = line1 + line2 + [threshold_line]
+    labels = [ln.get_label() for ln in lines]
+    ax1.legend(lines, labels, loc="upper left")
+
+    ax1.grid(which="major", axis="both", linestyle="--")
+    ax1.tick_params(axis="x", labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
+
+    locator = plt_dates.AutoDateLocator()
+    ax1.xaxis.set_major_locator(locator)
+    ax1.xaxis.set_major_formatter(plt_dates.AutoDateFormatter(locator=locator, defaultfmt="%H:%M"))
+    plt.setp(ax1.get_xticklabels(), rotation=45, ha="right")
+
+    plt.savefig(
+        f"{filepath}{output_prefix}_Glorefs_and_Total_CPU.png",
+        format="png", dpi=150,
+    )
+    plt.close("all")
+
+
+def linked_chart_dual_axis_glorefs_cpu(data, title, filepath, output_prefix, **kwargs):
+    subtitle = kwargs.get("subtitle", "")
+    x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=False,
+        row_heights=[0.75, 0.25],
+        vertical_spacing=0.05,
+        specs=[[{"secondary_y": True}], [{"secondary_y": False}]],
+    )
+
+    fig.add_trace(go.Scatter(
+        x=data[x_column], y=data["Glorefs"],
+        mode="lines", name="Glorefs",
+        line=dict(width=1),
+        hovertemplate="%{x|%H:%M:%S}<br>Glorefs: %{y:,.0f}<extra></extra>",
+    ), row=1, col=1, secondary_y=False)
+
+    fig.add_trace(go.Scatter(
+        x=data[x_column], y=data["Total CPU"],
+        mode="lines", name="Total CPU %",
+        line=dict(width=1, color="orangered"),
+        hovertemplate="%{x|%H:%M:%S}<br>Total CPU: %{y:.1f}%<extra></extra>",
+    ), row=1, col=1, secondary_y=True)
+
+    # 80% threshold on CPU axis
+    fig.add_hline(y=80, line_dash="dash", line_color="red", opacity=0.5,
+                  annotation_text="80% CPU", annotation_position="top right",
+                  row=1, col=1, secondary_y=True)
+
+    # Overview row (Glorefs only)
+    fig.add_trace(go.Scatter(
+        x=data[x_column], y=data["Glorefs"],
+        mode="lines", fill="tozeroy",
+        name="Glorefs",
+        line=dict(width=0.5, color="steelblue"),
+        fillcolor="rgba(70,130,180,0.25)",
+        showlegend=False,
+        hoverinfo="skip",
+    ), row=2, col=1)
+
+    _title_dict = dict(text=title, font=dict(size=16), x=0.5, xanchor="center")
+    if subtitle:
+        _title_dict["subtitle"] = dict(text=subtitle, font=dict(size=14))
+
+    fig.update_layout(
+        title=_title_dict,
+        xaxis=dict(title="", tickfont=dict(size=13)),
+        xaxis2=dict(title="Drag box here to zoom ↑", tickfont=dict(size=11)),
+        yaxis=dict(title="Glorefs", tickfont=dict(size=13), rangemode="tozero"),
+        yaxis2=dict(title="Total CPU %", range=[0, 100], tickfont=dict(size=13)),
+        yaxis3=dict(rangemode="tozero", showticklabels=False),
+        legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
+        height=650,
+        hovermode="x",
+        template="plotly_white",
+    )
+
+    fig.write_html(
+        f"{filepath}{output_prefix}_Glorefs_and_Total_CPU.html",
+        include_plotlyjs="cdn",
+        post_script=_OVERVIEW_ZOOM_JS,
+        full_html=True,
+    )
+
+
+def chart_glorefs_cpu(
+    connection, filepath, output_prefix, png_out, png_html_out, subtitle="",
+):
+    try:
+        mg_df = pd.read_sql_query("SELECT RunDate, RunTime, Glorefs FROM mgstat", connection)
+    except DatabaseError as e:
+        if "no such table" in str(e) or "no such column" in str(e):
+            return
+        raise
+
+    try:
+        vm_df = pd.read_sql_query("SELECT RunDate, RunTime, id FROM vmstat", connection)
+    except DatabaseError as e:
+        if "no such table" in str(e):
+            return
+        raise
+    vm_df["Total CPU"] = 100.0 - vm_df["id"]
+
+    if mg_df.empty or vm_df.empty:
+        return
+
+    mg_df["datetime"] = mg_df["RunDate"] + " " + mg_df["RunTime"]
+    vm_df["datetime"] = vm_df["RunDate"] + " " + vm_df["RunTime"]
+
+    merged = pd.merge(mg_df[["datetime", "Glorefs"]], vm_df[["datetime", "Total CPU"]], on="datetime", how="inner")
+    merged.dropna(inplace=True)
+    if merged.empty:
+        return
+
+    merged["datetime_parsed"] = pd.to_datetime(
+        merged["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
+    )
+    merged.sort_values("datetime_parsed", inplace=True)
+
+    customer = get_chart_title_base(connection)
+    title = f"Glorefs and Total CPU - {customer}"
+
+    png_filepath, html_filepath = _split_filepath(filepath, png_html_out)
+
+    if png_out or png_html_out:
+        simple_chart_dual_axis_glorefs_cpu(merged, title, png_filepath, output_prefix, subtitle=subtitle)
+        if png_html_out:
+            linked_chart_dual_axis_glorefs_cpu(merged, title, html_filepath, output_prefix, subtitle=subtitle)
+    else:
+        linked_chart_dual_axis_glorefs_cpu(merged, title, filepath, output_prefix, subtitle=subtitle)
+
+
 def chart_vmstat(
     connection,
     filepath,
@@ -3455,6 +3637,12 @@ def mainline(
                     output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay, bh_charts, long_period_smooth,
                     subtitle=subtitle,
                     benchmark=benchmark,
+                )
+
+                chart_glorefs_cpu(
+                    connection, _make_chart_dir(output_file_path_base, "mgstat"),
+                    output_prefix, png_out, png_html_out,
+                    subtitle=subtitle,
                 )
 
                 if is_linux:
