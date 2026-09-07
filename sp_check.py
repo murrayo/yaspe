@@ -1067,7 +1067,9 @@ def build_log(sp_dict):
     # memory comes from Linux free or from Windows info
 
     if "memlock" in sp_dict:
-        if int(sp_dict["memlock"]) == 0:
+        if sp_dict.get("operating system") == "Windows":
+            pass  # memlock is a Linux/AIX concept; not applicable on Windows
+        elif int(sp_dict["memlock"]) == 0:
             warn_count += 1
             sp_dict[f"warning {warn_count}"] = f"memlock={sp_dict['memlock']} does not enforce Huge/Large pages"
             sp_dict[f"warning {warn_count} explanation"] = (
