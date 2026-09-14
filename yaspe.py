@@ -1831,9 +1831,9 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         ax.tick_params(axis="x", which="major", labelsize=6)
         ax.xaxis.grid(False)
     plt.subplots_adjust(bottom=0.2)
-    ax.set_ylim(bottom=0)  # Always zero start
-    if max_y != 0:
-        ax.set_ylim(top=max_y)
+    data_max = png_data["metric"].max() if not png_data.empty else 0
+    top = max_y if max_y != 0 else (data_max if data_max > 0 else 1)
+    ax.set_ylim(bottom=0, top=top)
 
     cpu_names = ["wa", "sy", "us"]
 
@@ -1943,9 +1943,9 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
     ax.set_ylabel(column_name, fontsize=14)
     ax.tick_params(labelsize=14)
     plt.subplots_adjust(bottom=0.15)
-    ax.set_ylim(bottom=0)  # Always zero start
-    if max_y != 0:
-        ax.set_ylim(top=max_y)
+    data_max = data["metric"].max() if not data.empty else 0
+    top = max_y if max_y != 0 else (data_max if data_max > 0 else 1)
+    ax.set_ylim(bottom=0, top=top)
 
     cpu_names = ["wa", "sy", "us"]
     if png_data["metric"].max() > 5 or "%" in column_name or column_name in cpu_names or png_data["metric"].max() == 0:
@@ -2006,9 +2006,9 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     ax.legend(loc="upper left", reverse=True, fontsize=14)
     ax.tick_params(labelsize=14)
     plt.subplots_adjust(bottom=0.15)
-    ax.set_ylim(bottom=0)  # Always zero start
-    if max_y != 0:
-        ax.set_ylim(top=max_y)
+    _num_max = data.select_dtypes("number").values.max() if not data.empty else 0
+    _top = max_y if max_y != 0 else (_num_max if _num_max > 0 else 1)
+    ax.set_ylim(bottom=0, top=_top)
 
     ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
 
@@ -2073,9 +2073,9 @@ def simple_chart_stacked_iostat(data, columns_to_stack, device, title, max_y, fi
     ax.legend(loc="upper left", reverse=True)
     ax.tick_params(labelsize=14)
     plt.subplots_adjust(bottom=0.15)
-    ax.set_ylim(bottom=0)  # Always zero start
-    if max_y != 0:
-        ax.set_ylim(top=max_y)
+    _num_max = data.select_dtypes("number").values.max() if not data.empty else 0
+    _top = max_y if max_y != 0 else (_num_max if _num_max > 0 else 1)
+    ax.set_ylim(bottom=0, top=_top)
 
     ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
 
@@ -2469,6 +2469,158 @@ def chart_glorefs_cpu(
             linked_chart_dual_axis_glorefs_cpu(merged, title, html_filepath, output_prefix, subtitle=subtitle)
     else:
         linked_chart_dual_axis_glorefs_cpu(merged, title, filepath, output_prefix, subtitle=subtitle)
+
+
+def simple_chart_glorefs_remgrefs(data, title, filepath, output_prefix, **kwargs):
+    subtitle = kwargs.get("subtitle", "")
+
+    png_data = data.copy()
+    if "datetime_parsed" in png_data.columns:
+        png_data.set_index("datetime_parsed", inplace=True)
+    else:
+        png_data["datetime_parsed"] = pd.to_datetime(
+            png_data["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
+        )
+        png_data.set_index("datetime_parsed", inplace=True)
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    palette = plt.get_cmap("Set1")
+
+    fig, ax = plt.subplots(figsize=(16, 6))
+
+    date_str = png_data.index[0].strftime("%a %d-%b-%y")
+    ax.set_title(f"{title} - {date_str}", fontsize=16, pad=22 if subtitle else 6)
+    if subtitle:
+        ax.text(0.5, 1.0, subtitle, transform=ax.transAxes,
+                ha="center", va="bottom", fontsize=14, color="dimgray")
+
+    color_glorefs = palette(0)
+    color_remgrefs = palette(2)
+
+    ax.plot(
+        png_data.index, png_data["Glorefs"], color=color_glorefs, alpha=0.7,
+        label=f"Glorefs  (max {png_data['Glorefs'].max():,.0f})",
+    )
+    ax.plot(
+        png_data.index, png_data["RemGrefs"], color=color_remgrefs, alpha=0.7,
+        label=f"RemGrefs  (max {png_data['RemGrefs'].max():,.0f})",
+    )
+    ax.set_ylabel("References (per sec)", fontsize=14)
+    ax.set_ylim(bottom=0)
+    ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.0f}"))
+    ax.legend(loc="upper left")
+    ax.grid(which="major", axis="both", linestyle="--")
+    ax.tick_params(axis="x", labelsize=14)
+    ax.tick_params(axis="y", labelsize=14)
+    plt.subplots_adjust(bottom=0.15)
+
+    locator = plt_dates.AutoDateLocator()
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(plt_dates.AutoDateFormatter(locator=locator, defaultfmt="%H:%M"))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+    plt.savefig(
+        f"{filepath}{output_prefix}_Glorefs_and_RemGrefs.png",
+        format="png", dpi=150,
+    )
+    plt.close("all")
+
+
+def linked_chart_glorefs_remgrefs(data, title, filepath, output_prefix, **kwargs):
+    subtitle = kwargs.get("subtitle", "")
+    x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=False,
+        row_heights=[0.75, 0.25],
+        vertical_spacing=0.05,
+        specs=[[{"secondary_y": False}], [{"secondary_y": False}]],
+    )
+
+    fig.add_trace(go.Scatter(
+        x=data[x_column], y=data["Glorefs"],
+        mode="lines", name="Glorefs",
+        line=dict(width=1),
+        hovertemplate="%{x|%H:%M:%S}<br>Glorefs: %{y:,.0f}<extra></extra>",
+    ), row=1, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=data[x_column], y=data["RemGrefs"],
+        mode="lines", name="RemGrefs",
+        line=dict(width=1, color="green"),
+        hovertemplate="%{x|%H:%M:%S}<br>RemGrefs: %{y:,.0f}<extra></extra>",
+    ), row=1, col=1)
+
+    # Overview row (Glorefs only)
+    fig.add_trace(go.Scatter(
+        x=data[x_column], y=data["Glorefs"],
+        mode="lines", fill="tozeroy",
+        name="Glorefs",
+        line=dict(width=0.5, color="steelblue"),
+        fillcolor="rgba(70,130,180,0.25)",
+        showlegend=False,
+        hoverinfo="skip",
+    ), row=2, col=1)
+
+    _title_dict = dict(text=title, font=dict(size=16), x=0.5, xanchor="center")
+    if subtitle:
+        _title_dict["subtitle"] = dict(text=subtitle, font=dict(size=14))
+
+    fig.update_layout(
+        title=_title_dict,
+        xaxis=dict(title="", tickfont=dict(size=13)),
+        xaxis2=dict(title="Drag box here to zoom ↑", tickfont=dict(size=11)),
+        yaxis=dict(title="References (per sec)", tickfont=dict(size=13), rangemode="tozero"),
+        yaxis2=dict(rangemode="tozero", showticklabels=False),
+        legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
+        height=650,
+        hovermode="x",
+        template="plotly_white",
+    )
+
+    fig.write_html(
+        f"{filepath}{output_prefix}_Glorefs_and_RemGrefs.html",
+        include_plotlyjs="cdn",
+        post_script=_OVERVIEW_ZOOM_JS,
+        full_html=True,
+    )
+
+
+def chart_glorefs_remgrefs(
+    connection, filepath, output_prefix, png_out, png_html_out, subtitle="",
+):
+    try:
+        mg_df = pd.read_sql_query("SELECT RunDate, RunTime, Glorefs, RemGrefs FROM mgstat", connection)
+    except DatabaseError as e:
+        if "no such table" in str(e) or "no such column" in str(e):
+            return
+        raise
+
+    if mg_df.empty:
+        return
+
+    mg_df.dropna(subset=["Glorefs", "RemGrefs"], inplace=True)
+    if mg_df.empty:
+        return
+
+    mg_df["datetime"] = mg_df["RunDate"] + " " + mg_df["RunTime"]
+    mg_df["datetime_parsed"] = pd.to_datetime(
+        mg_df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
+    )
+    mg_df.sort_values("datetime_parsed", inplace=True)
+
+    customer = get_chart_title_base(connection)
+    title = f"Glorefs and RemGrefs - {customer}"
+
+    png_filepath, html_filepath = _split_filepath(filepath, png_html_out)
+
+    if png_out or png_html_out:
+        simple_chart_glorefs_remgrefs(mg_df, title, png_filepath, output_prefix, subtitle=subtitle)
+        if png_html_out:
+            linked_chart_glorefs_remgrefs(mg_df, title, html_filepath, output_prefix, subtitle=subtitle)
+    else:
+        linked_chart_glorefs_remgrefs(mg_df, title, filepath, output_prefix, subtitle=subtitle)
 
 
 def chart_vmstat(
@@ -3640,6 +3792,12 @@ def mainline(
                 )
 
                 chart_glorefs_cpu(
+                    connection, _make_chart_dir(output_file_path_base, "mgstat"),
+                    output_prefix, png_out, png_html_out,
+                    subtitle=subtitle,
+                )
+
+                chart_glorefs_remgrefs(
                     connection, _make_chart_dir(output_file_path_base, "mgstat"),
                     output_prefix, png_out, png_html_out,
                     subtitle=subtitle,
