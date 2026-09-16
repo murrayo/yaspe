@@ -2792,6 +2792,9 @@ def chart_mgstat(
     df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
     df.sort_values("datetime_parsed", inplace=True)
 
+    if "Glorefs" in df.columns and "RemGrefs" in df.columns:
+        df["Total Glorefs"] = df["Glorefs"] + df["RemGrefs"]
+
     # Format the data for Altair
     # Cut down the df to just the list of categorical data we care about (columns)
     columns_to_chart = list(df.columns)
@@ -2817,7 +2820,8 @@ def chart_mgstat(
         if column_name == "datetime":
             pass
         else:
-            title = f"{column_name} - {customer}"
+            display_name = "Total Glorefs (Glorefs + RemGrefs)" if column_name == "Total Glorefs" else column_name
+            title = f"{display_name} - {customer}"
             to_chart_df = mgstat_df.loc[mgstat_df["Type"] == column_name]
 
             # Remove outliers first, will result in nan for zero values, so needs more work
@@ -2828,6 +2832,7 @@ def chart_mgstat(
             if column_name in (
                 "Glorefs",
                 "RemGrefs",
+                "Total Glorefs",
                 "Gloupds",
                 "RemGupds",
                 "Jrnwrts",

@@ -196,3 +196,32 @@ def chart_mgstat(df, site_survey_input, **kwargs):
             sub_folder="mgstat",
             left_y_axis_label=counter,
         )
+
+    if "Glorefs" in df.columns and "RemGrefs" in df.columns:
+        df["Total Glorefs"] = df["Glorefs"] + df["RemGrefs"]
+
+        chart_templates.chart_multi_line(
+            df,
+            f"mgstat Glorefs and RemGrefs{title_comment}",
+            ["Glorefs", "RemGrefs"],
+            site_survey_input,
+            base_file_path=base_file_path,
+            charts_path=charts_path,
+            extra_subtitle=date_string,
+            user_subtitle=user_subtitle,
+            sub_folder="mgstat",
+            left_y_axis_label="References (per sec)",
+        )
+
+        chart_templates.chart_multi_line(
+            df,
+            f"mgstat Total Glorefs (Glorefs + RemGrefs){title_comment}",
+            ["Total Glorefs"],
+            site_survey_input,
+            base_file_path=base_file_path,
+            charts_path=charts_path,
+            extra_subtitle=date_string,
+            user_subtitle=user_subtitle,
+            sub_folder="mgstat",
+            left_y_axis_label="Total Glorefs (per sec)",
+        )
