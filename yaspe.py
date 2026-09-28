@@ -2448,15 +2448,27 @@ def chart_glorefs_cpu(
     mg_df["datetime"] = mg_df["RunDate"] + " " + mg_df["RunTime"]
     vm_df["datetime"] = vm_df["RunDate"] + " " + vm_df["RunTime"]
 
-    merged = pd.merge(mg_df[["datetime", "Glorefs"]], vm_df[["datetime", "Total CPU"]], on="datetime", how="inner")
+    mg_df["datetime_parsed"] = pd.to_datetime(
+        mg_df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S", errors="coerce"
+    )
+    vm_df["datetime_parsed"] = pd.to_datetime(
+        vm_df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S", errors="coerce"
+    )
+
+    mg_df = mg_df.dropna(subset=["datetime_parsed", "Glorefs"]).sort_values("datetime_parsed")
+    vm_df = vm_df.dropna(subset=["datetime_parsed", "Total CPU"]).sort_values("datetime_parsed")
+
+    # Use nearest-match merge to tolerate per-second timestamp offsets between mgstat and vmstat
+    merged = pd.merge_asof(
+        mg_df[["datetime_parsed", "Glorefs"]],
+        vm_df[["datetime_parsed", "Total CPU"]],
+        on="datetime_parsed",
+        tolerance=pd.Timedelta("30S"),
+        direction="nearest",
+    )
     merged.dropna(inplace=True)
     if merged.empty:
         return
-
-    merged["datetime_parsed"] = pd.to_datetime(
-        merged["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S"
-    )
-    merged.sort_values("datetime_parsed", inplace=True)
 
     customer = get_chart_title_base(connection)
     title = f"Glorefs and Total CPU - {customer}"

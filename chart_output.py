@@ -162,6 +162,7 @@ def chart_vmstat(df, site_survey_input, **kwargs):
 
 
 def chart_mgstat(df, site_survey_input, **kwargs):
+    df = df.copy()
     if yaspe_utilities.check_keyword_exists(site_survey_input, "chart sub folder"):
         charts_path = site_survey_input["Chart"]["chart sub folder"]
     else:
