@@ -110,6 +110,15 @@ def _finalise_cpu_topology(sp_dict, cpuinfo):
         sp_dict.setdefault("platform", "Bare metal")
 
 
+def _strip_cpf_comment(line):
+    """Remove a CPF comment. ";" starts a comment at the start of a line or after whitespace;
+    a ";" inside a value (e.g. device strings like _";"_) is kept."""
+    m = re.search(r"(^|\s);", line)
+    if not m:
+        return line
+    return line[:m.start()].rstrip() + "\n"
+
+
 def system_check(input_file):
     sp_dict = {}
     operating_system = ""
@@ -150,6 +159,8 @@ def system_check(input_file):
                 cpf_section = False
             elif "<div id=iostat>" in line or "<!-- end_win_perfmon -->" in line:
                 break
+            if cpf_section:
+                line = _strip_cpf_comment(line)
 
             # Summary
 
