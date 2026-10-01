@@ -1342,6 +1342,20 @@ def _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_pr
         _create_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, x_column, footnote=footnote)
 
 
+_PNG_THRESHOLD_STYLES = ["-.", "--", ":"]
+_PLOTLY_THRESHOLD_DASHES = ["dashdot", "dash", "dot"]
+
+
+def _threshold_list(threshold):
+    """Normalise a threshold kwarg: None, one (value, label) tuple, or a list of them.
+    A value of None is a legend-only entry (reference line off scale)."""
+    if threshold is None:
+        return []
+    if isinstance(threshold, tuple):
+        return [threshold]
+    return list(threshold)
+
+
 def _apply_ref_lines(fig, data, min_max, threshold, row):
     """Add min/max percentile and threshold reference lines to a Plotly figure.
     row=None for single-panel figures, row=1 for the top panel of a 2-row subplot."""
@@ -1381,11 +1395,16 @@ def _apply_ref_lines(fig, data, min_max, threshold, row):
                           annotation_text=f"Max: {abs_max:,.0f}", annotation_position="top right",
                           annotation=ann, **kw)
 
-    if threshold is not None:
-        thresh_val, thresh_label = threshold
+    for i, (thresh_val, thresh_label) in enumerate(_threshold_list(threshold)):
+        if thresh_val is None:
+            fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", name=thresh_label,
+                                     line=dict(color="grey", dash="dot")), **kw)
+            continue
         thresh_color = "red" if data["metric"].max() > thresh_val else "orange"
-        fig.add_hline(y=thresh_val, line=dict(color=thresh_color, dash="dashdot", width=1.5),
-                      annotation_text=thresh_label, annotation_position="top left",
+        fig.add_hline(y=thresh_val,
+                      line=dict(color=thresh_color, dash=_PLOTLY_THRESHOLD_DASHES[i % 3], width=1.5),
+                      annotation_text=thresh_label,
+                      annotation_position="top left" if i % 2 == 0 else "top right",
                       annotation=dict(bgcolor="rgba(255,255,255,0.85)", bordercolor="lightgrey", borderwidth=1),
                       **kw)
 
@@ -1405,6 +1424,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     chart_label = kwargs.get("chart_label", [])  # List of strings for right-side annotation
     subtitle = kwargs.get("subtitle", "")
     footnote = kwargs.get("footnote", "")
+    y_label = kwargs.get("y_label", column_name)
 
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
@@ -1435,7 +1455,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         png_fig.update_layout(
             title=_title_dict,
             xaxis=dict(title="", tickfont=dict(size=13)),
-            yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
+            yaxis=dict(title=y_label, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
             legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
             height=500, width=1400,
             template="plotly_white",
@@ -1496,7 +1516,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         title=_title_dict,
         xaxis=dict(title="", tickfont=dict(size=13)),
         xaxis2=dict(title="Drag box here to zoom ↑", tickfont=dict(size=11)),
-        yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
+        yaxis=dict(title=y_label, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
         yaxis2=dict(rangemode="tozero", showticklabels=False),
         legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
         height=650,
@@ -1529,7 +1549,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         png_fig.update_layout(
             title=_png_title_dict,
             xaxis=dict(title="", tickfont=dict(size=13)),
-            yaxis=dict(title=column_name, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
+            yaxis=dict(title=y_label, range=yaxis_range, tickfont=dict(size=13), rangemode="tozero"),
             legend=dict(bgcolor="#EEEEEE", bordercolor="gray", borderwidth=1, font=dict(size=13)),
             height=500, width=1400,
             template="plotly_white",
@@ -1686,7 +1706,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     glorefs_peak_window = kwargs.get("glorefs_peak_window")  # Can be None or (start, end) tuple
     day_overlay = kwargs.get("day_overlay", False)
     line_chart = kwargs.get("line_chart", True)  # Use line charts by default
-    threshold = kwargs.get("threshold")  # Optional (value, label) tuple for a reference line
+    threshold = kwargs.get("threshold")  # Optional (value, label) tuple or list of them
     business_hours_chart = kwargs.get("business_hours_chart", False)  # Generate business-hours peak chart
     bh_charts = kwargs.get("bh_charts", False)  # Generate per-day BH peak charts for multi-day data
     long_period_smooth = kwargs.get("long_period_smooth", 30)
@@ -1694,6 +1714,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     chart_label = kwargs.get("chart_label", [])  # List of strings for right-side annotation
     subtitle = kwargs.get("subtitle", "")
     footnote = kwargs.get("footnote", "")
+    y_label = kwargs.get("y_label", column_name)
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -1872,7 +1893,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         ax.text(0.5, 1.0, subtitle, transform=ax.transAxes,
                 ha="center", va="bottom", fontsize=14, color="dimgray")
 
-    ax.set_ylabel(column_name, fontsize=14)
+    ax.set_ylabel(y_label, fontsize=14)
     ax.tick_params(labelsize=14)
     if is_long_period:
         # Restore small label size and suppress x-axis grid lines (shading handles day separation)
@@ -1892,10 +1913,15 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     else:
         ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter("{x:,.3f}"))
 
-    if threshold is not None:
-        thresh_val, thresh_label = threshold
+    thresholds = _threshold_list(threshold)
+    for i, (thresh_val, thresh_label) in enumerate(thresholds):
+        if thresh_val is None:
+            ax.plot([], [], color="grey", linestyle=":", label=thresh_label)
+            continue
         color = "red" if png_data["metric"].max() > thresh_val else "orange"
-        ax.axhline(y=thresh_val, color=color, linestyle="-.", linewidth=1.5, alpha=0.8, label=thresh_label)
+        ax.axhline(y=thresh_val, color=color, linestyle=_PNG_THRESHOLD_STYLES[i % 3], linewidth=1.5, alpha=0.8,
+                   label=thresh_label)
+    if thresholds:
         ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
 
     output_name = column_name.replace("/", "_")
