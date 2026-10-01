@@ -189,3 +189,66 @@ def test_real_rhel_sample_is_vmware():
     assert d["lscpu threads per core"] == 1
     assert d["hypervisor vendor"] == "VMware"
     assert d["cpu host type"] == "virtual"
+
+
+BARE = {
+    "lscpu cpus": 256, "lscpu sockets": 4, "lscpu cores per socket": 32,
+    "lscpu threads per core": 2, "lscpu numa nodes": 4,
+    "cpu host type": "bare metal", "cpu topology source": "lscpu",
+}
+VM = {
+    "lscpu cpus": 38, "lscpu sockets": 2, "lscpu cores per socket": 19,
+    "lscpu threads per core": 1, "lscpu numa nodes": 2, "hypervisor vendor": "VMware",
+    "hypervisor flag": True, "cpu host type": "virtual", "cpu topology source": "lscpu",
+}
+
+
+def test_log_lines_bare_metal():
+    assert sp_check.cpu_topology_log_lines(BARE) == (
+        "CPU topology     : 4 sockets x 32 cores x 2 threads per core\n"
+        "Physical cores   : 128\n"
+        "Threads          : 256 (Hyper-Threading enabled)\n"
+        "NUMA nodes       : 4\n"
+    )
+
+
+def test_log_lines_bare_metal_no_ht():
+    d = dict(BARE, **{"lscpu threads per core": 1, "lscpu cpus": 128})
+    out = sp_check.cpu_topology_log_lines(d)
+    assert "4 sockets x 32 cores x 1 thread per core\n" in out
+    assert "Threads          : 128 (no Hyper-Threading)\n" in out
+
+
+def test_log_lines_vm():
+    assert sp_check.cpu_topology_log_lines(VM) == (
+        "CPU topology     : 2 sockets x 19 cores x 1 thread per core "
+        "(as presented by VMware, not host physical cores)\n"
+        "NUMA nodes       : 2\n"
+    )
+
+
+def test_log_lines_unknown_is_empty():
+    assert sp_check.cpu_topology_log_lines({"number cpus": "8"}) == ""
+    assert sp_check.cpu_topology_yaml({"number cpus": "8"}) == ""
+
+
+def test_yaml_bare_metal():
+    assert sp_check.cpu_topology_yaml(BARE) == (
+        "  CPU host type: bare metal\n"
+        "  Sockets: 4\n"
+        "  Cores per socket: 32\n"
+        "  Threads per core: 2\n"
+        "  NUMA nodes: 4\n"
+        "  Physical cores: 128\n"
+        "  CPU topology source: lscpu\n"
+    )
+
+
+def test_yaml_vm_parses_as_yaml():
+    import yaml
+    parsed = yaml.safe_load("yaspe:\n  CPUs: 38\n" + sp_check.cpu_topology_yaml(VM))["yaspe"]
+    assert parsed["CPUs"] == 38
+    assert parsed["CPU host type"] == "virtual"
+    assert parsed["Hypervisor vendor"] == "VMware"
+    assert parsed["Sockets"] == 2
+    assert "Physical cores" not in parsed

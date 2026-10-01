@@ -509,6 +509,56 @@ def system_check(input_file):
     return sp_dict
 
 
+def _threads_word(n):
+    return "thread" if n == 1 else "threads"
+
+
+def cpu_topology_log_lines(sp_dict):
+    host_type = sp_dict.get("cpu host type")
+    if host_type is None:
+        return ""
+    sockets = sp_dict["lscpu sockets"]
+    cores_per_socket = sp_dict["lscpu cores per socket"]
+    threads_per_core = sp_dict["lscpu threads per core"]
+
+    line = (
+        f"CPU topology     : {sockets} sockets x {cores_per_socket} cores x "
+        f"{threads_per_core} {_threads_word(threads_per_core)} per core"
+    )
+    if host_type == "virtual":
+        vendor = sp_dict.get("hypervisor vendor") or "the hypervisor"
+        line += f" (as presented by {vendor}, not host physical cores)"
+    out = line + "\n"
+
+    if host_type == "bare metal":
+        threads = sp_dict.get("lscpu cpus", sockets * cores_per_socket * threads_per_core)
+        ht = "Hyper-Threading enabled" if threads_per_core > 1 else "no Hyper-Threading"
+        out += f"Physical cores   : {sockets * cores_per_socket}\n"
+        out += f"Threads          : {threads} ({ht})\n"
+
+    if "lscpu numa nodes" in sp_dict:
+        out += f"NUMA nodes       : {sp_dict['lscpu numa nodes']}\n"
+    return out
+
+
+def cpu_topology_yaml(sp_dict):
+    host_type = sp_dict.get("cpu host type")
+    if host_type is None:
+        return ""
+    out = f"  CPU host type: {host_type}\n"
+    if sp_dict.get("hypervisor vendor"):
+        out += f"  Hypervisor vendor: {sp_dict['hypervisor vendor'].replace(':', '-')}\n"
+    out += f"  Sockets: {sp_dict['lscpu sockets']}\n"
+    out += f"  Cores per socket: {sp_dict['lscpu cores per socket']}\n"
+    out += f"  Threads per core: {sp_dict['lscpu threads per core']}\n"
+    if "lscpu numa nodes" in sp_dict:
+        out += f"  NUMA nodes: {sp_dict['lscpu numa nodes']}\n"
+    if host_type == "bare metal":
+        out += f"  Physical cores: {sp_dict['lscpu sockets'] * sp_dict['lscpu cores per socket']}\n"
+    out += f"  CPU topology source: {sp_dict['cpu topology source']}\n"
+    return out
+
+
 def build_log(sp_dict):
     # Build log for cut and paste
 
@@ -1475,6 +1525,7 @@ def build_log(sp_dict):
     else:
         if "number cpus" in sp_dict:
             log += f"CPUs             : {sp_dict['number cpus']}\n"
+        log += cpu_topology_log_lines(sp_dict)
     log += f"Processor model  : {sp_dict['processor model']}\n"
     log += f"Memory           : {sp_dict['memory GB']} GB\n"
     log += f"Shared memory    : {sp_dict['shared memory calc']} = {int(sp_dict['shared memory MB']):,} MB\n"
@@ -1713,6 +1764,7 @@ def build_log(sp_dict):
     yaspe_yaml += f"  Platform: {sp_dict['platform']}\n"
     if "number cpus" in sp_dict:
         yaspe_yaml += f"  CPUs: {sp_dict['number cpus']}\n"
+    yaspe_yaml += cpu_topology_yaml(sp_dict)
 
     yaspe_yaml += f"  Processor model: {sp_dict['processor model'].replace(':','-')}\n"
     yaspe_yaml += f"  Memory: {sp_dict['memory GB']} GB\n"
