@@ -118,10 +118,12 @@ def system_charts(base_file_path):
     vmstat_title = ""
     number_cpus = 0
     cpu_label = ""
+    cpu_topology = {}
 
     if "yaspe" in site_survey_input:
         number_cpus = site_survey_input["yaspe"]["CPUs"]
-        cpu_label, _ = yaspe_utilities.cpu_topology_text(yaml_cpu_overview(site_survey_input["yaspe"]))
+        cpu_topology = yaml_cpu_overview(site_survey_input["yaspe"])
+        cpu_label, _ = yaspe_utilities.cpu_topology_text(cpu_topology)
         vmstat_title += vmstat_cpu_title(site_survey_input["yaspe"])
 
     df = pd.read_csv(vmstat_file_name, sep=",", encoding="ISO-8859-1")
@@ -147,6 +149,7 @@ def system_charts(base_file_path):
         extra_subtitle=vmstat_title,
         number_cpus=number_cpus,
         cpu_label=cpu_label,
+        topology=cpu_topology,
     )
 
     if (df.index[-1] - df.index[0]).total_seconds() / 60 / 60 > 24.1:
@@ -181,6 +184,7 @@ def system_charts(base_file_path):
             extra_subtitle=f"{vmstat_title}",
             number_cpus=number_cpus,
             cpu_label=cpu_label,
+        topology=cpu_topology,
         )
 
         df_zoom["Total CPU"].describe(percentiles=[0.95, 0.98]).to_csv(
@@ -216,6 +220,7 @@ def system_charts(base_file_path):
             extra_subtitle=f"{vmstat_title}",
             number_cpus=number_cpus,
             cpu_label=cpu_label,
+        topology=cpu_topology,
         )
 
         df_zoom["Total CPU"].describe(percentiles=[0.95, 0.98]).to_csv(

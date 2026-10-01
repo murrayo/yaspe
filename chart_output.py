@@ -112,6 +112,8 @@ def chart_vmstat(df, site_survey_input, **kwargs):
     base_file_path = kwargs.get("base_file_path", ".")
     number_cpus = kwargs.get("number_cpus", 0)
     cpu_label = kwargs.get("cpu_label", "")
+    topology = kwargs.get("topology") or {}
+    run_queue_refs = yaspe_utilities.run_queue_lines(topology) if topology else []
 
     title_comment = kwargs.get("title_comment", "")
     if not title_comment == "":
@@ -134,7 +136,9 @@ def chart_vmstat(df, site_survey_input, **kwargs):
             left_y_axis_max = 100
 
         extra_horizontal = (0, "")
-        if counter == "r" and number_cpus > 0:
+        if counter == "r" and run_queue_refs:
+            extra_horizontal = [(ln.value, f"{ln.label} (above = {ln.meaning})") for ln in run_queue_refs]
+        elif counter == "r" and number_cpus > 0:
             label = cpu_label or f"{number_cpus} logical CPUs"
             extra_horizontal = (number_cpus, f"Optimal run queue < {label}")
 

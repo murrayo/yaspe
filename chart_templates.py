@@ -48,6 +48,15 @@ def chart_common(site_survey_input, base_file_path, charts_path, sub_folder):
     )
 
 
+def _draw_extra_horizontal(ax, extra_horizontal, max_y):
+    """Draw one (value, label) reference line, or a list of them; values <= 0 are skipped."""
+    lines = extra_horizontal if isinstance(extra_horizontal, list) else [extra_horizontal]
+    for value, label in lines:
+        if value > 0:
+            color = "r" if value < max_y else "m"
+            ax.axhline(y=value, color=color, linestyle="--", label=f"{label}")
+
+
 def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
     base_file_path = kwargs.get("base_file_path", ".")
     charts_path = kwargs.get("charts_path", "")
@@ -174,12 +183,7 @@ def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
         if percentile_98_plus20 > max_max_y:
             left_y_axis_max = percentile_98_plus20
 
-    extra_color = "m"
-    if extra_horizontal[0] > 0:
-        if extra_horizontal[0] < max_y:
-            extra_color = "r"
-
-        ax1.axhline(y=extra_horizontal[0], color=extra_color, linestyle="--", label=f"{extra_horizontal[1]}")
+    _draw_extra_horizontal(ax1, extra_horizontal, max_y)
 
     # Select the appropriate x-axis major formatter based on the time range
     locator = mdates.AutoDateLocator()

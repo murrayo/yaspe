@@ -167,3 +167,39 @@ def test_chart_vmstat_other_columns_untouched(tmp_path):
     png, _ = _run_vmstat(_db(BARE_ROWS, [10.0] * 100), tmp_path)
     assert png["Total CPU"].kwargs["threshold"] == (80, "80% CPU threshold")
     assert "Run queue" not in png["Total CPU"].kwargs["footnote"]
+
+
+import matplotlib.pyplot as plt
+
+
+def test_draw_extra_horizontal_tuple_and_list():
+    import chart_templates
+    fig, ax = plt.subplots()
+    chart_templates._draw_extra_horizontal(ax, (5, "Five"), 10)
+    chart_templates._draw_extra_horizontal(ax, [(128, "Cores"), (256, "Threads")], 10)
+    chart_templates._draw_extra_horizontal(ax, (0, ""), 10)
+    labels = [ln.get_label() for ln in ax.get_lines()]
+    assert labels == ["Five", "Cores", "Threads"]
+    plt.close(fig)
+
+
+def test_chart_output_r_uses_topology_lines():
+    import chart_output
+    captured = []
+    times = pd.date_range("2024-01-15 09:00", periods=5, freq="1min")
+    df = pd.DataFrame({"r": [1.0] * 5, "Total CPU": [10.0] * 5}, index=times)
+    topology = {"cpu host type": "bare metal", "lscpu sockets": 4, "lscpu cores per socket": 32,
+                "lscpu threads per core": 2, "number cpus": 256}
+    with patch("chart_templates.chart_multi_line", side_effect=lambda *a, **k: captured.append(k)):
+        chart_output.chart_vmstat(df, {"vmstat columns": ["r"]}, number_cpus=256, topology=topology)
+    r_call = [k for k in captured if k["left_y_axis_label"] == "r"][0]
+    assert r_call["extra_horizontal"] == [(128, "Physical cores 128 (above = HT doubling-up)"),
+                                          (256, "Threads 256 (above = tasks waiting for any CPU)")]
+
+
+def test_system_review_passes_topology():
+    import system_review
+    overview = system_review.yaml_cpu_overview({"CPUs": 256, "CPU host type": "bare metal", "Sockets": 4,
+                                                "Cores per socket": 32, "Threads per core": 2})
+    from yaspe_utilities import run_queue_lines
+    assert [ln.value for ln in run_queue_lines(overview)] == [128, 256]
