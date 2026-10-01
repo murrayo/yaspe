@@ -17,6 +17,7 @@ from functools import lru_cache
 
 import sqlite3
 import sys
+import textwrap
 from sqlite3 import Error
 
 import matplotlib as mpl
@@ -427,6 +428,27 @@ def get_chart_title_base(connection):
     return f"{customer} ({hostname})"
 
 
+def _add_png_footnote(fig, footnote):
+    if not footnote:
+        return
+    fig.text(0.5, -0.02, "\n".join(textwrap.wrap(footnote, 180)),
+             ha="center", va="top", fontsize=10, color="dimgray")
+
+
+def _add_plotly_footnote(fig, footnote, base_height):
+    if not footnote:
+        return base_height
+    lines = textwrap.wrap(footnote, 190)
+    extra = 16 * len(lines) + 10
+    fig.add_annotation(
+        text="<br>".join(lines), xref="paper", yref="paper", x=0, y=0,
+        xanchor="left", yanchor="top", yshift=-60, align="left", showarrow=False,
+        font=dict(size=11, color="dimgray"),
+    )
+    fig.update_layout(height=base_height + extra, margin=dict(b=70 + extra))
+    return base_height + extra
+
+
 def _find_peak_60_window(png_data, datetime_column):
     """Find the peak 60-minute window for the data. Returns (peak_start_time, peak_end_time) or (None, None)."""
     from datetime import timedelta
@@ -465,7 +487,8 @@ def _ordinal(n):
 
 
 def _create_peak_60_chart(
-    png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True
+    png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True,
+    footnote="",
 ):
     """Create a chart showing only the peak 60 minutes for the column. Returns (peak_start_time, peak_end_time)."""
     from datetime import timedelta
@@ -604,6 +627,7 @@ def _create_peak_60_chart(
 
     output_name = column_name.replace("/", "_")
     plt.tight_layout()
+    _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_peak60.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
@@ -612,7 +636,7 @@ def _create_peak_60_chart(
 
 def _create_business_hours_peak_chart(
     png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True,
-    bh_start=8, bh_end=18
+    bh_start=8, bh_end=18, footnote=""
 ):
     """Create a peak 60-min chart restricted to business hours (default 08:00-18:00).
     Returns (peak_start_time, peak_end_time) or (None, None)."""
@@ -731,13 +755,14 @@ def _create_business_hours_peak_chart(
 
     output_name = column_name.replace("/", "_")
     plt.tight_layout()
+    _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_bh_peak.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
     return peak_start_time, peak_end_time
 
 
-def _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column):
+def _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, footnote=""):
     """Bar chart: 99th percentile value per calendar day. Highlights the busiest day in red."""
     sorted_data = png_data.set_index(datetime_column)["metric"].sort_index()
     daily = sorted_data.groupby(sorted_data.index.date).quantile(0.99)
@@ -779,11 +804,12 @@ def _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, o
 
     output_name = column_name.replace("/", "_")
     plt.tight_layout()
+    _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_daily_summary.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
 
-def _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix, file_prefix, datetime_column):
+def _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix, file_prefix, datetime_column, footnote=""):
     """Heatmap: hour-of-day (x) × date (y), colour = 99th pct. Shows consistent peak hours across days."""
     sorted_data = png_data.set_index(datetime_column)["metric"].sort_index()
     df = sorted_data.to_frame("metric")
@@ -814,11 +840,12 @@ def _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix,
 
     output_name = column_name.replace("/", "_")
     plt.tight_layout()
+    _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_heatmap.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
 
-def _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, avg_minutes=5):
+def _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, avg_minutes=5, footnote=""):
     """Long-period chart smoothed to a rolling N-minute average (default 5 min). Same layout as the 30-min chart."""
     from datetime import timedelta
 
@@ -887,12 +914,13 @@ def _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output
 
     output_name = column_name.replace("/", "_")
     plt.tight_layout()
+    _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_{avg_minutes}min_avg.png",
                 format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
 
-def _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True):
+def _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True, footnote=""):
     """All days overlaid on a 00:00–24:00 x-axis, one colour per day. Shows consistency of the daily profile."""
     from datetime import timedelta
 
@@ -949,11 +977,12 @@ def _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, out
 
     output_name = column_name.replace("/", "_")
     plt.tight_layout()
+    _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_day_overlay.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
 
-def _create_day_overlay_html(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column):
+def _create_day_overlay_html(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, footnote=""):
     """Interactive Plotly day-overlay chart: one trace per calendar day on a shared 00:00-24:00 x-axis.
     Hover shows actual date + time + value. Includes the overview/zoom panel."""
     from datetime import timedelta
@@ -1028,6 +1057,7 @@ def _create_day_overlay_html(png_data, column_name, title, max_y, filepath, outp
         hovermode="x",
         template="plotly_white",
     )
+    _add_plotly_footnote(fig, footnote, 650)
 
     output_name = column_name.replace("/", "_")
     fig.write_html(
@@ -1038,7 +1068,7 @@ def _create_day_overlay_html(png_data, column_name, title, max_y, filepath, outp
     )
 
 
-def _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True, bh_start=8, bh_end=18):
+def _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart=True, bh_start=8, bh_end=18, footnote=""):
     """For each calendar day in a long-period dataset, create a business-hours peak 60-min chart."""
     sorted_data = png_data.copy().set_index(datetime_column).sort_index()
     dates = sorted(set(sorted_data.index.date))
@@ -1055,6 +1085,7 @@ def _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath
         _create_business_hours_peak_chart(
             day_data, column_name, day_title, max_y, filepath, output_prefix,
             day_file_prefix, datetime_column, line_chart, bh_start, bh_end,
+            footnote=footnote,
         )
 
 
@@ -1286,7 +1317,7 @@ gd.appendChild(btn);
 """
 
 
-def _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, day_overlay=False):
+def _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, day_overlay=False, footnote=""):
     """Emit a day-overlay HTML chart when data spans more than 25 hours.
 
     Created only when day_overlay=True OR the column is in _DAY_OVERLAY_ALWAYS.
@@ -1296,7 +1327,7 @@ def _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_pr
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
     time_range = data[x_column].max() - data[x_column].min()
     if time_range.total_seconds() > 25 * 60 * 60:
-        _create_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, x_column)
+        _create_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, x_column, footnote=footnote)
 
 
 def _apply_ref_lines(fig, data, min_max, threshold, row):
@@ -1361,6 +1392,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     day_overlay = kwargs.get("day_overlay", False)
     chart_label = kwargs.get("chart_label", [])  # List of strings for right-side annotation
     subtitle = kwargs.get("subtitle", "")
+    footnote = kwargs.get("footnote", "")
 
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
@@ -1396,9 +1428,10 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
             height=500, width=1400,
             template="plotly_white",
         )
+        png_height = _add_plotly_footnote(png_fig, footnote, 500)
         png_fig.write_image(
             f"{png_path}{output_prefix}{file_prefix}{output_name}.png",
-            scale=2, width=1400, height=500,
+            scale=2, width=1400, height=png_height,
         )
         return
 
@@ -1460,6 +1493,7 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         annotations=_annotations,
         margin=dict(r=160) if chart_label else {},
     )
+    _add_plotly_footnote(fig, footnote, 650)
 
     if write_html:
         fig.write_html(
@@ -1488,13 +1522,14 @@ def linked_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
             height=500, width=1400,
             template="plotly_white",
         )
+        png_height = _add_plotly_footnote(png_fig, footnote, 500)
         png_fig.write_image(
             f"{png_path}{output_prefix}{file_prefix}{output_name}.png",
-            scale=2, width=1400, height=500,
+            scale=2, width=1400, height=png_height,
         )
 
     if write_html:
-        _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, day_overlay)
+        _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, day_overlay, footnote=footnote)
 
 
 def linked_chart_no_time(data, column_name, title, max_y, filepath, output_prefix, **kwargs):
@@ -1646,6 +1681,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     benchmark_rolling_avg = kwargs.get("benchmark_rolling_avg", False)
     chart_label = kwargs.get("chart_label", [])  # List of strings for right-side annotation
     subtitle = kwargs.get("subtitle", "")
+    footnote = kwargs.get("footnote", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -1857,6 +1893,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
                  fontsize=10, va="bottom", ha="left",
                  bbox=dict(boxstyle="round,pad=0.3", facecolor="#f0f0f0", edgecolor="gray", alpha=0.8))
     plt.tight_layout()
+    _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
@@ -1869,7 +1906,8 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     # - Data is more than 8 hours but less than 25 hours
     if peak_chart and min_max and is_medium_period and not is_long_period:
         peak_start_time, peak_end_time = _create_peak_60_chart(
-            png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart
+            png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart,
+            footnote=footnote,
         )
 
     # Create Glorefs peak chart if glorefs_peak_window is provided and valid
@@ -1897,19 +1935,20 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
     # Business hours peak chart for selected key metrics (Total CPU, Glorefs)
     if business_hours_chart and peak_chart and is_medium_period and not is_long_period:
         _create_business_hours_peak_chart(
-            png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart
+            png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart,
+            footnote=footnote,
         )
 
     # Long-period (>25h) supplementary charts
     if is_long_period and min_max:
-        _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
-        _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column)
-        _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix, file_prefix, datetime_column)
+        _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, footnote=footnote)
+        _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, footnote=footnote)
+        _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix, file_prefix, datetime_column, footnote=footnote)
         if day_overlay or column_name in _DAY_OVERLAY_ALWAYS:
-            _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
+            _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart, footnote=footnote)
         # day_overlay HTML is handled by linked_chart via _maybe_day_overlay_html
         if bh_charts:
-            _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart)
+            _create_per_day_bh_peak_charts(png_data, column_name, title, max_y, filepath, output_prefix, file_prefix, datetime_column, line_chart, footnote=footnote)
 
     # Return peak times (useful for Glorefs to pass to other charts)
     return peak_start_time, peak_end_time
@@ -1967,6 +2006,7 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 def simple_chart_stacked(data, column_names, title, max_y, filepath, output_prefix, **kwargs):
     file_prefix = kwargs.get("file_prefix", "")
     subtitle = kwargs.get("subtitle", "")
+    footnote = kwargs.get("footnote", "")
     if file_prefix != "":
         file_prefix = f"{file_prefix}_"
 
@@ -2019,7 +2059,8 @@ def simple_chart_stacked(data, column_names, title, max_y, filepath, output_pref
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     output_name = "Stacked CPU"
-    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150)
+    _add_png_footnote(fig, footnote)
+    plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
 
@@ -2293,6 +2334,7 @@ def simple_chart_dual_axis_iostat(data, device, title, filepath, output_prefix, 
 
 def simple_chart_dual_axis_glorefs_cpu(data, title, filepath, output_prefix, **kwargs):
     subtitle = kwargs.get("subtitle", "")
+    footnote = kwargs.get("footnote", "")
 
     png_data = data.copy()
     if "datetime_parsed" in png_data.columns:
@@ -2350,15 +2392,17 @@ def simple_chart_dual_axis_glorefs_cpu(data, title, filepath, output_prefix, **k
     ax1.xaxis.set_major_formatter(plt_dates.AutoDateFormatter(locator=locator, defaultfmt="%H:%M"))
     plt.setp(ax1.get_xticklabels(), rotation=45, ha="right")
 
+    _add_png_footnote(fig, footnote)
     plt.savefig(
         f"{filepath}{output_prefix}_Glorefs_and_Total_CPU.png",
-        format="png", dpi=150,
+        format="png", dpi=150, bbox_inches="tight",
     )
     plt.close("all")
 
 
 def linked_chart_dual_axis_glorefs_cpu(data, title, filepath, output_prefix, **kwargs):
     subtitle = kwargs.get("subtitle", "")
+    footnote = kwargs.get("footnote", "")
     x_column = "datetime_parsed" if "datetime_parsed" in data.columns else "datetime"
 
     fig = make_subplots(
@@ -2415,6 +2459,7 @@ def linked_chart_dual_axis_glorefs_cpu(data, title, filepath, output_prefix, **k
         hovermode="x",
         template="plotly_white",
     )
+    _add_plotly_footnote(fig, footnote, 650)
 
     fig.write_html(
         f"{filepath}{output_prefix}_Glorefs_and_Total_CPU.html",
