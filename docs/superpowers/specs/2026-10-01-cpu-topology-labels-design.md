@@ -79,8 +79,8 @@ Logical CPU count = `lscpu cpus` if present, else `number cpus`.
 
 | Case | Title label | Footnote |
 |---|---|---|
-| Bare metal, HT on | `256 threads (128 cores x 2 HT)` | see below |
-| Bare metal, HT off | `64 physical cores (no HT)` | see below |
+| Bare metal, HT on | `256 threads (4 sockets x 32 cores x 2 HT)` | see below |
+| Bare metal, HT off | `64 physical cores (2 sockets x 32 cores, no HT)` | see below |
 | VM | `38 vCPUs (VMware)` | see below |
 | Unknown | `256 logical CPUs` | see below |
 
