@@ -21,43 +21,53 @@ UNKNOWN = {"number cpus": "32"}
 
 
 def _summary(lines):
-    return [(ln.value, ln.kind, ln.label) for ln in lines]
+    return [(ln.value, ln.kind, ln.noun) for ln in lines]
 
 
 def test_lines_bare_metal_ht():
     lines = run_queue_lines(BARE_HT)
-    assert _summary(lines) == [(128, "cores", "Physical cores 128"), (256, "threads", "Threads 256")]
-    assert lines[0].meaning == "cores running two tasks via HT"
-    assert lines[0].noun == "physical cores"
-    assert lines[1].meaning == "tasks waiting for any CPU"
+    assert _summary(lines) == [(128, "cores", "physical cores"), (256, "threads", "threads")]
+    assert lines[0].meaning == "every core is busy and Hyper-Threading is sharing cores between tasks"
+    assert lines[0].unit == "core"
+    assert lines[1].meaning == "tasks are queuing for CPU"
+    assert lines[1].unit == "thread"
 
 
 def test_lines_bare_metal_no_ht():
     lines = run_queue_lines(BARE_NOHT)
-    assert _summary(lines) == [(64, "cores", "Physical cores 64")]
-    assert lines[0].meaning == "tasks waiting for a core"
+    assert _summary(lines) == [(64, "cores", "physical cores")]
+    assert lines[0].meaning == "tasks are queuing for CPU"
 
 
 def test_lines_kvm_with_threads():
     lines = run_queue_lines(KVM)
-    assert _summary(lines) == [(8, "presented_cores", "Presented cores 8"), (16, "vcpus", "vCPUs 16")]
-    assert lines[0].meaning == "vCPUs sharing a core via HT"
+    assert _summary(lines) == [(8, "presented_cores", "presented cores"), (16, "vcpus", "vCPUs")]
+    assert lines[0].meaning == "every core is busy and Hyper-Threading is sharing cores between tasks"
+    assert lines[1].unit == "vCPU"
+
+
+def test_lines_any_vm_with_threads_gets_two_lines():
+    # Azure (vendor Microsoft) and vendor-less VMs present 2 threads per core too
+    assert _summary(run_queue_lines(dict(KVM, **{"hypervisor vendor": "Microsoft"}))) == [
+        (8, "presented_cores", "presented cores"), (16, "vcpus", "vCPUs")]
+    no_vendor = {k: v for k, v in KVM.items() if k != "hypervisor vendor"}
+    assert [ln.value for ln in run_queue_lines(no_vendor)] == [8, 16]
 
 
 def test_lines_kvm_one_thread_per_core():
-    assert _summary(run_queue_lines(KVM1)) == [(4, "vcpus", "vCPUs 4")]
+    assert _summary(run_queue_lines(KVM1)) == [(4, "vcpus", "vCPUs")]
 
 
 def test_lines_vmware():
     lines = run_queue_lines(VMW)
-    assert _summary(lines) == [(38, "vcpus", "vCPUs 38")]
-    assert lines[0].noun == "vCPUs"
+    assert _summary(lines) == [(38, "vcpus", "vCPUs")]
+    assert lines[0].unit == "vCPU"
 
 
 def test_lines_unknown_uses_logical_count():
     lines = run_queue_lines(UNKNOWN)
-    assert _summary(lines) == [(32, "logical", "Logical CPUs 32")]
-    assert lines[0].noun == "logical CPUs"
+    assert _summary(lines) == [(32, "logical", "logical CPUs")]
+    assert lines[0].unit == "CPU"
 
 
 def test_lines_no_cpu_count():
@@ -85,9 +95,8 @@ def test_insight_pct_above_and_peak():
     assert rq.pct_above == [10.0, 2.0]
     assert rq.peak == 300.0
     assert rq.peak_time == "29-Aug 12:38"
-    assert rq.legend_labels[0] == "Physical cores 128 (above = cores running two tasks via HT): 10.0% of samples above"
-    assert rq.legend_labels[1] == ("Threads 256 (above = tasks waiting for any CPU): 2.0% of samples above, "
-                                   "peak 300 at 29-Aug 12:38")
+    assert rq.legend_labels[0] == "128 physical cores: above 10.0% of the time"
+    assert rq.legend_labels[1] == "256 threads: above 2.0% of the time"
     assert rq.drawn == [True, True]
     assert rq.thresholds == [(128, rq.legend_labels[0]), (256, rq.legend_labels[1])]
 
@@ -109,8 +118,8 @@ def test_insight_off_scale_just_below_half():
     rq = run_queue_insight(_rq_df([63.0] * 10), BARE_HT)
     assert rq.drawn == [False, False]
     assert rq.y_max == 63.0
-    assert rq.legend_labels[0] == "Physical cores 128 (off scale, peak 63 = 49%)"
-    assert rq.thresholds[0] == (None, "Physical cores 128 (off scale, peak 63 = 49%)")
+    assert rq.legend_labels[0] == "128 physical cores: never exceeded (peak 63)"
+    assert rq.thresholds[0] == (None, "128 physical cores: never exceeded (peak 63)")
 
 
 def test_insight_off_scale_just_above_half():
@@ -127,14 +136,14 @@ def test_insight_line_two_drawn_when_it_fits():
 def test_insight_line_two_off_scale():
     rq = run_queue_insight(_rq_df([130.0] * 10), BARE_HT)
     assert rq.drawn == [True, False]
-    assert rq.thresholds[1] == (None, "Threads 256 (off scale, peak 130 = 51%)")
+    assert rq.thresholds[1] == (None, "256 threads: never exceeded (peak 130)")
 
 
 def test_insight_zero_peak():
     rq = run_queue_insight(_rq_df([0.0] * 10), BARE_HT)
     assert rq.y_max == 0.0
     assert rq.drawn == [False, False]
-    assert rq.legend_labels[0] == "Physical cores 128 (off scale, peak 0 = 0%)"
+    assert rq.legend_labels[0] == "128 physical cores: never exceeded (peak 0)"
 
 
 def test_fmt_pct():
@@ -146,7 +155,7 @@ def test_fmt_pct():
 def test_insight_tiny_percentage():
     df = _rq_df([100.0] * 3999 + [300.0])
     rq = run_queue_insight(df, BARE_HT)
-    assert "<0.1% of samples above" in rq.legend_labels[1]
+    assert rq.legend_labels[1] == "256 threads: above <0.1% of the time"
 
 
 def test_insight_string_r_values():
@@ -157,7 +166,7 @@ def test_insight_string_r_values():
 
 def test_insight_non_numeric_r_is_empty():
     rq = run_queue_insight(_rq_df(["x"] * 5), BARE_HT)
-    assert rq.lines == [] and rq.thresholds == [] and rq.verdict == ""
+    assert rq.lines == [] and rq.thresholds == [] and rq.verdict == "" and rq.footnote == ""
     assert rq.y_max is None and rq.per_core_divisor is None
 
 
@@ -174,22 +183,22 @@ def test_insight_no_cpu_count_is_empty():
 def test_insight_per_core_bare_metal_ht():
     rq = run_queue_insight(_rq_df([64.0] * 9 + [384.0]), BARE_HT)
     assert rq.per_core_divisor == 128
-    assert rq.per_core_label == "r ÷ 128 physical cores"
+    assert rq.per_core_label == "runnable tasks per core"
     assert rq.per_core_y_max == 3.0 * 1.05
-    assert rq.per_core_thresholds == [(1.0, "1.0 = r equals 128 physical cores (saturated)"),
-                                      (2.0, "2 = all 256 threads busy")]
+    assert rq.per_core_thresholds == [(1.0, "1.0 = one task per core (128 physical cores)"),
+                                      (2.0, "2.0 = one task per thread (256 threads)")]
 
 
 def test_insight_per_core_line_two_off_scale():
     rq = run_queue_insight(_rq_df([64.0] * 10), BARE_HT)
     assert rq.per_core_y_max == 1.05
-    assert rq.per_core_thresholds[1] == (None, "2 = all 256 threads busy (off scale)")
+    assert rq.per_core_thresholds[1] == (None, "2.0 = one task per thread (256 threads, not reached)")
 
 
 def test_insight_per_core_vmware():
     rq = run_queue_insight(_rq_df([10.0] * 10), VMW)
-    assert rq.per_core_label == "r ÷ 38 vCPUs"
-    assert rq.per_core_thresholds == [(1.0, "1.0 = r equals 38 vCPUs (saturated)")]
+    assert rq.per_core_label == "runnable tasks per vCPU"
+    assert rq.per_core_thresholds == [(1.0, "1.0 = one task per vCPU (38 vCPUs)")]
 
 
 def _queued(n_queued, r_queued, n_total=100, r_idle=10.0, **cols_queued_idle):
@@ -199,57 +208,151 @@ def _queued(n_queued, r_queued, n_total=100, r_idle=10.0, **cols_queued_idle):
     return _rq_df([r_idle] * n_idle + [r_queued] * n_queued, **cols)
 
 
-def test_verdict_no_queuing():
+def test_verdict_never_exceeded():
     rq = run_queue_insight(_rq_df([10.0] * 100, **{"Total CPU": [50.0] * 100}), BARE_HT)
-    assert rq.verdict == ("Run queue: tasks wanting to run rarely exceeded 128 physical cores "
-                          "(under 1% of samples), so there was no CPU queuing.")
+    assert rq.verdict == "Here r never went above 128 (peak 10 at 29-Aug 11:00), so there was no CPU queuing."
+
+
+def test_verdict_rarely_exceeded():
+    rq = run_queue_insight(_rq_df([10.0] * 999 + [181.0], **{"Total CPU": [50.0] * 1000}), BARE_HT)
+    assert rq.verdict == ("Here r was above 128 for 0.1% of the time (peak 181 at 30-Aug 03:39), "
+                          "so CPU queuing was not a problem.")
+
+
+def test_verdict_without_peak_time():
+    df = pd.DataFrame({"r": [10.0] * 100})
+    rq = run_queue_insight(df, BARE_HT)
+    assert rq.verdict == "Here r never went above 128 (peak 10), so there was no CPU queuing."
+
+
+def test_explain_bare_metal_ht():
+    rq = run_queue_insight(_rq_df([10.0] * 5), BARE_HT)
+    assert rq.explain == ("r counts tasks running or waiting for a CPU. "
+                          "This server has 128 physical cores (256 threads with Hyper-Threading). "
+                          "r above 128 means every core is busy and Hyper-Threading is sharing cores between tasks; "
+                          "above 256 means tasks are queuing for CPU.")
+    assert rq.footnote == f"{rq.explain} {rq.verdict}"
+
+
+def test_explain_bare_metal_no_ht():
+    rq = run_queue_insight(_rq_df([10.0] * 5), BARE_NOHT)
+    assert rq.explain == ("r counts tasks running or waiting for a CPU. This server has 64 physical cores. "
+                          "r above 64 means tasks are queuing for CPU.")
+
+
+def test_explain_kvm_ht():
+    rq = run_queue_insight(_rq_df([1.0] * 5), KVM)
+    assert rq.explain == ("r counts tasks running or waiting for a CPU. "
+                          "This VM has 8 presented cores (16 vCPUs with Hyper-Threading). "
+                          "r above 8 means every core is busy and Hyper-Threading is sharing cores between tasks; "
+                          "above 16 means tasks are queuing for CPU.")
+
+
+def test_explain_vmware():
+    rq = run_queue_insight(_rq_df([1.0] * 5), VMW)
+    assert rq.explain == ("r counts tasks running or waiting for a CPU. This VM has 38 vCPUs. "
+                          "r above 38 means tasks are queuing for CPU.")
+
+
+def test_explain_unknown_topology():
+    rq = run_queue_insight(_rq_df([1.0] * 5), UNKNOWN)
+    assert rq.explain == ("r counts tasks running or waiting for a CPU. IRIS reports 32 logical CPUs. "
+                          "r above 32 means tasks are queuing for CPU.")
 
 
 def test_verdict_cpu_bound():
     rq = run_queue_insight(_queued(10, 200.0, **{"Total CPU": (95.0, 20.0)}), BARE_HT)
-    assert rq.verdict.startswith("Run queue: at times more than 128 tasks wanted to run (there are "
-                                 "128 physical cores) and the CPU was 95% busy — the server is short of CPU.")
+    assert rq.verdict == ("Here r was above 128 for 10.0% of the time (peak 200 at 29-Aug 12:30). "
+                          "The CPU was about 95% busy at those times: the server was short of CPU.")
 
 
 def test_verdict_high_r_low_cpu():
     rq = run_queue_insight(_queued(10, 200.0, **{"Total CPU": (45.0, 20.0)}), BARE_HT)
-    assert ("at times more than 128 tasks wanted to run (there are 128 physical cores), but the CPU was "
-            "only 45% busy — not a CPU shortage. Likely short bursts of work, or tasks waiting on each "
-            "other (locks).") in rq.verdict
+    assert rq.verdict == ("Here r was above 128 for 10.0% of the time (peak 200 at 29-Aug 12:30). "
+                          "The CPU was only about 45% busy then, so this points to short bursts or tasks "
+                          "waiting on each other (locks), not a CPU shortage.")
+
+
+MIDDLE = ("The CPU was about 56% busy then: every core was in use and Hyper-Threading was absorbing "
+          "the extra load. That is normal use of the hardware, but headroom was limited.")
+
+
+def test_verdict_ht_middle_band():
+    # Between the HT point (50% for 2 threads per core) and 80%: all cores busy, HT absorbing load
+    rq = run_queue_insight(_queued(10, 200.0, **{"Total CPU": (56.0, 20.0)}), BARE_HT)
+    assert rq.verdict == f"Here r was above 128 for 10.0% of the time (peak 200 at 29-Aug 12:30). {MIDDLE}"
+
+
+def test_verdict_ht_middle_band_lower_edge():
+    rq = run_queue_insight(_queued(10, 200.0, **{"Total CPU": (50.0, 20.0)}), BARE_HT)
+    assert "every core was in use" in rq.verdict
+    rq = run_queue_insight(_queued(10, 200.0, **{"Total CPU": (49.0, 20.0)}), BARE_HT)
+    assert "not a CPU shortage" in rq.verdict
+
+
+def test_verdict_ht_middle_band_four_threads_per_core():
+    bare4 = dict(BARE_HT, **{"lscpu threads per core": "4", "lscpu cpus": "512"})
+    rq = run_queue_insight(_queued(10, 200.0, **{"Total CPU": (30.0, 10.0)}), bare4)
+    assert "every core was in use" in rq.verdict
+
+
+def test_verdict_no_middle_band_without_ht():
+    rq = run_queue_insight(_queued(10, 100.0, **{"Total CPU": (56.0, 20.0)}), BARE_NOHT)
+    assert "not a CPU shortage" in rq.verdict
+    assert "Hyper-Threading" not in rq.verdict
+
+
+def test_verdict_kvm_middle_band_with_steal():
+    rq = run_queue_insight(_queued(10, 12.0, r_idle=2.0, **{"Total CPU": (56.0, 20.0), "st": (12.0, 0.0)}), KVM)
+    assert MIDDLE in rq.verdict
+    assert rq.verdict.endswith("Steal was about 12% at those times: the host is short of CPU, "
+                               "so adding vCPUs alone won't help.")
+
+
+def test_verdict_kvm_middle_band_low_steal_does_not_ask_for_vcpus():
+    rq = run_queue_insight(_queued(10, 12.0, r_idle=2.0, **{"Total CPU": (56.0, 20.0), "st": (1.0, 0.0)}), KVM)
+    assert rq.verdict.endswith(MIDDLE)
 
 
 def test_verdict_us_sy_fallback():
     rq = run_queue_insight(_queued(10, 200.0, us=(80.0, 10.0), sy=(15.0, 5.0)), BARE_HT)
-    assert "the CPU was 95% busy — the server is short of CPU." in rq.verdict
+    assert rq.verdict.endswith(" The CPU was about 95% busy at those times: the server was short of CPU.")
 
 
 def test_verdict_without_cpu_columns():
     rq = run_queue_insight(_queued(10, 200.0), BARE_HT)
-    assert rq.verdict.startswith("Run queue: more than 128 tasks wanted to run (there are 128 physical cores) "
-                                 "in 10.0% of samples.")
+    assert rq.verdict == "Here r was above 128 for 10.0% of the time (peak 200 at 29-Aug 12:30)."
 
 
-def test_verdict_ht_band():
+def test_verdict_both_lines_exceeded():
+    # Both reference lines are quoted directly; no derived "between the lines" percentage
     df = _rq_df([10.0] * 90 + [200.0] * 8 + [300.0] * 2, **{"Total CPU": [20.0] * 90 + [95.0] * 10})
     rq = run_queue_insight(df, BARE_HT)
-    assert ("For 8.0% of the time some physical cores were running two tasks at once (HT), so each "
-            "task ran slower.") in rq.verdict
+    assert rq.verdict == ("Here r was above 128 for 10.0% of the time and above 256 for 2.0% "
+                          "(peak 300 at 29-Aug 12:38). "
+                          "The CPU was about 95% busy at those times: the server was short of CPU.")
 
 
-def test_verdict_no_ht_band_without_ht():
+def test_verdict_second_line_not_exceeded_is_not_mentioned():
+    rq = run_queue_insight(_queued(10, 200.0, **{"Total CPU": (95.0, 20.0)}), BARE_HT)
+    assert "and above 256" not in rq.verdict
+
+
+def test_verdict_single_line_topology():
     rq = run_queue_insight(_queued(10, 100.0, **{"Total CPU": (95.0, 20.0)}), BARE_NOHT)
-    assert "two tasks at once" not in rq.verdict
+    assert rq.verdict.startswith("Here r was above 64 for 10.0% of the time (peak 100 at 29-Aug 12:30). ")
+    assert "and above" not in rq.verdict
 
 
 def test_verdict_kvm_steal_high():
     rq = run_queue_insight(_queued(10, 20.0, r_idle=2.0, **{"Total CPU": (95.0, 20.0), "st": (12.0, 0.0)}), KVM)
-    assert ("Steal was 12% at those times — the host is short of CPU, so adding vCPUs alone won't help."
-            in rq.verdict)
+    assert rq.verdict.endswith(" Steal was about 12% at those times: the host is short of CPU, "
+                               "so adding vCPUs alone won't help.")
 
 
 def test_verdict_kvm_steal_low_cpu_bound():
     rq = run_queue_insight(_queued(10, 20.0, r_idle=2.0, **{"Total CPU": (95.0, 20.0), "st": (1.0, 0.0)}), KVM)
-    assert rq.verdict.endswith("Steal was low — this VM needs more vCPUs.")
+    assert rq.verdict.endswith(" Steal was low, so this VM needs more vCPUs.")
 
 
 def test_verdict_kvm_steal_low_not_cpu_bound():
@@ -270,8 +373,8 @@ def test_verdict_vmware_rdy():
 
 def test_verdict_unknown_topology():
     rq = run_queue_insight(_queued(10, 50.0, r_idle=2.0, **{"Total CPU": (95.0, 20.0)}), UNKNOWN)
-    assert rq.verdict == ("Run queue: at times more than 32 tasks wanted to run (there are 32 logical CPUs) "
-                          "and the CPU was 95% busy — the server is short of CPU.")
+    assert rq.verdict == ("Here r was above 32 for 10.0% of the time (peak 50 at 29-Aug 12:30). "
+                          "The CPU was about 95% busy at those times: the server was short of CPU.")
 
 
 def test_verdict_vendor_without_topology_is_unknown():

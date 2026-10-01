@@ -2831,8 +2831,8 @@ def chart_vmstat(
             if column_name in ("Total CPU", "r", "us", "sy", "r per core"):
                 title = f"{column_name} - {customer}{cpu_title_line}"
                 column_footnote = cpu_footnote
-                if column_name in ("r", "r per core") and rq.verdict:
-                    column_footnote = f"{cpu_footnote} {rq.verdict}"
+                if column_name in ("r", "r per core") and rq.footnote:
+                    column_footnote = rq.footnote  # the title already carries the CPU topology
             else:
                 title = f"{column_name} - {customer}"
                 column_footnote = column_note(VMSTAT_COLUMN_NOTES, column_name)

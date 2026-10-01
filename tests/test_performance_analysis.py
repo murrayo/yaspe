@@ -481,7 +481,7 @@ def test_run_queue_topology_alert_above_threads():
     findings = _r_findings(_analyse_vmstat(df, vcpus=256, topology=BARE_HT_TOPOLOGY))
     assert [f.severity for f in findings] == ["Red"]
     assert "Run queue exceeded 256 threads for 3 consecutive samples. Peak: 300." in findings[0].observation
-    assert any(h.startswith("hypothesis: Run queue:") for h in findings[0].hypotheses)
+    assert any(h.startswith("hypothesis: Here r was above 128 for") for h in findings[0].hypotheses)
 
 
 def test_run_queue_topology_single_line_alerts_at_double():

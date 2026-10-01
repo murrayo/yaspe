@@ -164,50 +164,54 @@ def cpu_topology_text(overview):
             f"CPU details are not in this file. IRIS reports {logical} CPUs; these may be threads or vCPUs."
         )
 
+    # The chart title already carries sockets x cores x threads and the processor model,
+    # so the footnote only explains what 100% means and what the topology implies.
     if logical is None:
         logical = sockets * cores_per_socket * threads_per_core
     cores = sockets * cores_per_socket
-    source = overview.get("cpu topology source") or "lscpu"
-    model = overview.get("processor model") or ""
-    if model == "Unknown Processor":
-        model = ""
 
     if host_type == "bare metal":
-        model_text = f" ({model})" if model else ""
         if threads_per_core > 1:
             label = f"{logical} threads ({_count(sockets, 'socket')} x {_count(cores_per_socket, 'core')} x {threads_per_core} HT)"
-            detail = (
-                f"{_count(sockets, 'socket')} × {_count(cores_per_socket, 'core')} × {_threads(threads_per_core)} "
-                f"= {logical} threads{model_text}. 100% = all {logical} threads busy. "
-                f"Each core runs {threads_per_core} threads (Hyper-Threading), "
-                f"but {threads_per_core} threads give much less than {threads_per_core} cores of capacity."
+            return label, (
+                f"Physical server (not a VM) with {cores} cores, {logical} threads with Hyper-Threading. "
+                f"100% = all {logical} threads busy. {_ht_note(threads_per_core)}"
             )
-        else:
-            label = f"{cores} physical cores ({_count(sockets, 'socket')} x {_count(cores_per_socket, 'core')}, no HT)"
-            detail = (
-                f"{_count(sockets, 'socket')} × {_count(cores_per_socket, 'core')} = {cores} cores, "
-                f"no Hyper-Threading{model_text}. 100% = all {cores} cores busy."
-            )
-        return label, f"CPU ({source}): physical server, not a VM. {detail}"
+        label = f"{cores} physical cores ({_count(sockets, 'socket')} x {_count(cores_per_socket, 'core')}, no HT)"
+        return label, f"Physical server (not a VM) with {cores} cores, no Hyper-Threading. 100% = all {cores} cores busy."
 
     vendor = overview.get("hypervisor vendor") or ""
     label = f"{logical} vCPUs ({vendor or 'VM'})"
+    who = f"{vendor} VM" if vendor else "VM (hypervisor unknown)"
+    full = f"100% = all {logical} vCPUs busy."
+    steal = " If the host is short of CPU it shows as steal (st) in vmstat." if vendor == "KVM" else ""
+    ready = (" Check CPU Ready (%RDY) in vCenter; above about 5% means the VM is waiting for the host."
+             if vendor == "VMware" else "")
 
-    if vendor == "KVM":
+    if threads_per_core > 1:
+        # Cloud VMs (AWS, GCP, Azure) present the host's HT pairs, so the HT reading applies inside the guest
         return label, (
-            f"CPU ({source}): KVM VM with {logical} vCPUs ({_count(cores, 'core')} × {_threads(threads_per_core)}). "
-            "On cloud servers a vCPU is usually one thread, not a full core. "
-            "If the host is short of CPU, it shows as steal (st) in vmstat."
+            f"{who} with {logical} vCPUs ({_count(cores, 'core')} × {_threads(threads_per_core)}). {full} "
+            f"A vCPU is one thread, not a full core: {_ht_note(threads_per_core)}{steal}{ready}"
         )
 
-    who = f"{vendor} VM" if vendor else "VM (hypervisor unknown)"
-    model_text = f"Host CPU: {model}. " if model else ""
-    hidden = "The host's real cores, and how many other VMs share them, can't be seen from inside the VM"
-    hidden += "; check CPU Ready (%RDY) in vCenter." if vendor == "VMware" else "."
+    if vendor == "KVM":
+        return label, f"KVM VM with {logical} vCPUs. {full} On cloud servers a vCPU is usually one thread, not a full core.{steal}"
+
     return label, (
-        f"CPU ({source}): {who} with {logical} vCPUs ({_count(sockets, 'socket')} × "
-        f"{_count(cores_per_socket, 'core')} × {_threads(threads_per_core)}, as set in the VM settings). "
-        f"{model_text}{hidden}"
+        f"{who} with {logical} vCPUs. {full} "
+        "A vCPU is a thread on the host, not a guaranteed core: how much CPU it really gets depends on "
+        f"how busy the host is, and that can't be seen from inside the VM.{ready}"
+    )
+
+
+def _ht_note(threads_per_core):
+    """How to read CPU % on a Hyper-Threaded box: run above the HT point, but the % overstates headroom."""
+    ht_point = 100 // threads_per_core
+    return (
+        "Hyper-Threading adds roughly 20-30% capacity, not double. "
+        f"Running above {ht_point}% is normal and uses the hardware well, but past {ht_point}% every core "
+        "is already in use, so the headroom left is smaller than the % suggests. Treat 80% as the practical ceiling."
     )
 
 
@@ -215,12 +219,13 @@ def cpu_topology_text(overview):
 class RefLine:
     value: int
     kind: str      # "cores" | "threads" | "presented_cores" | "vcpus" | "logical"
-    noun: str      # used in sentences: "128 physical cores"
-    label: str     # legend base: "Physical cores 128"
-    meaning: str   # what r above this line means
+    noun: str      # plural, used in sentences: "128 physical cores"
+    unit: str      # singular, used per task: "one task per core"
+    meaning: str   # what r above this line means: "r above 128 means <meaning>"
 
 
-_WAITING = "tasks waiting for any CPU"
+_QUEUING = "tasks are queuing for CPU"
+_HT_SHARING = "every core is busy and Hyper-Threading is sharing cores between tasks"
 
 
 def run_queue_lines(overview):
@@ -237,7 +242,7 @@ def run_queue_lines(overview):
     if None in (sockets, cores_per_socket, threads_per_core) or host_type not in ("bare metal", "virtual"):
         if logical is None:
             return []
-        return [RefLine(logical, "logical", "logical CPUs", f"Logical CPUs {logical}", _WAITING)]
+        return [RefLine(logical, "logical", "logical CPUs", "CPU", _QUEUING)]
 
     cores = sockets * cores_per_socket
     if logical is None:
@@ -246,17 +251,17 @@ def run_queue_lines(overview):
     if host_type == "bare metal":
         if threads_per_core > 1:
             return [
-                RefLine(cores, "cores", "physical cores", f"Physical cores {cores}", "cores running two tasks via HT"),
-                RefLine(logical, "threads", "threads", f"Threads {logical}", _WAITING),
+                RefLine(cores, "cores", "physical cores", "core", _HT_SHARING),
+                RefLine(logical, "threads", "threads", "thread", _QUEUING),
             ]
-        return [RefLine(cores, "cores", "physical cores", f"Physical cores {cores}", "tasks waiting for a core")]
+        return [RefLine(cores, "cores", "physical cores", "core", _QUEUING)]
 
-    if overview.get("hypervisor vendor") == "KVM" and threads_per_core > 1:
+    if threads_per_core > 1:
         return [
-            RefLine(cores, "presented_cores", "presented cores", f"Presented cores {cores}", "vCPUs sharing a core via HT"),
-            RefLine(logical, "vcpus", "vCPUs", f"vCPUs {logical}", _WAITING),
+            RefLine(cores, "presented_cores", "presented cores", "core", _HT_SHARING),
+            RefLine(logical, "vcpus", "vCPUs", "vCPU", _QUEUING),
         ]
-    return [RefLine(logical, "vcpus", "vCPUs", f"vCPUs {logical}", _WAITING)]
+    return [RefLine(logical, "vcpus", "vCPUs", "vCPU", _QUEUING)]
 
 
 @dataclass
@@ -269,7 +274,9 @@ class RunQueueInsight:
     y_max: float = None
     peak: float = None
     peak_time: str = None
-    verdict: str = ""
+    explain: str = ""   # what r is and what the reference lines mean
+    verdict: str = ""   # what happened in this data
+    footnote: str = ""  # explain + verdict, for the r charts
     per_core_divisor: int = None
     per_core_label: str = ""
     per_core_thresholds: list = field(default_factory=list)
@@ -282,12 +289,32 @@ def _fmt_pct(pct):
     return f"{pct:.1f}%"
 
 
-def _run_queue_verdict(data, r, lines, pct_above, overview):
+def _run_queue_explain(lines, overview):
+    """What r is, how many CPUs there are, and what r above each reference line means."""
+    first, last = lines[0], lines[-1]
+    if first.kind == "logical":
+        have = f"IRIS reports {first.value} {first.noun}."
+    else:
+        host = "server" if overview.get("cpu host type") == "bare metal" else "VM"
+        have = f"This {host} has {first.value} {first.noun}"
+        have += f" ({last.value} {last.noun} with Hyper-Threading)." if len(lines) > 1 else "."
+    above = f"r above {first.value} means {first.meaning}"
+    if len(lines) > 1:
+        above += f"; above {last.value} means {last.meaning}"
+    return f"r counts tasks running or waiting for a CPU. {have} {above}."
+
+
+def _run_queue_verdict(data, r, lines, pct_above, overview, peak, peak_time):
     first = lines[0]
-    first_text = f"{first.value} {first.noun}"
+    peak_text = f"peak {peak:,.0f} at {peak_time}" if peak_time else f"peak {peak:,.0f}"
+    if pct_above[0] == 0:
+        return f"Here r never went above {first.value} ({peak_text}), so there was no CPU queuing."
+    was_above = f"Here r was above {first.value} for {_fmt_pct(pct_above[0])} of the time"
     if pct_above[0] < 1.0:
-        return (f"Run queue: tasks wanting to run rarely exceeded {first_text} (under 1% of samples), "
-                "so there was no CPU queuing.")
+        return f"{was_above} ({peak_text}), so CPU queuing was not a problem."
+    if len(lines) > 1 and pct_above[-1] > 0:
+        was_above += f" and above {lines[-1].value} for {_fmt_pct(pct_above[-1])}"
+    was_above += f" ({peak_text})."
 
     queued = (r > first.value).to_numpy()
     if "Total CPU" in data.columns:
@@ -298,43 +325,36 @@ def _run_queue_verdict(data, r, lines, pct_above, overview):
         cpu = None
     cpu_median = cpu[queued].median() if cpu is not None else None
 
-    parts = []
+    # With HT, the first line is cores and the last is threads; CPU % at the ratio means every core is in use
+    ht_point = 100.0 * first.value / lines[-1].value if len(lines) > 1 else None
+
+    parts = [was_above]
     cpu_bound = False
-    wanted = f"more than {first.value} tasks wanted to run (there are {first_text})"
     if cpu_median is None or pd.isna(cpu_median):
-        parts.append(f"{wanted} in {_fmt_pct(pct_above[0])} of samples.")
+        pass
     elif cpu_median >= 80:
         cpu_bound = True
-        parts.append(f"at times {wanted} and the CPU was {cpu_median:.0f}% busy — the server is short of CPU.")
+        parts.append(f"The CPU was about {cpu_median:.0f}% busy at those times: the server was short of CPU.")
+    elif ht_point is not None and cpu_median >= ht_point:
+        parts.append(f"The CPU was about {cpu_median:.0f}% busy then: every core was in use and Hyper-Threading "
+                     "was absorbing the extra load. That is normal use of the hardware, but headroom was limited.")
     else:
-        parts.append(
-            f"at times {wanted}, but the CPU was only {cpu_median:.0f}% busy — not a CPU shortage. "
-            "Likely short bursts of work, or tasks waiting on each other (locks)."
-        )
-
-    if first.kind == "cores" and len(lines) > 1:
-        band = pct_above[0] - pct_above[1]
-        if band > 0:
-            parts.append(
-                f"For {_fmt_pct(band)} of the time some physical cores were running two tasks at once (HT), "
-                "so each task ran slower."
-            )
+        parts.append(f"The CPU was only about {cpu_median:.0f}% busy then, so this points to short bursts "
+                     "or tasks waiting on each other (locks), not a CPU shortage.")
 
     vendor = overview.get("hypervisor vendor") if first.kind in ("presented_cores", "vcpus") else ""
     if vendor == "KVM" and "st" in data.columns:
         st_median = pd.to_numeric(data["st"], errors="coerce")[queued].median()
         if not pd.isna(st_median):
             if st_median >= 5:
-                parts.append(
-                    f"Steal was {st_median:.0f}% at those times — the host is short of CPU, "
-                    "so adding vCPUs alone won't help."
-                )
+                parts.append(f"Steal was about {st_median:.0f}% at those times: the host is short of CPU, "
+                             "so adding vCPUs alone won't help.")
             elif cpu_bound:
-                parts.append("Steal was low — this VM needs more vCPUs.")
+                parts.append("Steal was low, so this VM needs more vCPUs.")
     elif vendor == "VMware":
         parts.append("VMware hides steal from inside the VM; check CPU Ready (%RDY) in vCenter for these times.")
 
-    return "Run queue: " + " ".join(parts)
+    return " ".join(parts)
 
 
 def run_queue_insight(df, overview, time_col="datetime_parsed"):
@@ -361,27 +381,27 @@ def run_queue_insight(df, overview, time_col="datetime_parsed"):
     y_max = max(peak, first.value) * 1.05 if peak >= 0.5 * first.value else peak
     drawn = [line.value <= y_max for line in lines]
 
-    highest = max((i for i, pct in enumerate(pct_above) if pct > 0), default=None)
+    # Legend entries stay short; the meaning of each line and the peak time go in the footnote
     legend_labels = []
     for i, line in enumerate(lines):
-        if not drawn[i]:
-            legend_labels.append(f"{line.label} (off scale, peak {peak:,.0f} = {100 * peak / line.value:.0f}%)")
-            continue
-        text = f"{line.label} (above = {line.meaning}): {_fmt_pct(pct_above[i])} of samples above"
-        if i == highest and peak_time:
-            text += f", peak {peak:,.0f} at {peak_time}"
-        legend_labels.append(text)
+        if pct_above[i] == 0:
+            legend_labels.append(f"{line.value} {line.noun}: never exceeded (peak {peak:,.0f})")
+        else:
+            legend_labels.append(f"{line.value} {line.noun}: above {_fmt_pct(pct_above[i])} of the time")
     thresholds = [(line.value if drawn[i] else None, legend_labels[i]) for i, line in enumerate(lines)]
 
     per_core_y_max = max(peak / first.value, 1.0) * 1.05
-    per_core_thresholds = [(1.0, f"1.0 = r equals {first.value} {first.noun} (saturated)")]
+    per_core_thresholds = [(1.0, f"1.0 = one task per {first.unit} ({first.value} {first.noun})")]
     if len(lines) > 1:
-        ratio = lines[-1].value / first.value
-        label = f"{ratio:g} = all {lines[-1].value} {lines[-1].noun} busy"
+        last = lines[-1]
+        ratio = last.value / first.value
         if ratio <= per_core_y_max:
-            per_core_thresholds.append((ratio, label))
+            per_core_thresholds.append((ratio, f"{ratio:.1f} = one task per {last.unit} ({last.value} {last.noun})"))
         else:
-            per_core_thresholds.append((None, f"{label} (off scale)"))
+            per_core_thresholds.append((None, f"{ratio:.1f} = one task per {last.unit} ({last.value} {last.noun}, not reached)"))
+
+    explain = _run_queue_explain(lines, overview or {})
+    verdict = _run_queue_verdict(data, r, lines, pct_above, overview or {}, peak, peak_time)
 
     return RunQueueInsight(
         lines=lines,
@@ -392,9 +412,11 @@ def run_queue_insight(df, overview, time_col="datetime_parsed"):
         y_max=y_max,
         peak=peak,
         peak_time=peak_time,
-        verdict=_run_queue_verdict(data, r, lines, pct_above, overview or {}),
+        explain=explain,
+        verdict=verdict,
+        footnote=f"{explain} {verdict}",
         per_core_divisor=first.value,
-        per_core_label=f"r ÷ {first.value} {first.noun}",
+        per_core_label=f"runnable tasks per {first.unit}",
         per_core_thresholds=per_core_thresholds,
         per_core_y_max=per_core_y_max,
     )

@@ -155,13 +155,15 @@ def test_chart_vmstat_bare_metal_labels_and_footnotes(tmp_path):
     sc, st, _ = _run_vmstat(_db(BARE_ROWS), tmp_path)
     stacked_title = st.call_args.args[2]
     assert "256 threads (4 sockets x 32 cores x 2 HT) (Intel(R) Xeon(R) Gold 6448H)" in stacked_title
-    assert "physical server" in st.call_args.kwargs["footnote"]
+    assert "Physical server" in st.call_args.kwargs["footnote"]
 
     calls = {c.args[1]: c for c in sc.call_args_list}
     for col in ("Total CPU", "r", "us", "sy"):
         assert "256 threads (4 sockets x 32 cores x 2 HT)" in calls[col].args[2]
-        assert "physical server" in calls[col].kwargs["footnote"]
-    assert "physical server" not in calls["wa"].kwargs["footnote"]
+    for col in ("Total CPU", "us", "sy"):
+        assert "Physical server" in calls[col].kwargs["footnote"]
+    assert calls["r"].kwargs["footnote"].startswith("r counts tasks running or waiting for a CPU.")
+    assert "Physical server" not in calls["wa"].kwargs["footnote"]
     assert calls["wa"].kwargs["footnote"].startswith("CPU % spent idle while waiting for disk I/O.\n")
     assert "threads" not in calls["wa"].args[2]
 
@@ -178,4 +180,4 @@ def test_chart_vmstat_html_passes_footnote(tmp_path):
     with patch.object(yaspe, "linked_chart") as lc:
         yaspe.chart_vmstat(_db(BARE_ROWS), str(tmp_path) + "/", "", False, False)
     calls = {c.args[1]: c for c in lc.call_args_list}
-    assert "physical server" in calls["Total CPU"].kwargs["footnote"]
+    assert "Physical server" in calls["Total CPU"].kwargs["footnote"]

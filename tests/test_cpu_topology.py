@@ -281,10 +281,11 @@ def test_text_bare_metal_ht():
     label, foot = cpu_topology_text(OV_BARE)
     assert label == "256 threads (4 sockets x 32 cores x 2 HT)"
     assert foot == (
-        "CPU (lscpu): physical server, not a VM. "
-        "4 sockets × 32 cores × 2 threads = 256 threads (Intel(R) Xeon(R) Gold 6448H). "
+        "Physical server (not a VM) with 128 cores, 256 threads with Hyper-Threading. "
         "100% = all 256 threads busy. "
-        "Each core runs 2 threads (Hyper-Threading), but 2 threads give much less than 2 cores of capacity."
+        "Hyper-Threading adds roughly 20-30% capacity, not double. Running above 50% is normal and uses the "
+        "hardware well, but past 50% every core is already in use, so the headroom left is smaller than the "
+        "% suggests. Treat 80% as the practical ceiling."
     )
 
 
@@ -293,21 +294,17 @@ def test_text_bare_metal_no_ht():
                           "lscpu sockets": "2", "lscpu cores per socket": "32"})
     label, foot = cpu_topology_text(ov)
     assert label == "64 physical cores (2 sockets x 32 cores, no HT)"
-    assert foot == (
-        "CPU (lscpu): physical server, not a VM. "
-        "2 sockets × 32 cores = 64 cores, no Hyper-Threading (Intel(R) Xeon(R) Gold 6448H). "
-        "100% = all 64 cores busy."
-    )
+    assert foot == "Physical server (not a VM) with 64 cores, no Hyper-Threading. 100% = all 64 cores busy."
 
 
 def test_text_vmware():
     label, foot = cpu_topology_text(OV_VMWARE)
     assert label == "38 vCPUs (VMware)"
     assert foot == (
-        "CPU (lscpu): VMware VM with 38 vCPUs (2 sockets × 19 cores × 1 thread, as set in the VM settings). "
-        "Host CPU: Intel(R) Xeon(R) Silver 4216 CPU @ 2.10GHz. "
-        "The host's real cores, and how many other VMs share them, can't be seen from inside the VM; "
-        "check CPU Ready (%RDY) in vCenter."
+        "VMware VM with 38 vCPUs. 100% = all 38 vCPUs busy. "
+        "A vCPU is a thread on the host, not a guaranteed core: how much CPU it really gets depends on "
+        "how busy the host is, and that can't be seen from inside the VM. "
+        "Check CPU Ready (%RDY) in vCenter; above about 5% means the VM is waiting for the host."
     )
 
 
@@ -315,19 +312,52 @@ def test_text_kvm():
     label, foot = cpu_topology_text(OV_KVM)
     assert label == "16 vCPUs (KVM)"
     assert foot == (
-        "CPU (lscpu): KVM VM with 16 vCPUs (8 cores × 2 threads). "
-        "On cloud servers a vCPU is usually one thread, not a full core. "
-        "If the host is short of CPU, it shows as steal (st) in vmstat."
+        "KVM VM with 16 vCPUs (8 cores × 2 threads). 100% = all 16 vCPUs busy. "
+        "A vCPU is one thread, not a full core: "
+        "Hyper-Threading adds roughly 20-30% capacity, not double. Running above 50% is normal and uses the "
+        "hardware well, but past 50% every core is already in use, so the headroom left is smaller than the "
+        "% suggests. Treat 80% as the practical ceiling."
+        " If the host is short of CPU it shows as steal (st) in vmstat."
     )
+
+
+def test_text_kvm_one_thread_per_core_omits_topology():
+    ov = dict(OV_KVM, **{"lscpu threads per core": "1", "lscpu cores per socket": "4", "lscpu cpus": "4"})
+    _, foot = cpu_topology_text(ov)
+    assert foot == (
+        "KVM VM with 4 vCPUs. 100% = all 4 vCPUs busy. "
+        "On cloud servers a vCPU is usually one thread, not a full core. "
+        "If the host is short of CPU it shows as steal (st) in vmstat."
+    )
+
+
+def test_text_other_hypervisor_with_threads_gets_ht_note():
+    # Azure presents 2 threads per core with vendor Microsoft; no steal (KVM) or %RDY (VMware) sentence
+    ov = dict(OV_KVM, **{"hypervisor vendor": "Microsoft"})
+    _, foot = cpu_topology_text(ov)
+    assert foot.startswith("Microsoft VM with 16 vCPUs (8 cores × 2 threads). 100% = all 16 vCPUs busy. "
+                           "A vCPU is one thread, not a full core: Hyper-Threading adds roughly 20-30% capacity")
+    assert foot.endswith("Treat 80% as the practical ceiling.")
+    assert "steal" not in foot and "vCenter" not in foot
+
+
+def test_text_bare_metal_four_threads_per_core():
+    ov = dict(OV_BARE, **{"lscpu threads per core": "4", "lscpu cpus": "512"})
+    _, foot = cpu_topology_text(ov)
+    assert "with 128 cores, 512 threads with Hyper-Threading" in foot
+    assert "Running above 25% is normal" in foot
+    assert "past 25% every core is already in use" in foot
 
 
 def test_text_other_hypervisor_has_no_vcenter_clause():
     ov = dict(OV_VMWARE, **{"hypervisor vendor": "Microsoft"})
     label, foot = cpu_topology_text(ov)
     assert label == "38 vCPUs (Microsoft)"
-    assert foot.startswith("CPU (lscpu): Microsoft VM with 38 vCPUs")
-    assert "vCenter" not in foot
-    assert foot.endswith("can't be seen from inside the VM.")
+    assert foot == (
+        "Microsoft VM with 38 vCPUs. 100% = all 38 vCPUs busy. "
+        "A vCPU is a thread on the host, not a guaranteed core: how much CPU it really gets depends on "
+        "how busy the host is, and that can't be seen from inside the VM."
+    )
 
 
 def test_text_virtual_without_vendor():
@@ -335,13 +365,15 @@ def test_text_virtual_without_vendor():
     del ov["hypervisor vendor"]
     label, foot = cpu_topology_text(ov)
     assert label == "38 vCPUs (VM)"
-    assert foot.startswith("CPU (lscpu): VM (hypervisor unknown) with 38 vCPUs")
+    assert foot.startswith("VM (hypervisor unknown) with 38 vCPUs.")
 
 
-def test_text_cpuinfo_source():
+def test_text_source_and_model_not_repeated_in_footnote():
+    # The chart title already carries sockets x cores x threads and the processor model
     ov = dict(OV_BARE, **{"cpu topology source": "/proc/cpuinfo"})
     _, foot = cpu_topology_text(ov)
-    assert foot.startswith("CPU (/proc/cpuinfo): physical server")
+    assert "cpuinfo" not in foot and "lscpu" not in foot
+    assert "Intel" not in foot and "sockets" not in foot
 
 
 def test_text_unknown_with_count():
@@ -373,7 +405,7 @@ def test_bad_numbers_fall_back_to_unknown():
 def test_unknown_processor_model_omitted():
     ov = dict(OV_BARE, **{"processor model": "Unknown Processor"})
     _, foot = cpu_topology_text(ov)
-    assert "= 256 threads. 100%" in foot
+    assert "Unknown" not in foot
 
 
 import system_review
@@ -416,12 +448,12 @@ def test_singular_core_and_socket_wording():
           "lscpu threads per core": "1", "cpu host type": "virtual", "hypervisor vendor": "VMware",
           "cpu topology source": "lscpu"}
     _, foot = cpu_topology_text(ov)
-    assert "20 vCPUs (20 sockets × 1 core × 1 thread," in foot
+    assert foot.startswith("VMware VM with 20 vCPUs. 100% = all 20 vCPUs busy.")
 
     ov = dict(OV_BARE, **{"lscpu sockets": "1", "lscpu cores per socket": "8", "lscpu cpus": "16"})
     label, foot = cpu_topology_text(ov)
     assert label == "16 threads (1 socket x 8 cores x 2 HT)"
-    assert "1 socket × 8 cores × 2 threads" in foot
+    assert "with 8 cores, 16 threads with Hyper-Threading" in foot
 
     d = dict(VM, **{"lscpu sockets": 20, "lscpu cores per socket": 1})
     assert sp_check.cpu_topology_log_lines(d).startswith(

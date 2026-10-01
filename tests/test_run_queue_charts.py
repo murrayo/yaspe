@@ -132,26 +132,28 @@ def test_chart_vmstat_r_gets_lines_and_verdict(tmp_path):
     r_call = png["r"]
     thresholds = r_call.kwargs["threshold"]
     assert [t[0] for t in thresholds] == [128, None]
-    assert thresholds[0][1].startswith("Physical cores 128 (above = cores running two tasks via HT): 10.0% of samples above")
+    assert thresholds[0][1] == "128 physical cores: above 10.0% of the time"
     assert r_call.args[3] == 200 * 1.05
-    assert "physical server" in r_call.kwargs["footnote"]
-    assert "the CPU was 95% busy — the server is short of CPU." in r_call.kwargs["footnote"]
+    # The r footnote replaces the CPU topology footnote rather than being appended to it
+    assert r_call.kwargs["footnote"].startswith("r counts tasks running or waiting for a CPU.")
+    assert "Physical server" not in r_call.kwargs["footnote"]
+    assert "the server was short of CPU." in r_call.kwargs["footnote"]
 
 
 def test_chart_vmstat_r_per_core_chart(tmp_path):
     png, _ = _run_vmstat(_db(BARE_ROWS, [10.0] * 90 + [200.0] * 10), tmp_path)
     pc = png["r per core"]
-    assert pc.kwargs["y_label"] == "r ÷ 128 physical cores"
-    assert pc.kwargs["threshold"][0] == (1.0, "1.0 = r equals 128 physical cores (saturated)")
+    assert pc.kwargs["y_label"] == "runnable tasks per core"
+    assert pc.kwargs["threshold"][0] == (1.0, "1.0 = one task per core (128 physical cores)")
     assert pc.kwargs["min_max"] is False
     assert "256 threads (4 sockets x 32 cores x 2 HT)" in pc.args[2]
-    assert "Run queue:" in pc.kwargs["footnote"]
+    assert pc.kwargs["footnote"].startswith("r counts tasks running or waiting for a CPU.")
     assert pc.args[0]["metric"].max() == 200.0 / 128
 
 
 def test_chart_vmstat_html_r_per_core(tmp_path):
     _, html = _run_vmstat(_db(BARE_ROWS, [10.0] * 100), tmp_path, png=False)
-    assert html["r per core"].kwargs["y_label"] == "r ÷ 128 physical cores"
+    assert html["r per core"].kwargs["y_label"] == "runnable tasks per core"
     assert html["r"].kwargs["threshold"][0][0] is None
 
 
@@ -193,8 +195,7 @@ def test_chart_output_r_uses_topology_lines():
     with patch("chart_templates.chart_multi_line", side_effect=lambda *a, **k: captured.append(k)):
         chart_output.chart_vmstat(df, {"vmstat columns": ["r"]}, number_cpus=256, topology=topology)
     r_call = [k for k in captured if k["left_y_axis_label"] == "r"][0]
-    assert r_call["extra_horizontal"] == [(128, "Physical cores 128 (above = cores running two tasks via HT)"),
-                                          (256, "Threads 256 (above = tasks waiting for any CPU)")]
+    assert r_call["extra_horizontal"] == [(128, "128 physical cores"), (256, "256 threads")]
 
 
 def test_system_review_passes_topology():

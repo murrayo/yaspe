@@ -137,7 +137,7 @@ def chart_vmstat(df, site_survey_input, **kwargs):
 
         extra_horizontal = (0, "")
         if counter == "r" and run_queue_refs:
-            extra_horizontal = [(ln.value, f"{ln.label} (above = {ln.meaning})") for ln in run_queue_refs]
+            extra_horizontal = [(ln.value, f"{ln.value} {ln.noun}") for ln in run_queue_refs]
         elif counter == "r" and number_cpus > 0:
             label = cpu_label or f"{number_cpus} logical CPUs"
             extra_horizontal = (number_cpus, f"Optimal run queue < {label}")
