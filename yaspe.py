@@ -36,6 +36,7 @@ from extract_mgstat import extract_mgstat
 import system_review
 import yaspe_compare_overlay
 import yaspe_combined_overlay
+from yaspe_utilities import cpu_topology_text
 
 # Suppress FutureWarning messages
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -406,6 +407,17 @@ def get_cpf_auto_disk_list(connection):
         if row and row[2] and row[2] not in devices:
             devices.append(row[2])
     return devices
+
+
+def get_overview_dict(connection):
+    try:
+        rows = connection.execute("SELECT field, value FROM overview ORDER BY id").fetchall()
+    except Error:
+        return {}
+    overview = {}
+    for field, value in rows:
+        overview.setdefault(field, value)
+    return overview
 
 
 def get_chart_title_base(connection):
@@ -2517,15 +2529,16 @@ def chart_glorefs_cpu(
 
     customer = get_chart_title_base(connection)
     title = f"Glorefs and Total CPU - {customer}"
+    _, cpu_footnote = cpu_topology_text(get_overview_dict(connection))
 
     png_filepath, html_filepath = _split_filepath(filepath, png_html_out)
 
     if png_out or png_html_out:
-        simple_chart_dual_axis_glorefs_cpu(merged, title, png_filepath, output_prefix, subtitle=subtitle)
+        simple_chart_dual_axis_glorefs_cpu(merged, title, png_filepath, output_prefix, subtitle=subtitle, footnote=cpu_footnote)
         if png_html_out:
-            linked_chart_dual_axis_glorefs_cpu(merged, title, html_filepath, output_prefix, subtitle=subtitle)
+            linked_chart_dual_axis_glorefs_cpu(merged, title, html_filepath, output_prefix, subtitle=subtitle, footnote=cpu_footnote)
     else:
-        linked_chart_dual_axis_glorefs_cpu(merged, title, filepath, output_prefix, subtitle=subtitle)
+        linked_chart_dual_axis_glorefs_cpu(merged, title, filepath, output_prefix, subtitle=subtitle, footnote=cpu_footnote)
 
 
 def simple_chart_glorefs_remgrefs(data, title, filepath, output_prefix, **kwargs):
@@ -2698,12 +2711,15 @@ def chart_vmstat(
     # print(f"vmstat...")
     # Get useful
     customer = get_chart_title_base(connection)
-    number_cpus = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'number cpus';")[2]
-    processor = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'processor model';")[2]
+    overview = get_overview_dict(connection)
+    cpu_label, cpu_footnote = cpu_topology_text(overview)
+    processor = overview.get("processor model") or ""
 
     if execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'operating system';")[2] == "AIX":
         aix_cpus = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'AIX SMT';")[2]
         processor += f" SMT {aix_cpus}"
+
+    cpu_title_line = f"\n{cpu_label} ({processor})" if cpu_label else f"\n{processor}"
 
     # Read in to dataframe, drop any bad rows
     try:
@@ -2733,8 +2749,9 @@ def chart_vmstat(
     if png_out or png_html_out:
         if "sy" in df.columns and "wa" in df.columns and "us" in df.columns:
             title = f"CPU utilisation % - {customer}"
-            title += f"\n{number_cpus} cores ({processor})"
-            simple_chart_stacked(df, "sy, wa, us", title, 100, png_filepath, output_prefix, subtitle=subtitle)
+            title += cpu_title_line
+            simple_chart_stacked(df, "sy, wa, us", title, 100, png_filepath, output_prefix, subtitle=subtitle,
+                                 footnote=cpu_footnote)
 
     # Format the data for Altair
     # Cut down the df to just the list of categorical data we care about (columns)
@@ -2753,11 +2770,12 @@ def chart_vmstat(
         if column_name == "datetime":
             pass
         else:
-            if column_name in ("Total CPU", "r"):
-                title = f"{column_name} - {customer}"
-                title += f"\n{number_cpus} cores ({processor})"
+            if column_name in ("Total CPU", "r", "us", "sy"):
+                title = f"{column_name} - {customer}{cpu_title_line}"
+                column_footnote = cpu_footnote
             else:
                 title = f"{column_name} - {customer}"
+                column_footnote = ""
 
             to_chart_df = vmstat_df.loc[vmstat_df["Type"] == column_name]
 
@@ -2799,15 +2817,16 @@ def chart_vmstat(
                     long_period_smooth=long_period_smooth,
                     subtitle=subtitle,
                     benchmark_rolling_avg=(benchmark and column_name == "Total CPU"),
+                    footnote=column_footnote,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
                                  min_max=min_max, threshold=threshold, day_overlay=day_overlay,
-                                 subtitle=subtitle)
+                                 subtitle=subtitle, footnote=column_footnote)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
                              min_max=min_max, threshold=threshold, day_overlay=day_overlay,
-                             subtitle=subtitle)
+                             subtitle=subtitle, footnote=column_footnote)
 
 
 def chart_mgstat(
@@ -2949,7 +2968,7 @@ def chart_perfmon(
     # print(f"perfmon...")
 
     customer = get_chart_title_base(connection)
-    number_cpus = execute_single_read_query(connection, "SELECT * FROM overview WHERE field = 'number cpus';")[2]
+    cpu_label, cpu_footnote = cpu_topology_text(get_overview_dict(connection))
 
     # Read in to dataframe, drop any bad rows
     try:
@@ -3009,9 +3028,12 @@ def chart_perfmon(
 
             if "Total_Processor_Time" in column_name or "Processor_Queue_Length" in column_name:
                 title = f"{column_name} - {customer}"
-                title += f"\n {number_cpus} cores"
+                if cpu_label:
+                    title += f"\n{cpu_label}"
+                column_footnote = cpu_footnote
             else:
                 title = f"{column_name} - {customer}"
+                column_footnote = ""
 
             to_chart_df = perfmon_df.loc[perfmon_df["Type"] == column_name]
 
@@ -3030,13 +3052,16 @@ def chart_perfmon(
                     min_max=min_max, peak_chart=peak_chart, glorefs_peak_window=glorefs_peak_window,
                     line_chart=line_chart, business_hours_chart=min_max, day_overlay=day_overlay,
                     bh_charts=bh_charts, long_period_smooth=long_period_smooth, subtitle=subtitle,
+                    footnote=column_footnote,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
-                                 min_max=min_max, day_overlay=day_overlay, subtitle=subtitle)
+                                 min_max=min_max, day_overlay=day_overlay, subtitle=subtitle,
+                                 footnote=column_footnote)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                             min_max=min_max, day_overlay=day_overlay, subtitle=subtitle)
+                             min_max=min_max, day_overlay=day_overlay, subtitle=subtitle,
+                             footnote=column_footnote)
 
 
 def chart_iostat(

@@ -103,3 +103,78 @@ def test_linked_chart_html_footnote(tmp_path):
         yaspe.linked_chart(_df(), "Total CPU", "T", 100, str(tmp_path) + "/", "", footnote=FOOT)
     fig = captured["fig"]
     assert any("test footnote" in a.text for a in fig.layout.annotations)
+
+
+import sqlite3
+from unittest.mock import MagicMock
+
+
+def _db(overview_rows, with_vmstat=True):
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE overview (id INTEGER PRIMARY KEY AUTOINCREMENT, field TEXT NOT NULL, value TEXT)")
+    conn.executemany("INSERT INTO overview (field, value) VALUES (?, ?)", overview_rows)
+    if with_vmstat:
+        times = pd.date_range("2024-01-15 09:00", periods=10, freq="1min")
+        df = pd.DataFrame({
+            "RunDate": times.strftime("%m/%d/%Y"), "RunTime": times.strftime("%H:%M:%S"),
+            "r": np.ones(10), "us": np.full(10, 20.0), "sy": np.full(10, 5.0),
+            "wa": np.ones(10), "id": np.full(10, 74.0),
+        })
+        df.to_sql("vmstat", conn, index=False)
+    conn.commit()
+    return conn
+
+
+BARE_ROWS = [
+    ("customer", "Acme"), ("operating system", "Linux"), ("processor model", "Intel(R) Xeon(R) Gold 6448H"),
+    ("number cpus", "256"), ("lscpu cpus", "256"), ("lscpu sockets", "4"),
+    ("lscpu cores per socket", "32"), ("lscpu threads per core", "2"),
+    ("cpu host type", "bare metal"), ("cpu topology source", "lscpu"),
+]
+
+
+def test_get_overview_dict_first_occurrence_wins():
+    conn = _db([("number cpus", "16"), ("number cpus", "32")], with_vmstat=False)
+    assert yaspe.get_overview_dict(conn)["number cpus"] == "16"
+
+
+def test_get_overview_dict_missing_table():
+    conn = sqlite3.connect(":memory:")
+    assert yaspe.get_overview_dict(conn) == {}
+
+
+def _run_vmstat(conn, tmp_path):
+    with patch.object(yaspe, "simple_chart") as sc, \
+         patch.object(yaspe, "simple_chart_stacked") as st, \
+         patch.object(yaspe, "linked_chart") as lc:
+        yaspe.chart_vmstat(conn, str(tmp_path) + "/", "", True, False)
+    return sc, st, lc
+
+
+def test_chart_vmstat_bare_metal_labels_and_footnotes(tmp_path):
+    sc, st, _ = _run_vmstat(_db(BARE_ROWS), tmp_path)
+    stacked_title = st.call_args.args[2]
+    assert "256 threads (4 sockets x 32 cores x 2 HT) (Intel(R) Xeon(R) Gold 6448H)" in stacked_title
+    assert "bare metal" in st.call_args.kwargs["footnote"]
+
+    calls = {c.args[1]: c for c in sc.call_args_list}
+    for col in ("Total CPU", "r", "us", "sy"):
+        assert "256 threads (4 sockets x 32 cores x 2 HT)" in calls[col].args[2]
+        assert "bare metal" in calls[col].kwargs["footnote"]
+    assert calls["wa"].kwargs.get("footnote", "") == ""
+    assert "threads" not in calls["wa"].args[2]
+
+
+def test_chart_vmstat_unknown_topology_label(tmp_path):
+    rows = [("customer", "Acme"), ("operating system", "Linux"),
+            ("processor model", "Some CPU"), ("number cpus", "8")]
+    sc, st, _ = _run_vmstat(_db(rows), tmp_path)
+    assert "8 logical CPUs (Some CPU)" in st.call_args.args[2]
+    assert st.call_args.kwargs["footnote"].startswith("CPU topology not available in this file. 8 is")
+
+
+def test_chart_vmstat_html_passes_footnote(tmp_path):
+    with patch.object(yaspe, "linked_chart") as lc:
+        yaspe.chart_vmstat(_db(BARE_ROWS), str(tmp_path) + "/", "", False, False)
+    calls = {c.args[1]: c for c in lc.call_args_list}
+    assert "bare metal" in calls["Total CPU"].kwargs["footnote"]
