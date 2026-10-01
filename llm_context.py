@@ -128,7 +128,7 @@ Single-day captures: baselines derive from quiet periods of that day — say so 
 ### vmstat (OS)
 | Metric | Base | Alert | Warning |
 |---|---|---|---|
-| r (run queue) | vCPUs | > 2x vCPUs sustained | > 1x vCPUs sustained |
+| r (run queue) | physical cores / vCPUs | > threads (bare metal HT) or vCPUs (KVM with HT), else 2x vCPUs, sustained | > physical / presented cores, else 1x vCPUs, sustained |
 | b (blocked) | 0 | > 10-25% of vCPUs sustained | > 1-2 sustained |
 | us+sy (CPU %) | 50 | 85 | 75 |
 | sy (share of total CPU) | 10% | > 50% in kernel | > 30% in kernel |
@@ -894,7 +894,7 @@ def build_llm_context(
     vcpus = facts.get("vcpus")
     all_findings = []
     if not vm_df.empty:
-        all_findings.extend(_pa._analyse_vmstat(vm_df, vcpus=vcpus))
+        all_findings.extend(_pa._analyse_vmstat(vm_df, vcpus=vcpus, topology=sp_dict))
     if not mg_df.empty:
         all_findings.extend(_pa._analyse_mgstat(mg_df, baselines))
     if not mg_df.empty and not vm_df.empty:

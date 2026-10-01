@@ -13,6 +13,7 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+from yaspe_utilities import run_queue_insight, run_queue_lines
 
 
 # 9 IRIS Health Monitor periods (per PERFORMANCE_ANALYSIS.md §2)
@@ -276,7 +277,7 @@ def _fmt_breach_when(runs, fmt_ts):
     return when, n, worst
 
 
-def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
+def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int], topology: Optional[dict] = None) -> list:
     """
     Evaluate vmstat KPIs. Returns list[Finding] — one per metric that
     triggers Yellow or Red (plus Green summary if all clear).
@@ -411,11 +412,31 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
                 next_step="Monitor; check HugePages setting.",
             ))
 
-    # --- r (run queue) — vCPU-relative ---
-    if "r" in df.columns and vcpus is not None:
+    # --- r (run queue) — topology lines when known, else vCPU-relative ---
+    rq_lines = run_queue_lines(topology) if topology else []
+    if "r" in df.columns and (rq_lines or vcpus is not None):
         r_vals = pd.to_numeric(df["r"], errors="coerce").fillna(0)
-        alert_thr = vcpus * 2.0
-        warn_thr  = vcpus * 1.0
+        red_hypotheses = ["hypothesis: CPU saturation — more runnable threads than cores"]
+        warn_hypotheses = ["hypothesis: intermittent CPU pressure"]
+        if rq_lines:
+            first, last = rq_lines[0], rq_lines[-1]
+            warn_thr = first.value
+            warn_desc = f"{first.value} {first.noun}"
+            if len(rq_lines) > 1:
+                alert_thr = last.value
+                alert_desc = f"{last.value} {last.noun}"
+            else:
+                alert_thr = first.value * 2
+                alert_desc = f"2× {first.value} {first.noun} ({_fmt_n(alert_thr)})"
+            verdict = run_queue_insight(df, topology, time_col="dt").verdict
+            if verdict:
+                red_hypotheses.append(f"hypothesis: {verdict}")
+                warn_hypotheses.append(f"hypothesis: {verdict}")
+        else:
+            alert_thr = vcpus * 2.0
+            warn_thr = vcpus * 1.0
+            alert_desc = f"{_fmt_n(alert_thr)} (2× vCPUs={vcpus})"
+            warn_desc = f"{_fmt_n(warn_thr)} (1× vCPUs={vcpus})"
         red_runs  = _find_breaches(r_vals, df["dt"], alert_thr, ALERT_CONSECUTIVE)
         warn_runs = _find_breaches(r_vals, df["dt"], warn_thr,  WARN_CONSECUTIVE)
         if red_runs:
@@ -425,10 +446,10 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
             findings.append(Finding(
                 metric="r (run queue)",
                 severity="Red",
-                observation=f"Run queue exceeded {_fmt_n(alert_thr)} (2× vCPUs={vcpus}) for "
+                observation=f"Run queue exceeded {alert_desc} for "
                             f"{count} consecutive samples. Peak: {_fmt_n(r_vals.max())}.{recurrence}",
                 when=when,
-                hypotheses=["hypothesis: CPU saturation — more runnable threads than cores"],
+                hypotheses=red_hypotheses,
                 next_step="Cross-reference with us+sy. If us+sy < 80%, suspect lock contention rather than CPU shortage.",
             ))
         elif warn_runs:
@@ -438,9 +459,9 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int]) -> list:
             findings.append(Finding(
                 metric="r (run queue)",
                 severity="Yellow",
-                observation=f"Run queue exceeded {_fmt_n(warn_thr)} (1× vCPUs={vcpus}) for {count} consecutive samples.{recurrence}",
+                observation=f"Run queue exceeded {warn_desc} for {count} consecutive samples.{recurrence}",
                 when=when,
-                hypotheses=["hypothesis: intermittent CPU pressure"],
+                hypotheses=warn_hypotheses,
                 next_step="Monitor trend.",
             ))
 

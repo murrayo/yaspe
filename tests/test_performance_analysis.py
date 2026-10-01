@@ -459,3 +459,42 @@ def test_memory_danger_detects_free_declining_with_swap():
     result = _test_memory_danger(df)
     assert result is not None
     assert result.severity == "Red"
+
+
+BARE_HT_TOPOLOGY = {"cpu host type": "bare metal", "lscpu sockets": 4, "lscpu cores per socket": 32,
+                    "lscpu threads per core": 2, "lscpu cpus": 256}
+
+
+def _r_findings(findings):
+    return [f for f in findings if f.metric == "r (run queue)"]
+
+
+def test_run_queue_topology_warn_above_physical_cores():
+    df = _make_vmstat_df(wa_vals=[2.0] * 10, r_vals=[200.0] * 5 + [10.0] * 5)
+    findings = _r_findings(_analyse_vmstat(df, vcpus=256, topology=BARE_HT_TOPOLOGY))
+    assert [f.severity for f in findings] == ["Yellow"]
+    assert "Run queue exceeded 128 physical cores for 5 consecutive samples." in findings[0].observation
+
+
+def test_run_queue_topology_alert_above_threads():
+    df = _make_vmstat_df(wa_vals=[2.0] * 10, r_vals=[300.0] * 3 + [10.0] * 7)
+    findings = _r_findings(_analyse_vmstat(df, vcpus=256, topology=BARE_HT_TOPOLOGY))
+    assert [f.severity for f in findings] == ["Red"]
+    assert "Run queue exceeded 256 threads for 3 consecutive samples. Peak: 300." in findings[0].observation
+    assert any(h.startswith("hypothesis: Run queue:") for h in findings[0].hypotheses)
+
+
+def test_run_queue_topology_single_line_alerts_at_double():
+    vmw = {"cpu host type": "virtual", "hypervisor vendor": "VMware", "lscpu sockets": 2,
+           "lscpu cores per socket": 19, "lscpu threads per core": 1, "lscpu cpus": 38}
+    df = _make_vmstat_df(wa_vals=[2.0] * 10, r_vals=[80.0] * 3 + [10.0] * 7)
+    findings = _r_findings(_analyse_vmstat(df, vcpus=38, topology=vmw))
+    assert [f.severity for f in findings] == ["Red"]
+    assert "Run queue exceeded 2× 38 vCPUs (76)" in findings[0].observation
+
+
+def test_run_queue_without_topology_unchanged():
+    df = _make_vmstat_df(wa_vals=[2.0] * 10, r_vals=[5.0] * 3 + [0.0] * 7)
+    findings = _r_findings(_analyse_vmstat(df, vcpus=2))
+    assert findings[0].observation.startswith("Run queue exceeded 4 (2× vCPUs=2) for 3 consecutive samples.")
+    assert findings[0].hypotheses == ["hypothesis: CPU saturation — more runnable threads than cores"]
