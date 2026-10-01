@@ -27,7 +27,7 @@ def _summary(lines):
 def test_lines_bare_metal_ht():
     lines = run_queue_lines(BARE_HT)
     assert _summary(lines) == [(128, "cores", "Physical cores 128"), (256, "threads", "Threads 256")]
-    assert lines[0].meaning == "HT doubling-up"
+    assert lines[0].meaning == "cores running two tasks via HT"
     assert lines[0].noun == "physical cores"
     assert lines[1].meaning == "tasks waiting for any CPU"
 
@@ -41,7 +41,7 @@ def test_lines_bare_metal_no_ht():
 def test_lines_kvm_with_threads():
     lines = run_queue_lines(KVM)
     assert _summary(lines) == [(8, "presented_cores", "Presented cores 8"), (16, "vcpus", "vCPUs 16")]
-    assert lines[0].meaning == "sharing hyperthread pairs"
+    assert lines[0].meaning == "vCPUs sharing a core via HT"
 
 
 def test_lines_kvm_one_thread_per_core():
@@ -85,7 +85,7 @@ def test_insight_pct_above_and_peak():
     assert rq.pct_above == [10.0, 2.0]
     assert rq.peak == 300.0
     assert rq.peak_time == "29-Aug 12:38"
-    assert rq.legend_labels[0] == "Physical cores 128 (above = HT doubling-up): 10.0% of samples above"
+    assert rq.legend_labels[0] == "Physical cores 128 (above = cores running two tasks via HT): 10.0% of samples above"
     assert rq.legend_labels[1] == ("Threads 256 (above = tasks waiting for any CPU): 2.0% of samples above, "
                                    "peak 300 at 29-Aug 12:38")
     assert rq.drawn == [True, True]
@@ -201,52 +201,55 @@ def _queued(n_queued, r_queued, n_total=100, r_idle=10.0, **cols_queued_idle):
 
 def test_verdict_no_queuing():
     rq = run_queue_insight(_rq_df([10.0] * 100, **{"Total CPU": [50.0] * 100}), BARE_HT)
-    assert rq.verdict == ("Run queue stayed at or below 128 physical cores in 99%+ of samples — "
-                          "no sustained CPU queuing.")
+    assert rq.verdict == ("Run queue: tasks wanting to run rarely exceeded 128 physical cores "
+                          "(under 1% of samples), so there was no CPU queuing.")
 
 
 def test_verdict_cpu_bound():
     rq = run_queue_insight(_queued(10, 200.0, **{"Total CPU": (95.0, 20.0)}), BARE_HT)
-    assert rq.verdict.startswith("Run queue: CPU-bound: while r > 128, median CPU was 95%.")
+    assert rq.verdict.startswith("Run queue: at times more than 128 tasks wanted to run (there are "
+                                 "128 physical cores) and the CPU was 95% busy — the server is short of CPU.")
 
 
 def test_verdict_high_r_low_cpu():
     rq = run_queue_insight(_queued(10, 200.0, **{"Total CPU": (45.0, 20.0)}), BARE_HT)
-    assert ("r exceeded 128 while CPU was only 45% busy — suggests bursty work within the sample "
-            "interval or lock/spin contention rather than CPU shortage.") in rq.verdict
+    assert ("at times more than 128 tasks wanted to run (there are 128 physical cores), but the CPU was "
+            "only 45% busy — not a CPU shortage. Likely short bursts of work, or tasks waiting on each "
+            "other (locks).") in rq.verdict
 
 
 def test_verdict_us_sy_fallback():
     rq = run_queue_insight(_queued(10, 200.0, us=(80.0, 10.0), sy=(15.0, 5.0)), BARE_HT)
-    assert "CPU-bound: while r > 128, median CPU was 95%." in rq.verdict
+    assert "the CPU was 95% busy — the server is short of CPU." in rq.verdict
 
 
 def test_verdict_without_cpu_columns():
     rq = run_queue_insight(_queued(10, 200.0), BARE_HT)
-    assert rq.verdict.startswith("Run queue: r exceeded 128 physical cores in 10.0% of samples.")
-    assert "CPU-bound" not in rq.verdict and "suggests bursty" not in rq.verdict
+    assert rq.verdict.startswith("Run queue: more than 128 tasks wanted to run (there are 128 physical cores) "
+                                 "in 10.0% of samples.")
 
 
 def test_verdict_ht_band():
     df = _rq_df([10.0] * 90 + [200.0] * 8 + [300.0] * 2, **{"Total CPU": [20.0] * 90 + [95.0] * 10})
     rq = run_queue_insight(df, BARE_HT)
-    assert ("r was between cores and threads in 8.0% of samples — tasks sharing physical cores via HT "
-            "get less throughput than full cores.") in rq.verdict
+    assert ("For 8.0% of the time some physical cores were running two tasks at once (HT), so each "
+            "task ran slower.") in rq.verdict
 
 
 def test_verdict_no_ht_band_without_ht():
     rq = run_queue_insight(_queued(10, 100.0, **{"Total CPU": (95.0, 20.0)}), BARE_NOHT)
-    assert "between cores and threads" not in rq.verdict
+    assert "two tasks at once" not in rq.verdict
 
 
 def test_verdict_kvm_steal_high():
     rq = run_queue_insight(_queued(10, 20.0, r_idle=2.0, **{"Total CPU": (95.0, 20.0), "st": (12.0, 0.0)}), KVM)
-    assert "Steal 12% while queued — host is short of CPU; adding vCPUs alone won't help." in rq.verdict
+    assert ("Steal was 12% at those times — the host is short of CPU, so adding vCPUs alone won't help."
+            in rq.verdict)
 
 
 def test_verdict_kvm_steal_low_cpu_bound():
     rq = run_queue_insight(_queued(10, 20.0, r_idle=2.0, **{"Total CPU": (95.0, 20.0), "st": (1.0, 0.0)}), KVM)
-    assert rq.verdict.endswith("Steal low — the guest itself needs more vCPUs.")
+    assert rq.verdict.endswith("Steal was low — this VM needs more vCPUs.")
 
 
 def test_verdict_kvm_steal_low_not_cpu_bound():
@@ -261,12 +264,14 @@ def test_verdict_kvm_without_st_column():
 
 def test_verdict_vmware_rdy():
     rq = run_queue_insight(_queued(10, 50.0, r_idle=2.0, **{"Total CPU": (95.0, 20.0)}), VMW)
-    assert rq.verdict.endswith("Steal is not visible inside VMware guests; check vCenter CPU Ready (%RDY) for these times.")
+    assert rq.verdict.endswith("VMware hides steal from inside the VM; check CPU Ready (%RDY) in vCenter "
+                               "for these times.")
 
 
 def test_verdict_unknown_topology():
     rq = run_queue_insight(_queued(10, 50.0, r_idle=2.0, **{"Total CPU": (95.0, 20.0)}), UNKNOWN)
-    assert rq.verdict == "Run queue: CPU-bound: while r > 32, median CPU was 95%."
+    assert rq.verdict == ("Run queue: at times more than 32 tasks wanted to run (there are 32 logical CPUs) "
+                          "and the CPU was 95% busy — the server is short of CPU.")
 
 
 def test_verdict_vendor_without_topology_is_unknown():

@@ -132,10 +132,10 @@ def test_chart_vmstat_r_gets_lines_and_verdict(tmp_path):
     r_call = png["r"]
     thresholds = r_call.kwargs["threshold"]
     assert [t[0] for t in thresholds] == [128, None]
-    assert thresholds[0][1].startswith("Physical cores 128 (above = HT doubling-up): 10.0% of samples above")
+    assert thresholds[0][1].startswith("Physical cores 128 (above = cores running two tasks via HT): 10.0% of samples above")
     assert r_call.args[3] == 200 * 1.05
     assert "bare metal" in r_call.kwargs["footnote"]
-    assert "Run queue: CPU-bound: while r > 128, median CPU was 95%." in r_call.kwargs["footnote"]
+    assert "the CPU was 95% busy — the server is short of CPU." in r_call.kwargs["footnote"]
 
 
 def test_chart_vmstat_r_per_core_chart(tmp_path):
@@ -193,7 +193,7 @@ def test_chart_output_r_uses_topology_lines():
     with patch("chart_templates.chart_multi_line", side_effect=lambda *a, **k: captured.append(k)):
         chart_output.chart_vmstat(df, {"vmstat columns": ["r"]}, number_cpus=256, topology=topology)
     r_call = [k for k in captured if k["left_y_axis_label"] == "r"][0]
-    assert r_call["extra_horizontal"] == [(128, "Physical cores 128 (above = HT doubling-up)"),
+    assert r_call["extra_horizontal"] == [(128, "Physical cores 128 (above = cores running two tasks via HT)"),
                                           (256, "Threads 256 (above = tasks waiting for any CPU)")]
 
 
