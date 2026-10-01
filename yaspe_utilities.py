@@ -159,14 +159,9 @@ def cpu_topology_text(overview):
 
     if None in (sockets, cores_per_socket, threads_per_core) or host_type not in ("bare metal", "virtual"):
         if logical is None:
-            return "", (
-                "CPU topology not available in this file. "
-                "Review the true processor architecture before making capacity assumptions."
-            )
+            return "", "CPU details are not in this file."
         return f"{logical} logical CPUs", (
-            f"CPU topology not available in this file. {logical} is the logical CPU count reported by IRIS, "
-            "which may be threads or vCPUs. "
-            "Review the true processor architecture before making capacity assumptions."
+            f"CPU details are not in this file. IRIS reports {logical} CPUs; these may be threads or vCPUs."
         )
 
     if logical is None:
@@ -179,45 +174,40 @@ def cpu_topology_text(overview):
 
     if host_type == "bare metal":
         model_text = f" ({model})" if model else ""
-        topology = (
-            f"{_count(sockets, 'socket')} × {_count(cores_per_socket, 'physical core')} × {_threads(threads_per_core)} "
-            f"= {logical} logical CPUs{model_text}."
-        )
         if threads_per_core > 1:
             label = f"{logical} threads ({_count(sockets, 'socket')} x {_count(cores_per_socket, 'core')} x {threads_per_core} HT)"
-            busy = (
-                f"100% = all {logical} threads busy. "
-                "A Hyper-Threading thread shares a physical core and is not equivalent to a full core."
+            detail = (
+                f"{_count(sockets, 'socket')} × {_count(cores_per_socket, 'core')} × {_threads(threads_per_core)} "
+                f"= {logical} threads{model_text}. 100% = all {logical} threads busy. "
+                f"Each core runs {threads_per_core} threads (Hyper-Threading), "
+                f"but {threads_per_core} threads give much less than {threads_per_core} cores of capacity."
             )
         else:
             label = f"{cores} physical cores ({_count(sockets, 'socket')} x {_count(cores_per_socket, 'core')}, no HT)"
-            busy = f"100% = all {cores} cores busy."
-        return label, (
-            f"CPU topology ({source}): bare metal, no hypervisor detected. {topology} {busy} "
-            "Review the processor architecture before making capacity assumptions."
-        )
+            detail = (
+                f"{_count(sockets, 'socket')} × {_count(cores_per_socket, 'core')} = {cores} cores, "
+                f"no Hyper-Threading{model_text}. 100% = all {cores} cores busy."
+            )
+        return label, f"CPU ({source}): physical server, not a VM. {detail}"
 
     vendor = overview.get("hypervisor vendor") or ""
     label = f"{logical} vCPUs ({vendor or 'VM'})"
 
     if vendor == "KVM":
         return label, (
-            f"CPU topology ({source}): KVM VM. {logical} vCPUs presented as "
-            f"{_count(cores, 'core')} × {_threads(threads_per_core)}. "
-            "On cloud instances each vCPU is typically one hyperthread, not a full core. "
-            "Host contention appears as vmstat st (steal). "
-            "Review the instance type and host architecture before making capacity assumptions."
+            f"CPU ({source}): KVM VM with {logical} vCPUs ({_count(cores, 'core')} × {_threads(threads_per_core)}). "
+            "On cloud servers a vCPU is usually one thread, not a full core. "
+            "If the host is short of CPU, it shows as steal (st) in vmstat."
         )
 
-    who = f"{vendor} VM" if vendor else "virtual machine, hypervisor not identified"
-    model_text = f"Host CPU model: {model}. " if model else ""
-    vcenter = " and vCenter CPU Ready (%RDY)" if vendor == "VMware" else ""
+    who = f"{vendor} VM" if vendor else "VM (hypervisor unknown)"
+    model_text = f"Host CPU: {model}. " if model else ""
+    hidden = "The host's real cores, and how many other VMs share them, can't be seen from inside the VM"
+    hidden += "; check CPU Ready (%RDY) in vCenter." if vendor == "VMware" else "."
     return label, (
-        f"CPU topology ({source}): {who}. {logical} vCPUs presented as {_count(sockets, 'socket')} × "
-        f"{_count(cores_per_socket, 'core')} × {_threads(threads_per_core)} — this is VM configuration, not host hardware. "
-        f"{model_text}"
-        "Host physical cores, Hyper-Threading and overcommit are not visible from inside the guest. "
-        f"Review the host architecture{vcenter} before making capacity assumptions."
+        f"CPU ({source}): {who} with {logical} vCPUs ({_count(sockets, 'socket')} × "
+        f"{_count(cores_per_socket, 'core')} × {_threads(threads_per_core)}, as set in the VM settings). "
+        f"{model_text}{hidden}"
     )
 
 

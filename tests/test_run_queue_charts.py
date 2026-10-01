@@ -134,7 +134,7 @@ def test_chart_vmstat_r_gets_lines_and_verdict(tmp_path):
     assert [t[0] for t in thresholds] == [128, None]
     assert thresholds[0][1].startswith("Physical cores 128 (above = cores running two tasks via HT): 10.0% of samples above")
     assert r_call.args[3] == 200 * 1.05
-    assert "bare metal" in r_call.kwargs["footnote"]
+    assert "physical server" in r_call.kwargs["footnote"]
     assert "the CPU was 95% busy — the server is short of CPU." in r_call.kwargs["footnote"]
 
 

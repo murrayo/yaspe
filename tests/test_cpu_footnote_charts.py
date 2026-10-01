@@ -155,12 +155,12 @@ def test_chart_vmstat_bare_metal_labels_and_footnotes(tmp_path):
     sc, st, _ = _run_vmstat(_db(BARE_ROWS), tmp_path)
     stacked_title = st.call_args.args[2]
     assert "256 threads (4 sockets x 32 cores x 2 HT) (Intel(R) Xeon(R) Gold 6448H)" in stacked_title
-    assert "bare metal" in st.call_args.kwargs["footnote"]
+    assert "physical server" in st.call_args.kwargs["footnote"]
 
     calls = {c.args[1]: c for c in sc.call_args_list}
     for col in ("Total CPU", "r", "us", "sy"):
         assert "256 threads (4 sockets x 32 cores x 2 HT)" in calls[col].args[2]
-        assert "bare metal" in calls[col].kwargs["footnote"]
+        assert "physical server" in calls[col].kwargs["footnote"]
     assert calls["wa"].kwargs.get("footnote", "") == ""
     assert "threads" not in calls["wa"].args[2]
 
@@ -170,11 +170,11 @@ def test_chart_vmstat_unknown_topology_label(tmp_path):
             ("processor model", "Some CPU"), ("number cpus", "8")]
     sc, st, _ = _run_vmstat(_db(rows), tmp_path)
     assert "8 logical CPUs (Some CPU)" in st.call_args.args[2]
-    assert st.call_args.kwargs["footnote"].startswith("CPU topology not available in this file. 8 is")
+    assert st.call_args.kwargs["footnote"].startswith("CPU details are not in this file. IRIS reports 8 CPUs")
 
 
 def test_chart_vmstat_html_passes_footnote(tmp_path):
     with patch.object(yaspe, "linked_chart") as lc:
         yaspe.chart_vmstat(_db(BARE_ROWS), str(tmp_path) + "/", "", False, False)
     calls = {c.args[1]: c for c in lc.call_args_list}
-    assert "bare metal" in calls["Total CPU"].kwargs["footnote"]
+    assert "physical server" in calls["Total CPU"].kwargs["footnote"]
