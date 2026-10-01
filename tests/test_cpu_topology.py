@@ -252,3 +252,133 @@ def test_yaml_vm_parses_as_yaml():
     assert parsed["Hypervisor vendor"] == "VMware"
     assert parsed["Sockets"] == 2
     assert "Physical cores" not in parsed
+
+
+from yaspe_utilities import cpu_topology_text
+
+REVIEW = "Review the processor architecture before making capacity assumptions."
+
+OV_BARE = {
+    "lscpu cpus": "256", "number cpus": "256", "lscpu sockets": "4",
+    "lscpu cores per socket": "32", "lscpu threads per core": "2",
+    "cpu host type": "bare metal", "cpu topology source": "lscpu",
+    "processor model": "Intel(R) Xeon(R) Gold 6448H",
+}
+OV_VMWARE = {
+    "lscpu cpus": "38", "lscpu sockets": "2", "lscpu cores per socket": "19",
+    "lscpu threads per core": "1", "cpu host type": "virtual", "hypervisor vendor": "VMware",
+    "cpu topology source": "lscpu", "processor model": "Intel(R) Xeon(R) Silver 4216 CPU @ 2.10GHz",
+}
+OV_KVM = {
+    "lscpu cpus": "16", "lscpu sockets": "1", "lscpu cores per socket": "8",
+    "lscpu threads per core": "2", "cpu host type": "virtual", "hypervisor vendor": "KVM",
+    "cpu topology source": "lscpu", "processor model": "Intel(R) Xeon(R) Platinum 8259CL CPU @ 2.50GHz",
+}
+
+
+def test_text_bare_metal_ht():
+    label, foot = cpu_topology_text(OV_BARE)
+    assert label == "256 threads (4 sockets x 32 cores x 2 HT)"
+    assert foot == (
+        "CPU topology (lscpu): bare metal, no hypervisor detected. "
+        "4 sockets × 32 physical cores × 2 threads = 256 logical CPUs (Intel(R) Xeon(R) Gold 6448H). "
+        "100% = all 256 threads busy. "
+        "A Hyper-Threading thread shares a physical core and is not equivalent to a full core. "
+        + REVIEW
+    )
+
+
+def test_text_bare_metal_no_ht():
+    ov = dict(OV_BARE, **{"lscpu threads per core": "1", "lscpu cpus": "64",
+                          "lscpu sockets": "2", "lscpu cores per socket": "32"})
+    label, foot = cpu_topology_text(ov)
+    assert label == "64 physical cores (2 sockets x 32 cores, no HT)"
+    assert "2 sockets × 32 physical cores × 1 thread = 64 logical CPUs" in foot
+    assert "100% = all 64 cores busy." in foot
+    assert "Hyper-Threading" not in foot
+    assert foot.endswith(REVIEW)
+
+
+def test_text_vmware():
+    label, foot = cpu_topology_text(OV_VMWARE)
+    assert label == "38 vCPUs (VMware)"
+    assert foot == (
+        "CPU topology (lscpu): VMware VM. "
+        "38 vCPUs presented as 2 sockets × 19 cores × 1 thread — this is VM configuration, not host hardware. "
+        "Host CPU model: Intel(R) Xeon(R) Silver 4216 CPU @ 2.10GHz. "
+        "Host physical cores, Hyper-Threading and overcommit are not visible from inside the guest. "
+        "Review the host architecture and vCenter CPU Ready (%RDY) before making capacity assumptions."
+    )
+
+
+def test_text_kvm():
+    label, foot = cpu_topology_text(OV_KVM)
+    assert label == "16 vCPUs (KVM)"
+    assert foot == (
+        "CPU topology (lscpu): KVM VM. 16 vCPUs presented as 8 cores × 2 threads. "
+        "On cloud instances each vCPU is typically one hyperthread, not a full core. "
+        "Host contention appears as vmstat st (steal). "
+        "Review the instance type and host architecture before making capacity assumptions."
+    )
+
+
+def test_text_other_hypervisor_has_no_vcenter_clause():
+    ov = dict(OV_VMWARE, **{"hypervisor vendor": "Microsoft"})
+    label, foot = cpu_topology_text(ov)
+    assert label == "38 vCPUs (Microsoft)"
+    assert foot.startswith("CPU topology (lscpu): Microsoft VM.")
+    assert "vCenter" not in foot
+    assert foot.endswith("Review the host architecture before making capacity assumptions.")
+
+
+def test_text_virtual_without_vendor():
+    ov = dict(OV_VMWARE)
+    del ov["hypervisor vendor"]
+    label, foot = cpu_topology_text(ov)
+    assert label == "38 vCPUs (VM)"
+    assert foot.startswith("CPU topology (lscpu): virtual machine, hypervisor not identified.")
+
+
+def test_text_cpuinfo_source():
+    ov = dict(OV_BARE, **{"cpu topology source": "/proc/cpuinfo"})
+    _, foot = cpu_topology_text(ov)
+    assert foot.startswith("CPU topology (/proc/cpuinfo): bare metal")
+
+
+def test_text_unknown_with_count():
+    label, foot = cpu_topology_text({"number cpus": "256"})
+    assert label == "256 logical CPUs"
+    assert foot == (
+        "CPU topology not available in this file. 256 is the logical CPU count reported by IRIS, "
+        "which may be threads or vCPUs. "
+        "Review the true processor architecture before making capacity assumptions."
+    )
+
+
+def test_text_unknown_without_count():
+    label, foot = cpu_topology_text({})
+    assert label == ""
+    assert foot == (
+        "CPU topology not available in this file. "
+        "Review the true processor architecture before making capacity assumptions."
+    )
+
+
+def test_string_values_from_sqlite():
+    # SQLite TEXT column returns strings, including None for NULL
+    ov = dict(OV_BARE, **{"lscpu numa nodes": None, "hypervisor flag": None})
+    label, _ = cpu_topology_text(ov)
+    assert label == "256 threads (4 sockets x 32 cores x 2 HT)"
+
+
+def test_bad_numbers_fall_back_to_unknown():
+    ov = dict(OV_BARE, **{"lscpu sockets": "n/a"})
+    label, foot = cpu_topology_text(ov)
+    assert label == "256 logical CPUs"
+    assert foot.startswith("CPU topology not available in this file.")
+
+
+def test_unknown_processor_model_omitted():
+    ov = dict(OV_BARE, **{"processor model": "Unknown Processor"})
+    _, foot = cpu_topology_text(ov)
+    assert "= 256 logical CPUs. 100%" in foot

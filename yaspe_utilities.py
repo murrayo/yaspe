@@ -129,3 +129,86 @@ def format_date(known_datetime, date_str):
     # Default to 1 Dec 2000 if no valid date found - at least you will get a chart
     print(f"Warning: could not resolve date '{date_str}' relative to {known_datetime.date()}; using 2000/12/01 as fallback.")
     return "2000/12/01"
+
+
+def _overview_int(overview, key):
+    try:
+        return int(str(overview.get(key)).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _threads(n):
+    return f"{n} thread" if n == 1 else f"{n} threads"
+
+
+def cpu_topology_text(overview):
+    """Return (title_label, footnote) describing CPU capacity from overview fields."""
+    sockets = _overview_int(overview, "lscpu sockets")
+    cores_per_socket = _overview_int(overview, "lscpu cores per socket")
+    threads_per_core = _overview_int(overview, "lscpu threads per core")
+    logical = _overview_int(overview, "lscpu cpus") or _overview_int(overview, "number cpus")
+    host_type = overview.get("cpu host type")
+
+    if None in (sockets, cores_per_socket, threads_per_core) or host_type not in ("bare metal", "virtual"):
+        if logical is None:
+            return "", (
+                "CPU topology not available in this file. "
+                "Review the true processor architecture before making capacity assumptions."
+            )
+        return f"{logical} logical CPUs", (
+            f"CPU topology not available in this file. {logical} is the logical CPU count reported by IRIS, "
+            "which may be threads or vCPUs. "
+            "Review the true processor architecture before making capacity assumptions."
+        )
+
+    if logical is None:
+        logical = sockets * cores_per_socket * threads_per_core
+    cores = sockets * cores_per_socket
+    source = overview.get("cpu topology source") or "lscpu"
+    model = overview.get("processor model") or ""
+    if model == "Unknown Processor":
+        model = ""
+
+    if host_type == "bare metal":
+        model_text = f" ({model})" if model else ""
+        topology = (
+            f"{sockets} sockets × {cores_per_socket} physical cores × {_threads(threads_per_core)} "
+            f"= {logical} logical CPUs{model_text}."
+        )
+        if threads_per_core > 1:
+            label = f"{logical} threads ({sockets} sockets x {cores_per_socket} cores x {threads_per_core} HT)"
+            busy = (
+                f"100% = all {logical} threads busy. "
+                "A Hyper-Threading thread shares a physical core and is not equivalent to a full core."
+            )
+        else:
+            label = f"{cores} physical cores ({sockets} sockets x {cores_per_socket} cores, no HT)"
+            busy = f"100% = all {cores} cores busy."
+        return label, (
+            f"CPU topology ({source}): bare metal, no hypervisor detected. {topology} {busy} "
+            "Review the processor architecture before making capacity assumptions."
+        )
+
+    vendor = overview.get("hypervisor vendor") or ""
+    label = f"{logical} vCPUs ({vendor or 'VM'})"
+
+    if vendor == "KVM":
+        return label, (
+            f"CPU topology ({source}): KVM VM. {logical} vCPUs presented as "
+            f"{cores} cores × {_threads(threads_per_core)}. "
+            "On cloud instances each vCPU is typically one hyperthread, not a full core. "
+            "Host contention appears as vmstat st (steal). "
+            "Review the instance type and host architecture before making capacity assumptions."
+        )
+
+    who = f"{vendor} VM" if vendor else "virtual machine, hypervisor not identified"
+    model_text = f"Host CPU model: {model}. " if model else ""
+    vcenter = " and vCenter CPU Ready (%RDY)" if vendor == "VMware" else ""
+    return label, (
+        f"CPU topology ({source}): {who}. {logical} vCPUs presented as {sockets} sockets × "
+        f"{cores_per_socket} cores × {_threads(threads_per_core)} — this is VM configuration, not host hardware. "
+        f"{model_text}"
+        "Host physical cores, Hyper-Threading and overcommit are not visible from inside the guest. "
+        f"Review the host architecture{vcenter} before making capacity assumptions."
+    )
