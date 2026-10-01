@@ -3,6 +3,9 @@ from datetime import datetime, timedelta
 import itertools
 import dateutil
 import dateutil.parser
+from dataclasses import dataclass, field
+
+import pandas as pd
 
 
 def check_keyword_exists(data, keyword):
@@ -216,3 +219,51 @@ def cpu_topology_text(overview):
         "Host physical cores, Hyper-Threading and overcommit are not visible from inside the guest. "
         f"Review the host architecture{vcenter} before making capacity assumptions."
     )
+
+
+@dataclass
+class RefLine:
+    value: int
+    kind: str      # "cores" | "threads" | "presented_cores" | "vcpus" | "logical"
+    noun: str      # used in sentences: "128 physical cores"
+    label: str     # legend base: "Physical cores 128"
+    meaning: str   # what r above this line means
+
+
+_WAITING = "tasks waiting for any CPU"
+
+
+def run_queue_lines(overview):
+    """Return run queue reference lines (lowest first) for the CPU topology in overview."""
+    overview = overview or {}
+    sockets = _overview_int(overview, "lscpu sockets")
+    cores_per_socket = _overview_int(overview, "lscpu cores per socket")
+    threads_per_core = _overview_int(overview, "lscpu threads per core")
+    logical = _overview_int(overview, "lscpu cpus") or _overview_int(overview, "number cpus")
+    if logical is not None and logical <= 0:
+        logical = None
+    host_type = overview.get("cpu host type")
+
+    if None in (sockets, cores_per_socket, threads_per_core) or host_type not in ("bare metal", "virtual"):
+        if logical is None:
+            return []
+        return [RefLine(logical, "logical", "logical CPUs", f"Logical CPUs {logical}", _WAITING)]
+
+    cores = sockets * cores_per_socket
+    if logical is None:
+        logical = cores * threads_per_core
+
+    if host_type == "bare metal":
+        if threads_per_core > 1:
+            return [
+                RefLine(cores, "cores", "physical cores", f"Physical cores {cores}", "HT doubling-up"),
+                RefLine(logical, "threads", "threads", f"Threads {logical}", _WAITING),
+            ]
+        return [RefLine(cores, "cores", "physical cores", f"Physical cores {cores}", "tasks waiting for a core")]
+
+    if overview.get("hypervisor vendor") == "KVM" and threads_per_core > 1:
+        return [
+            RefLine(cores, "presented_cores", "presented cores", f"Presented cores {cores}", "sharing hyperthread pairs"),
+            RefLine(logical, "vcpus", "vCPUs", f"vCPUs {logical}", _WAITING),
+        ]
+    return [RefLine(logical, "vcpus", "vCPUs", f"vCPUs {logical}", _WAITING)]
