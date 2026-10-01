@@ -50,11 +50,11 @@ In the existing line loop, alongside the `model name` check, match lines by pref
 
 Fallback when no lscpu `Socket(s):` line was found: from `/proc/cpuinfo` blocks, count processors, unique `physical id` values (sockets) and unique (`physical id`, `core id`) pairs (physical cores); derive threads per core = processors / cores and cores per socket = cores / sockets. Store under the same keys.
 
-Only the first occurrence of each lscpu key is kept.
+Only the first occurrence of each lscpu key is kept. Parsing runs only inside the `<div id=cpu>` section. After the loop the host is classified once and stored as `cpu host type` (`bare metal` / `virtual`; absent when unknown), with `cpu topology source` (`lscpu` / `/proc/cpuinfo`).
 
 ### Platform
 
-The existing `VMware` substring detection is kept. After the loop, if `platform` is not set: use `hypervisor vendor` if present; otherwise `Bare metal` if topology was found and no hypervisor flag; otherwise `N/A` (unchanged).
+The existing `VMware` substring detection is kept. At the end of `system_check` (not `build_log`, so it is testable on partial files), if `platform` is not set: use `hypervisor vendor` if present; otherwise `Bare metal` if topology was found and no hypervisor flag; otherwise `N/A` (unchanged).
 
 ### Overview text and yaml
 
@@ -69,7 +69,7 @@ NUMA nodes       : 4
 
 For VMs the topology line ends with `(as presented by <vendor>, not host physical cores)`.
 
-yaml gains `Sockets`, `Cores per socket`, `Threads per core`, `NUMA nodes`, and `Physical cores` (bare metal only). `CPUs` stays numeric — `system_review.py` reads it as a count.
+yaml gains `CPU host type`, `Hypervisor vendor` (when known), `Sockets`, `Cores per socket`, `Threads per core`, `NUMA nodes`, `Physical cores` (bare metal only) and `CPU topology source`, so `system_review.py` can build the same label. `CPUs` stays numeric — `system_review.py` reads it as a count.
 
 ## Label helper (`yaspe_utilities.py`)
 
