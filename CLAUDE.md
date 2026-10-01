@@ -50,6 +50,7 @@ pip3 install -r requirements.txt
 | `chart_templates.py` | Low-level matplotlib chart rendering (`chart_multi_line`, etc.) |
 | `chart_output.py` | Higher-level chart dispatch for iostat, vmstat, mgstat |
 | `yaspe_utilities.py` | Shared helpers: number parsing, date formatting, locale handling |
+| `chart_notes.py` | Two-line chart footnotes per column (what it is / what to look for) for vmstat, mgstat, free memory, iostat |
 | `system_review.py` | Extracts system overview info and generates `_overview.txt` / `_overview_all.csv` |
 | `sp_check.py` | System performance config checks (HugePages, kernel params, etc.) |
 | `split_large_file.py` | Splits large HTML files before parsing |
@@ -95,7 +96,7 @@ Rules:
 To verify nothing is missing: check the local imports at the top of `yaspe.py` and confirm every one appears in `ENGINE_FILES`.
 
 Current engine files tracked:
-`yaspe.py`, `extract_sections.py`, `extract_mgstat.py`, `sp_check.py`, `split_large_file.py`, `system_review.py`, `chart_output.py`, `chart_templates.py`, `yaspe_utilities.py`, `pretty_performance.py`, `yaspe_compare_overlay.py`, `yaspe_combined_overlay.py`
+`yaspe.py`, `extract_sections.py`, `extract_mgstat.py`, `sp_check.py`, `cpf_disk_resolver.py`, `split_large_file.py`, `system_review.py`, `chart_output.py`, `chart_templates.py`, `yaspe_utilities.py`, `chart_notes.py`, `performance_analysis.py`, `llm_context.py`, `pretty_performance.py`, `yaspe_compare_overlay.py`, `yaspe_combined_overlay.py`
 
 ## Version numbering
 

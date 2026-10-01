@@ -37,6 +37,8 @@ import system_review
 import yaspe_compare_overlay
 import yaspe_combined_overlay
 from yaspe_utilities import cpu_topology_text, run_queue_insight
+from chart_notes import (column_note, VMSTAT_COLUMN_NOTES, MGSTAT_COLUMN_NOTES,
+                         FREE_MEMORY_COLUMN_NOTES, IOSTAT_COLUMN_NOTES)
 
 # Suppress FutureWarning messages
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -440,10 +442,14 @@ def get_chart_title_base(connection):
     return f"{customer} ({hostname})"
 
 
+def _wrap_lines(text, width):
+    return [w for line in text.split("\n") for w in (textwrap.wrap(line, width) or [""])]
+
+
 def _add_png_footnote(fig, footnote):
     if not footnote:
         return
-    fig.text(0.5, -0.02, "\n".join(textwrap.wrap(footnote, 180)),
+    fig.text(0.5, -0.02, "\n".join(_wrap_lines(footnote, 180)),
              ha="center", va="top", fontsize=10, color="dimgray")
 
 
@@ -471,7 +477,7 @@ def _tight_layout():
 def _add_plotly_footnote(fig, footnote, base_height):
     if not footnote:
         return base_height
-    lines = textwrap.wrap(footnote, 190)
+    lines = _wrap_lines(footnote, 190)
     extra = 16 * len(lines) + 10
     fig.add_annotation(
         text="<br>".join(lines), xref="paper", yref="paper", x=0, y=0,
@@ -2829,7 +2835,7 @@ def chart_vmstat(
                     column_footnote = f"{cpu_footnote} {rq.verdict}"
             else:
                 title = f"{column_name} - {customer}"
-                column_footnote = ""
+                column_footnote = column_note(VMSTAT_COLUMN_NOTES, column_name)
 
             to_chart_df = vmstat_df.loc[vmstat_df["Type"] == column_name]
 
@@ -2962,6 +2968,7 @@ def chart_mgstat(
         else:
             display_name = "Total Glorefs (Glorefs + RemGrefs)" if column_name == "Total Glorefs" else column_name
             title = f"{display_name} - {customer}"
+            column_footnote = column_note(MGSTAT_COLUMN_NOTES, column_name)
             to_chart_df = mgstat_df.loc[mgstat_df["Type"] == column_name]
 
             # Remove outliers first, will result in nan for zero values, so needs more work
@@ -3001,16 +3008,19 @@ def chart_mgstat(
                     long_period_smooth=long_period_smooth,
                     subtitle=subtitle,
                     benchmark_rolling_avg=(benchmark and column_name in ("Glorefs", "PhyRds", "Jrnwrts")),
+                    footnote=column_footnote,
                 )
                 # Capture Glorefs peak window
                 if column_name == "Glorefs" and peak_start is not None:
                     glorefs_peak_window = (peak_start, peak_end)
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
-                                 min_max=min_max, day_overlay=day_overlay, subtitle=subtitle)
+                                 min_max=min_max, day_overlay=day_overlay, subtitle=subtitle,
+                                 footnote=column_footnote)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                             min_max=min_max, day_overlay=day_overlay, subtitle=subtitle)
+                             min_max=min_max, day_overlay=day_overlay, subtitle=subtitle,
+                             footnote=column_footnote)
 
     return glorefs_peak_window
 
@@ -3295,6 +3305,7 @@ def chart_iostat(
                 else:
                     _chart_label = _device_chart_label(device)
                     title = f"{device} : {column_name} - {customer}"
+                    column_footnote = column_note(IOSTAT_COLUMN_NOTES, column_name)
 
                     to_chart_df = device_df.loc[device_df["Type"] == column_name]
 
@@ -3334,17 +3345,18 @@ def chart_iostat(
                             chart_label=_chart_label,
                             subtitle=subtitle,
                             benchmark_rolling_avg=(benchmark and column_name in ("r/s", "r_await")),
+                            footnote=column_footnote,
                         )
                         if png_html_out:
                             linked_chart(data, column_name, title, max_y, dev_html_fp, output_prefix,
                                          file_prefix=device, min_max=min_max, threshold=threshold,
                                          day_overlay=day_overlay, chart_label=_chart_label,
-                                         subtitle=subtitle)
+                                         subtitle=subtitle, footnote=column_footnote)
                     else:
                         linked_chart(data, column_name, title, max_y, device_filepath, output_prefix,
                                      file_prefix=device, min_max=min_max, threshold=threshold,
                                      day_overlay=day_overlay, chart_label=_chart_label,
-                                     subtitle=subtitle)
+                                     subtitle=subtitle, footnote=column_footnote)
 
     else:
         # No date or time, chart all columns, index is x axis
@@ -3615,6 +3627,7 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
             pass
         else:
             title = f"Memory: {column_name} - {customer}"
+            column_footnote = column_note(FREE_MEMORY_COLUMN_NOTES, column_name)
             to_chart_df = free_df.loc[free_df["Type"] == column_name]
 
             max_y = to_chart_df["metric"].max()
@@ -3628,13 +3641,16 @@ def chart_free_memory(connection, filepath, output_prefix, png_out, png_html_out
                     data, column_name, title, max_y, png_filepath, output_prefix,
                     min_max=min_max, peak_chart=peak_chart, line_chart=line_chart,
                     business_hours_chart=min_max, day_overlay=day_overlay, subtitle=subtitle,
+                    footnote=column_footnote,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
-                                 min_max=min_max, day_overlay=day_overlay, subtitle=subtitle)
+                                 min_max=min_max, day_overlay=day_overlay, subtitle=subtitle,
+                                 footnote=column_footnote)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
-                             min_max=min_max, day_overlay=day_overlay, subtitle=subtitle)
+                             min_max=min_max, day_overlay=day_overlay, subtitle=subtitle,
+                             footnote=column_footnote)
 
 
 def _make_chart_dir(base, name):

@@ -161,7 +161,8 @@ def test_chart_vmstat_bare_metal_labels_and_footnotes(tmp_path):
     for col in ("Total CPU", "r", "us", "sy"):
         assert "256 threads (4 sockets x 32 cores x 2 HT)" in calls[col].args[2]
         assert "physical server" in calls[col].kwargs["footnote"]
-    assert calls["wa"].kwargs.get("footnote", "") == ""
+    assert "physical server" not in calls["wa"].kwargs["footnote"]
+    assert calls["wa"].kwargs["footnote"].startswith("CPU % spent idle while waiting for disk I/O.\n")
     assert "threads" not in calls["wa"].args[2]
 
 
