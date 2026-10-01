@@ -138,8 +138,12 @@ def _overview_int(overview, key):
         return None
 
 
+def _count(n, word):
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
 def _threads(n):
-    return f"{n} thread" if n == 1 else f"{n} threads"
+    return _count(n, "thread")
 
 
 def cpu_topology_text(overview):
@@ -173,17 +177,17 @@ def cpu_topology_text(overview):
     if host_type == "bare metal":
         model_text = f" ({model})" if model else ""
         topology = (
-            f"{sockets} sockets × {cores_per_socket} physical cores × {_threads(threads_per_core)} "
+            f"{_count(sockets, 'socket')} × {_count(cores_per_socket, 'physical core')} × {_threads(threads_per_core)} "
             f"= {logical} logical CPUs{model_text}."
         )
         if threads_per_core > 1:
-            label = f"{logical} threads ({sockets} sockets x {cores_per_socket} cores x {threads_per_core} HT)"
+            label = f"{logical} threads ({_count(sockets, 'socket')} x {_count(cores_per_socket, 'core')} x {threads_per_core} HT)"
             busy = (
                 f"100% = all {logical} threads busy. "
                 "A Hyper-Threading thread shares a physical core and is not equivalent to a full core."
             )
         else:
-            label = f"{cores} physical cores ({sockets} sockets x {cores_per_socket} cores, no HT)"
+            label = f"{cores} physical cores ({_count(sockets, 'socket')} x {_count(cores_per_socket, 'core')}, no HT)"
             busy = f"100% = all {cores} cores busy."
         return label, (
             f"CPU topology ({source}): bare metal, no hypervisor detected. {topology} {busy} "
@@ -196,7 +200,7 @@ def cpu_topology_text(overview):
     if vendor == "KVM":
         return label, (
             f"CPU topology ({source}): KVM VM. {logical} vCPUs presented as "
-            f"{cores} cores × {_threads(threads_per_core)}. "
+            f"{_count(cores, 'core')} × {_threads(threads_per_core)}. "
             "On cloud instances each vCPU is typically one hyperthread, not a full core. "
             "Host contention appears as vmstat st (steal). "
             "Review the instance type and host architecture before making capacity assumptions."
@@ -206,8 +210,8 @@ def cpu_topology_text(overview):
     model_text = f"Host CPU model: {model}. " if model else ""
     vcenter = " and vCenter CPU Ready (%RDY)" if vendor == "VMware" else ""
     return label, (
-        f"CPU topology ({source}): {who}. {logical} vCPUs presented as {sockets} sockets × "
-        f"{cores_per_socket} cores × {_threads(threads_per_core)} — this is VM configuration, not host hardware. "
+        f"CPU topology ({source}): {who}. {logical} vCPUs presented as {_count(sockets, 'socket')} × "
+        f"{_count(cores_per_socket, 'core')} × {_threads(threads_per_core)} — this is VM configuration, not host hardware. "
         f"{model_text}"
         "Host physical cores, Hyper-Threading and overcommit are not visible from inside the guest. "
         f"Review the host architecture{vcenter} before making capacity assumptions."

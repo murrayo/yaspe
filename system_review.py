@@ -53,6 +53,14 @@ def yaml_cpu_overview(yaspe_yaml):
     }
 
 
+def vmstat_cpu_title(yaspe_yaml):
+    cpu_label, _ = yaspe_utilities.cpu_topology_text(yaml_cpu_overview(yaspe_yaml))
+    model = yaspe_yaml["Processor model"]
+    if len(re.findall(r"\(R\)", model)) >= 2:
+        model = model.split("(R)")[2]
+    return f"{cpu_label} {model.strip()} - " if cpu_label else f"{model.strip()} - "
+
+
 def system_charts(base_file_path):
     csv_needed = False
 
@@ -114,13 +122,7 @@ def system_charts(base_file_path):
     if "yaspe" in site_survey_input:
         number_cpus = site_survey_input["yaspe"]["CPUs"]
         cpu_label, _ = yaspe_utilities.cpu_topology_text(yaml_cpu_overview(site_survey_input["yaspe"]))
-
-        vmstat_title += cpu_label
-        matches = re.findall(r"\(R\)", site_survey_input["yaspe"]["Processor model"])
-        if len(matches) >= 2:
-            vmstat_title += f'{site_survey_input["yaspe"]["Processor model"].split("(R)")[2]} - '
-        else:
-            vmstat_title += f'{site_survey_input["yaspe"]["Processor model"]} - '
+        vmstat_title += vmstat_cpu_title(site_survey_input["yaspe"])
 
     df = pd.read_csv(vmstat_file_name, sep=",", encoding="ISO-8859-1")
 

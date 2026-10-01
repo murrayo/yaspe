@@ -97,6 +97,8 @@ def _finalise_cpu_topology(sp_dict, cpuinfo):
         sp_dict.setdefault("lscpu cpus", cpuinfo["processors"])
         sp_dict["cpu topology source"] = "/proc/cpuinfo"
     else:
+        if "platform" not in sp_dict and sp_dict.get("hypervisor vendor"):
+            sp_dict["platform"] = sp_dict["hypervisor vendor"]
         return
 
     if "hypervisor vendor" in sp_dict or sp_dict.get("hypervisor flag"):
@@ -509,8 +511,8 @@ def system_check(input_file):
     return sp_dict
 
 
-def _threads_word(n):
-    return "thread" if n == 1 else "threads"
+def _plural(n, word):
+    return word if n == 1 else f"{word}s"
 
 
 def cpu_topology_log_lines(sp_dict):
@@ -522,8 +524,9 @@ def cpu_topology_log_lines(sp_dict):
     threads_per_core = sp_dict["lscpu threads per core"]
 
     line = (
-        f"CPU topology     : {sockets} sockets x {cores_per_socket} cores x "
-        f"{threads_per_core} {_threads_word(threads_per_core)} per core"
+        f"CPU topology     : {sockets} {_plural(sockets, 'socket')} x "
+        f"{cores_per_socket} {_plural(cores_per_socket, 'core')} x "
+        f"{threads_per_core} {_plural(threads_per_core, 'thread')} per core"
     )
     if host_type == "virtual":
         vendor = sp_dict.get("hypervisor vendor") or "the hypervisor"

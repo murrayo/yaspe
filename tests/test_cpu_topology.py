@@ -417,3 +417,37 @@ def test_run_queue_label_uses_cpu_label():
                                   cpu_label="256 threads (4 sockets x 32 cores x 2 HT)")
     labels = [k.get("extra_horizontal", (0, ""))[1] for k in captured]
     assert "Optimal run queue < 256 threads (4 sockets x 32 cores x 2 HT)" in labels
+
+
+# --- Final review fixes ---
+
+def test_singular_core_and_socket_wording():
+    ov = {"lscpu cpus": "20", "lscpu sockets": "20", "lscpu cores per socket": "1",
+          "lscpu threads per core": "1", "cpu host type": "virtual", "hypervisor vendor": "VMware",
+          "cpu topology source": "lscpu"}
+    _, foot = cpu_topology_text(ov)
+    assert "20 vCPUs presented as 20 sockets × 1 core × 1 thread —" in foot
+
+    ov = dict(OV_BARE, **{"lscpu sockets": "1", "lscpu cores per socket": "8", "lscpu cpus": "16"})
+    label, foot = cpu_topology_text(ov)
+    assert label == "16 threads (1 socket x 8 cores x 2 HT)"
+    assert "1 socket × 8 physical cores × 2 threads" in foot
+
+    d = dict(VM, **{"lscpu sockets": 20, "lscpu cores per socket": 1})
+    assert sp_check.cpu_topology_log_lines(d).startswith(
+        "CPU topology     : 20 sockets x 1 core x 1 thread per core")
+
+
+def test_vmstat_cpu_title_spacing():
+    y = {"CPUs": 18, "Processor model": "AMD EPYC 7502P 32-Core Processor", "CPU host type": "virtual",
+         "Hypervisor vendor": "VMware", "Sockets": 18, "Cores per socket": 1, "Threads per core": 1}
+    assert system_review.vmstat_cpu_title(y) == "18 vCPUs (VMware) AMD EPYC 7502P 32-Core Processor - "
+    y = {"CPUs": 16, "Processor model": "Intel(R) Xeon(R) Gold 6132 CPU @ 2.60GHz"}
+    assert system_review.vmstat_cpu_title(y) == "16 logical CPUs Gold 6132 CPU @ 2.60GHz - "
+
+
+def test_hypervisor_vendor_sets_platform_without_topology(tmp_path):
+    body = "lscpu:\nCPU(s):              4\nSocket(s):           -\nHypervisor vendor:   KVM\n"
+    d = _check(tmp_path, body)
+    assert "cpu host type" not in d
+    assert d["platform"] == "KVM"
