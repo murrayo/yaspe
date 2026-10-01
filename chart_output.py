@@ -111,6 +111,7 @@ def chart_vmstat(df, site_survey_input, **kwargs):
 
     base_file_path = kwargs.get("base_file_path", ".")
     number_cpus = kwargs.get("number_cpus", 0)
+    cpu_label = kwargs.get("cpu_label", "")
 
     title_comment = kwargs.get("title_comment", "")
     if not title_comment == "":
@@ -134,7 +135,8 @@ def chart_vmstat(df, site_survey_input, **kwargs):
 
         extra_horizontal = (0, "")
         if counter == "r" and number_cpus > 0:
-            extra_horizontal = (number_cpus, f"Optimal Run Queue less than vCPUs ({number_cpus})")
+            label = cpu_label or f"{number_cpus} logical CPUs"
+            extra_horizontal = (number_cpus, f"Optimal run queue < {label}")
 
         if counter == "Total CPU":
             extra_horizontal = (80, f"Optimal peak CPU utilisation 80%")

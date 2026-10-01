@@ -2,6 +2,8 @@ import os
 import sys
 
 import pytest
+import pandas as pd
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -382,3 +384,36 @@ def test_unknown_processor_model_omitted():
     ov = dict(OV_BARE, **{"processor model": "Unknown Processor"})
     _, foot = cpu_topology_text(ov)
     assert "= 256 logical CPUs. 100%" in foot
+
+
+import system_review
+from yaspe_utilities import cpu_topology_text as _ctt
+
+
+def test_yaml_cpu_overview_bare_metal():
+    y = {"CPUs": 256, "Processor model": "Intel(R) Xeon(R) Gold 6448H", "CPU host type": "bare metal",
+         "Sockets": 4, "Cores per socket": 32, "Threads per core": 2, "CPU topology source": "lscpu"}
+    label, _ = _ctt(system_review.yaml_cpu_overview(y))
+    assert label == "256 threads (4 sockets x 32 cores x 2 HT)"
+
+
+def test_yaml_cpu_overview_old_yaml():
+    label, _ = _ctt(system_review.yaml_cpu_overview({"CPUs": 16, "Processor model": "X"}))
+    assert label == "16 logical CPUs"
+
+
+def test_run_queue_label_uses_cpu_label():
+    import chart_output
+    captured = []
+
+    def fake_chart(*args, **kwargs):
+        captured.append(kwargs)
+
+    times = pd.date_range("2024-01-15 09:00", periods=5, freq="1min")
+    df = pd.DataFrame({"r": [1.0] * 5, "Total CPU": [10.0] * 5}, index=times)
+    survey = {"vmstat columns": ["r"]}
+    with patch("chart_templates.chart_multi_line", side_effect=fake_chart):
+        chart_output.chart_vmstat(df, survey, number_cpus=256,
+                                  cpu_label="256 threads (4 sockets x 32 cores x 2 HT)")
+    labels = [k.get("extra_horizontal", (0, ""))[1] for k in captured]
+    assert "Optimal run queue < 256 threads (4 sockets x 32 cores x 2 HT)" in labels

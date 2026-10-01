@@ -40,6 +40,19 @@ def what_date_format(df, date_format_string, column_name, name):
     return df, date_string
 
 
+def yaml_cpu_overview(yaspe_yaml):
+    return {
+        "number cpus": yaspe_yaml.get("CPUs"),
+        "processor model": yaspe_yaml.get("Processor model"),
+        "cpu host type": yaspe_yaml.get("CPU host type"),
+        "hypervisor vendor": yaspe_yaml.get("Hypervisor vendor"),
+        "lscpu sockets": yaspe_yaml.get("Sockets"),
+        "lscpu cores per socket": yaspe_yaml.get("Cores per socket"),
+        "lscpu threads per core": yaspe_yaml.get("Threads per core"),
+        "cpu topology source": yaspe_yaml.get("CPU topology source"),
+    }
+
+
 def system_charts(base_file_path):
     csv_needed = False
 
@@ -96,11 +109,13 @@ def system_charts(base_file_path):
 
     vmstat_title = ""
     number_cpus = 0
+    cpu_label = ""
 
     if "yaspe" in site_survey_input:
         number_cpus = site_survey_input["yaspe"]["CPUs"]
+        cpu_label, _ = yaspe_utilities.cpu_topology_text(yaml_cpu_overview(site_survey_input["yaspe"]))
 
-        vmstat_title += f"{str(number_cpus)} vCPU"
+        vmstat_title += cpu_label
         matches = re.findall(r"\(R\)", site_survey_input["yaspe"]["Processor model"])
         if len(matches) >= 2:
             vmstat_title += f'{site_survey_input["yaspe"]["Processor model"].split("(R)")[2]} - '
@@ -129,6 +144,7 @@ def system_charts(base_file_path):
         charts_path=charts_path,
         extra_subtitle=vmstat_title,
         number_cpus=number_cpus,
+        cpu_label=cpu_label,
     )
 
     if (df.index[-1] - df.index[0]).total_seconds() / 60 / 60 > 24.1:
@@ -162,6 +178,7 @@ def system_charts(base_file_path):
             title_comment=f"Business Hours",
             extra_subtitle=f"{vmstat_title}",
             number_cpus=number_cpus,
+            cpu_label=cpu_label,
         )
 
         df_zoom["Total CPU"].describe(percentiles=[0.95, 0.98]).to_csv(
@@ -196,6 +213,7 @@ def system_charts(base_file_path):
             title_comment=f"Peak CPU Total {peak_minutes}-min window",
             extra_subtitle=f"{vmstat_title}",
             number_cpus=number_cpus,
+            cpu_label=cpu_label,
         )
 
         df_zoom["Total CPU"].describe(percentiles=[0.95, 0.98]).to_csv(
