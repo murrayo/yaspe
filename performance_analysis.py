@@ -429,9 +429,10 @@ def _analyse_vmstat(df: pd.DataFrame, vcpus: Optional[int], topology: Optional[d
                 alert_thr = first.value * 2
                 alert_desc = f"2× {first.value} {first.noun} ({_fmt_n(alert_thr)})"
             verdict = run_queue_insight(df, topology, time_col="dt").verdict
-            if verdict:
-                red_hypotheses.append(f"hypothesis: {verdict}")
-                warn_hypotheses.append(f"hypothesis: {verdict}")
+            # The verdict replaces the generic text; "stayed at or below" would contradict a breach
+            if verdict and not verdict.startswith("Run queue stayed"):
+                red_hypotheses = [f"hypothesis: {verdict}"]
+                warn_hypotheses = [f"hypothesis: {verdict}"]
         else:
             alert_thr = vcpus * 2.0
             warn_thr = vcpus * 1.0

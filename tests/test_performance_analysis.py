@@ -498,3 +498,18 @@ def test_run_queue_without_topology_unchanged():
     findings = _r_findings(_analyse_vmstat(df, vcpus=2))
     assert findings[0].observation.startswith("Run queue exceeded 4 (2× vCPUs=2) for 3 consecutive samples.")
     assert findings[0].hypotheses == ["hypothesis: CPU saturation — more runnable threads than cores"]
+
+
+def test_run_queue_topology_low_cpu_hypothesis_not_contradictory():
+    df = _make_vmstat_df(wa_vals=[2.0] * 10, r_vals=[300.0] * 3 + [10.0] * 7,
+                         us_vals=[30.0] * 10, sy_vals=[10.0] * 10)
+    finding = _r_findings(_analyse_vmstat(df, vcpus=256, topology=BARE_HT_TOPOLOGY))[0]
+    assert not any("CPU saturation" in h for h in finding.hypotheses)
+    assert any("lock/spin contention" in h for h in finding.hypotheses)
+
+
+def test_run_queue_topology_short_burst_hypothesis_not_contradictory():
+    df = _make_vmstat_df(wa_vals=[2.0] * 1000, r_vals=[200.0] * 5 + [10.0] * 995)
+    finding = _r_findings(_analyse_vmstat(df, vcpus=256, topology=BARE_HT_TOPOLOGY))[0]
+    assert finding.severity == "Yellow"
+    assert not any("no sustained CPU queuing" in h for h in finding.hypotheses)
