@@ -36,7 +36,7 @@ from extract_mgstat import extract_mgstat
 import system_review
 import yaspe_compare_overlay
 import yaspe_combined_overlay
-from yaspe_utilities import cpu_topology_text
+from yaspe_utilities import cpu_topology_text, run_queue_insight
 
 # Suppress FutureWarning messages
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -2769,6 +2769,11 @@ def chart_vmstat(
     df["datetime_parsed"] = pd.to_datetime(df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S")
     df.sort_values("datetime_parsed", inplace=True)
 
+    # Run queue reference lines, time-above stats and verdict from the CPU topology
+    rq = run_queue_insight(df, overview)
+    if rq.per_core_divisor:
+        df["r per core"] = pd.to_numeric(df["r"], errors="coerce") / rq.per_core_divisor
+
     png_filepath, html_filepath = _split_filepath(filepath, png_html_out)
 
     # Create stacked CPU chart if columns exist
@@ -2796,9 +2801,11 @@ def chart_vmstat(
         if column_name == "datetime":
             pass
         else:
-            if column_name in ("Total CPU", "r", "us", "sy"):
+            if column_name in ("Total CPU", "r", "us", "sy", "r per core"):
                 title = f"{column_name} - {customer}{cpu_title_line}"
                 column_footnote = cpu_footnote
+                if column_name in ("r", "r per core") and rq.verdict:
+                    column_footnote = f"{cpu_footnote} {rq.verdict}"
             else:
                 title = f"{column_name} - {customer}"
                 column_footnote = ""
@@ -2824,6 +2831,15 @@ def chart_vmstat(
             elif column_name == "wa":
                 threshold = (10, "10% iowait threshold")
 
+            y_label = column_name
+            if column_name == "r" and rq.thresholds:
+                threshold = rq.thresholds
+                max_y = rq.y_max
+            elif column_name == "r per core":
+                threshold = rq.per_core_thresholds
+                max_y = rq.per_core_y_max
+                y_label = rq.per_core_label
+
             if png_out or png_html_out:
                 simple_chart(
                     data,
@@ -2844,15 +2860,16 @@ def chart_vmstat(
                     subtitle=subtitle,
                     benchmark_rolling_avg=(benchmark and column_name == "Total CPU"),
                     footnote=column_footnote,
+                    y_label=y_label,
                 )
                 if png_html_out:
                     linked_chart(data, column_name, title, max_y, html_filepath, output_prefix,
                                  min_max=min_max, threshold=threshold, day_overlay=day_overlay,
-                                 subtitle=subtitle, footnote=column_footnote)
+                                 subtitle=subtitle, footnote=column_footnote, y_label=y_label)
             else:
                 linked_chart(data, column_name, title, max_y, filepath, output_prefix,
                              min_max=min_max, threshold=threshold, day_overlay=day_overlay,
-                             subtitle=subtitle, footnote=column_footnote)
+                             subtitle=subtitle, footnote=column_footnote, y_label=y_label)
 
 
 def chart_mgstat(
