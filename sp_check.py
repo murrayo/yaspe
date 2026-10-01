@@ -48,6 +48,66 @@ def shared_memory_estimate(
     return int(total_shared_memory)
 
 
+_LSCPU_KEYS = {
+    "CPU(s)": "lscpu cpus",
+    "Thread(s) per core": "lscpu threads per core",
+    "Core(s) per socket": "lscpu cores per socket",
+    "Socket(s)": "lscpu sockets",
+    "NUMA node(s)": "lscpu numa nodes",
+}
+
+
+def _new_cpuinfo_state():
+    return {"processors": 0, "physical id": None, "sockets": set(), "cores": set()}
+
+
+def _parse_cpu_line(line, sp_dict, cpuinfo):
+    name, sep, value = line.partition(":")
+    if not sep:
+        return
+    name = name.strip()
+    value = value.strip()
+    if name in _LSCPU_KEYS:
+        if value.isdigit():
+            sp_dict.setdefault(_LSCPU_KEYS[name], int(value))
+    elif name == "Hypervisor vendor":
+        sp_dict.setdefault("hypervisor vendor", value)
+    elif name in ("Flags", "flags"):
+        if "hypervisor" in value.split():
+            sp_dict["hypervisor flag"] = True
+    elif name == "processor":
+        cpuinfo["processors"] += 1
+    elif name == "physical id":
+        cpuinfo["physical id"] = value
+        cpuinfo["sockets"].add(value)
+    elif name == "core id":
+        cpuinfo["cores"].add((cpuinfo["physical id"], value))
+
+
+def _finalise_cpu_topology(sp_dict, cpuinfo):
+    lscpu_keys = ("lscpu sockets", "lscpu cores per socket", "lscpu threads per core")
+    if all(k in sp_dict for k in lscpu_keys):
+        sp_dict["cpu topology source"] = "lscpu"
+    elif cpuinfo["processors"] and cpuinfo["sockets"] and cpuinfo["cores"]:
+        sockets = len(cpuinfo["sockets"])
+        cores = len(cpuinfo["cores"])
+        sp_dict["lscpu sockets"] = sockets
+        sp_dict["lscpu cores per socket"] = max(1, cores // sockets)
+        sp_dict["lscpu threads per core"] = max(1, cpuinfo["processors"] // cores)
+        sp_dict.setdefault("lscpu cpus", cpuinfo["processors"])
+        sp_dict["cpu topology source"] = "/proc/cpuinfo"
+    else:
+        return
+
+    if "hypervisor vendor" in sp_dict or sp_dict.get("hypervisor flag"):
+        sp_dict["cpu host type"] = "virtual"
+        if "platform" not in sp_dict and sp_dict.get("hypervisor vendor"):
+            sp_dict["platform"] = sp_dict["hypervisor vendor"]
+    else:
+        sp_dict["cpu host type"] = "bare metal"
+        sp_dict.setdefault("platform", "Bare metal")
+
+
 def system_check(input_file):
     sp_dict = {}
     operating_system = ""
@@ -68,6 +128,9 @@ def system_check(input_file):
     shared_memory_section = True
     shared_memory_counter = 0
     shared_memory_total = 0
+
+    cpu_section = False
+    cpuinfo = _new_cpuinfo_state()
 
     with open(input_file, "r", encoding="ISO-8859-1") as file:
         model_name = True
@@ -173,6 +236,13 @@ def system_check(input_file):
                 if model_name:
                     model_name = False
                     sp_dict["processor model"] = (line.split(":")[1]).strip()
+
+            if "<div id=cpu>" in line:
+                cpu_section = True
+            elif "<div id=" in line:
+                cpu_section = False
+            if cpu_section:
+                _parse_cpu_line(line, sp_dict, cpuinfo)
 
             # CPF file
 
@@ -431,6 +501,8 @@ def system_check(input_file):
             sp_dict["memory MB"] = int("".join(i for i in sp_dict["windows total memory"] if i.isdigit()))
         else:
             sp_dict["memory MB"] = 0
+
+    _finalise_cpu_topology(sp_dict, cpuinfo)
 
     sp_dict["cpf_databases"] = cpf_databases
 
