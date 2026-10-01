@@ -267,3 +267,93 @@ def run_queue_lines(overview):
             RefLine(logical, "vcpus", "vCPUs", f"vCPUs {logical}", _WAITING),
         ]
     return [RefLine(logical, "vcpus", "vCPUs", f"vCPUs {logical}", _WAITING)]
+
+
+@dataclass
+class RunQueueInsight:
+    lines: list = field(default_factory=list)
+    pct_above: list = field(default_factory=list)
+    legend_labels: list = field(default_factory=list)
+    drawn: list = field(default_factory=list)
+    thresholds: list = field(default_factory=list)  # (value or None when off scale, legend label)
+    y_max: float = None
+    peak: float = None
+    peak_time: str = None
+    verdict: str = ""
+    per_core_divisor: int = None
+    per_core_label: str = ""
+    per_core_thresholds: list = field(default_factory=list)
+    per_core_y_max: float = None
+
+
+def _fmt_pct(pct):
+    if 0 < pct < 0.05:
+        return "<0.1%"
+    return f"{pct:.1f}%"
+
+
+def _run_queue_verdict(data, r, lines, pct_above, overview):
+    return ""
+
+
+def run_queue_insight(df, overview, time_col="datetime_parsed"):
+    """Reference lines, time above each line, verdict and per-core scaling for the vmstat r chart."""
+    lines = run_queue_lines(overview)
+    if df is None or "r" not in df.columns or not lines:
+        return RunQueueInsight()
+    r = pd.to_numeric(df["r"], errors="coerce")
+    keep = r.notna()
+    if not keep.any():
+        return RunQueueInsight()
+    data = df.loc[keep.to_numpy()]
+    r = r[keep.to_numpy()]
+    n = len(r)
+
+    peak = float(r.max())
+    peak_time = None
+    if time_col in data.columns:
+        peak_pos = int(r.to_numpy().argmax())
+        peak_time = pd.Timestamp(data[time_col].iloc[peak_pos]).strftime("%d-%b %H:%M")
+
+    pct_above = [100.0 * float((r > line.value).sum()) / n for line in lines]
+    first = lines[0]
+    y_max = max(peak, first.value) * 1.05 if peak >= 0.5 * first.value else peak
+    drawn = [line.value <= y_max for line in lines]
+
+    highest = max((i for i, pct in enumerate(pct_above) if pct > 0), default=None)
+    legend_labels = []
+    for i, line in enumerate(lines):
+        if not drawn[i]:
+            legend_labels.append(f"{line.label} (off scale, peak {peak:,.0f} = {100 * peak / line.value:.0f}%)")
+            continue
+        text = f"{line.label} (above = {line.meaning}): {_fmt_pct(pct_above[i])} of samples above"
+        if i == highest and peak_time:
+            text += f", peak {peak:,.0f} at {peak_time}"
+        legend_labels.append(text)
+    thresholds = [(line.value if drawn[i] else None, legend_labels[i]) for i, line in enumerate(lines)]
+
+    per_core_y_max = max(peak / first.value, 1.0) * 1.05
+    per_core_thresholds = [(1.0, f"1.0 = r equals {first.value} {first.noun} (saturated)")]
+    if len(lines) > 1:
+        ratio = lines[-1].value / first.value
+        label = f"{ratio:g} = all {lines[-1].value} {lines[-1].noun} busy"
+        if ratio <= per_core_y_max:
+            per_core_thresholds.append((ratio, label))
+        else:
+            per_core_thresholds.append((None, f"{label} (off scale)"))
+
+    return RunQueueInsight(
+        lines=lines,
+        pct_above=pct_above,
+        legend_labels=legend_labels,
+        drawn=drawn,
+        thresholds=thresholds,
+        y_max=y_max,
+        peak=peak,
+        peak_time=peak_time,
+        verdict=_run_queue_verdict(data, r, lines, pct_above, overview or {}),
+        per_core_divisor=first.value,
+        per_core_label=f"r ÷ {first.value} {first.noun}",
+        per_core_thresholds=per_core_thresholds,
+        per_core_y_max=per_core_y_max,
+    )
