@@ -293,7 +293,55 @@ def _fmt_pct(pct):
 
 
 def _run_queue_verdict(data, r, lines, pct_above, overview):
-    return ""
+    first = lines[0]
+    first_text = f"{first.value} {first.noun}"
+    if pct_above[0] < 1.0:
+        return f"Run queue stayed at or below {first_text} in 99%+ of samples — no sustained CPU queuing."
+
+    queued = (r > first.value).to_numpy()
+    if "Total CPU" in data.columns:
+        cpu = pd.to_numeric(data["Total CPU"], errors="coerce")
+    elif "us" in data.columns and "sy" in data.columns:
+        cpu = pd.to_numeric(data["us"], errors="coerce") + pd.to_numeric(data["sy"], errors="coerce")
+    else:
+        cpu = None
+    cpu_median = cpu[queued].median() if cpu is not None else None
+
+    parts = []
+    cpu_bound = False
+    if cpu_median is None or pd.isna(cpu_median):
+        parts.append(f"r exceeded {first_text} in {_fmt_pct(pct_above[0])} of samples.")
+    elif cpu_median >= 80:
+        cpu_bound = True
+        parts.append(f"CPU-bound: while r > {first.value}, median CPU was {cpu_median:.0f}%.")
+    else:
+        parts.append(
+            f"r exceeded {first.value} while CPU was only {cpu_median:.0f}% busy — suggests bursty work "
+            "within the sample interval or lock/spin contention rather than CPU shortage."
+        )
+
+    if first.kind == "cores" and len(lines) > 1:
+        band = pct_above[0] - pct_above[1]
+        if band > 0:
+            parts.append(
+                f"r was between cores and threads in {_fmt_pct(band)} of samples — tasks sharing physical "
+                "cores via HT get less throughput than full cores."
+            )
+
+    vendor = overview.get("hypervisor vendor") if first.kind in ("presented_cores", "vcpus") else ""
+    if vendor == "KVM" and "st" in data.columns:
+        st_median = pd.to_numeric(data["st"], errors="coerce")[queued].median()
+        if not pd.isna(st_median):
+            if st_median >= 5:
+                parts.append(
+                    f"Steal {st_median:.0f}% while queued — host is short of CPU; adding vCPUs alone won't help."
+                )
+            elif cpu_bound:
+                parts.append("Steal low — the guest itself needs more vCPUs.")
+    elif vendor == "VMware":
+        parts.append("Steal is not visible inside VMware guests; check vCenter CPU Ready (%RDY) for these times.")
+
+    return "Run queue: " + " ".join(parts)
 
 
 def run_queue_insight(df, overview, time_col="datetime_parsed"):

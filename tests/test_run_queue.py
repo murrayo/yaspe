@@ -190,3 +190,86 @@ def test_insight_per_core_vmware():
     rq = run_queue_insight(_rq_df([10.0] * 10), VMW)
     assert rq.per_core_label == "r ÷ 38 vCPUs"
     assert rq.per_core_thresholds == [(1.0, "1.0 = r equals 38 vCPUs (saturated)")]
+
+
+def _queued(n_queued, r_queued, n_total=100, r_idle=10.0, **cols_queued_idle):
+    """r_idle for the first n_total - n_queued samples, r_queued for the rest; extra cols given as (queued, idle)."""
+    n_idle = n_total - n_queued
+    cols = {k: [v[1]] * n_idle + [v[0]] * n_queued for k, v in cols_queued_idle.items()}
+    return _rq_df([r_idle] * n_idle + [r_queued] * n_queued, **cols)
+
+
+def test_verdict_no_queuing():
+    rq = run_queue_insight(_rq_df([10.0] * 100, **{"Total CPU": [50.0] * 100}), BARE_HT)
+    assert rq.verdict == ("Run queue stayed at or below 128 physical cores in 99%+ of samples — "
+                          "no sustained CPU queuing.")
+
+
+def test_verdict_cpu_bound():
+    rq = run_queue_insight(_queued(10, 200.0, **{"Total CPU": (95.0, 20.0)}), BARE_HT)
+    assert rq.verdict.startswith("Run queue: CPU-bound: while r > 128, median CPU was 95%.")
+
+
+def test_verdict_high_r_low_cpu():
+    rq = run_queue_insight(_queued(10, 200.0, **{"Total CPU": (45.0, 20.0)}), BARE_HT)
+    assert ("r exceeded 128 while CPU was only 45% busy — suggests bursty work within the sample "
+            "interval or lock/spin contention rather than CPU shortage.") in rq.verdict
+
+
+def test_verdict_us_sy_fallback():
+    rq = run_queue_insight(_queued(10, 200.0, us=(80.0, 10.0), sy=(15.0, 5.0)), BARE_HT)
+    assert "CPU-bound: while r > 128, median CPU was 95%." in rq.verdict
+
+
+def test_verdict_without_cpu_columns():
+    rq = run_queue_insight(_queued(10, 200.0), BARE_HT)
+    assert rq.verdict.startswith("Run queue: r exceeded 128 physical cores in 10.0% of samples.")
+    assert "CPU-bound" not in rq.verdict and "suggests bursty" not in rq.verdict
+
+
+def test_verdict_ht_band():
+    df = _rq_df([10.0] * 90 + [200.0] * 8 + [300.0] * 2, **{"Total CPU": [20.0] * 90 + [95.0] * 10})
+    rq = run_queue_insight(df, BARE_HT)
+    assert ("r was between cores and threads in 8.0% of samples — tasks sharing physical cores via HT "
+            "get less throughput than full cores.") in rq.verdict
+
+
+def test_verdict_no_ht_band_without_ht():
+    rq = run_queue_insight(_queued(10, 100.0, **{"Total CPU": (95.0, 20.0)}), BARE_NOHT)
+    assert "between cores and threads" not in rq.verdict
+
+
+def test_verdict_kvm_steal_high():
+    rq = run_queue_insight(_queued(10, 20.0, r_idle=2.0, **{"Total CPU": (95.0, 20.0), "st": (12.0, 0.0)}), KVM)
+    assert "Steal 12% while queued — host is short of CPU; adding vCPUs alone won't help." in rq.verdict
+
+
+def test_verdict_kvm_steal_low_cpu_bound():
+    rq = run_queue_insight(_queued(10, 20.0, r_idle=2.0, **{"Total CPU": (95.0, 20.0), "st": (1.0, 0.0)}), KVM)
+    assert rq.verdict.endswith("Steal low — the guest itself needs more vCPUs.")
+
+
+def test_verdict_kvm_steal_low_not_cpu_bound():
+    rq = run_queue_insight(_queued(10, 20.0, r_idle=2.0, **{"Total CPU": (40.0, 20.0), "st": (1.0, 0.0)}), KVM)
+    assert "Steal" not in rq.verdict
+
+
+def test_verdict_kvm_without_st_column():
+    rq = run_queue_insight(_queued(10, 20.0, r_idle=2.0, **{"Total CPU": (95.0, 20.0)}), KVM)
+    assert "Steal" not in rq.verdict
+
+
+def test_verdict_vmware_rdy():
+    rq = run_queue_insight(_queued(10, 50.0, r_idle=2.0, **{"Total CPU": (95.0, 20.0)}), VMW)
+    assert rq.verdict.endswith("Steal is not visible inside VMware guests; check vCenter CPU Ready (%RDY) for these times.")
+
+
+def test_verdict_unknown_topology():
+    rq = run_queue_insight(_queued(10, 50.0, r_idle=2.0, **{"Total CPU": (95.0, 20.0)}), UNKNOWN)
+    assert rq.verdict == "Run queue: CPU-bound: while r > 32, median CPU was 95%."
+
+
+def test_verdict_vendor_without_topology_is_unknown():
+    overview = {"number cpus": "32", "cpu host type": "virtual", "hypervisor vendor": "VMware"}
+    rq = run_queue_insight(_queued(10, 50.0, r_idle=2.0, **{"Total CPU": (95.0, 20.0)}), overview)
+    assert "%RDY" not in rq.verdict
