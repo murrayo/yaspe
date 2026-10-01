@@ -447,6 +447,27 @@ def _add_png_footnote(fig, footnote):
              ha="center", va="top", fontsize=10, color="dimgray")
 
 
+def _outside_legend(ax, wrap=50):
+    """Legend to the right of the plot. Long labels wrap; _tight_layout leaves the legend out
+    so the plot keeps its full width and bbox_inches="tight" widens the image instead."""
+    handles, labels = ax.get_legend_handles_labels()
+    labels = ["\n".join(textwrap.wrap(label, wrap)) or label for label in labels]
+    legend = ax.legend(handles, labels, bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
+    legend._yaspe_outside = True
+    return legend
+
+
+def _tight_layout():
+    """plt.tight_layout() that ignores outside legends, then restores them so savefig's tight bbox includes them."""
+    legends = [ax.get_legend() for ax in plt.gcf().axes
+               if ax.get_legend() is not None and getattr(ax.get_legend(), "_yaspe_outside", False)]
+    for legend in legends:
+        legend.set_in_layout(False)
+    plt.tight_layout()
+    for legend in legends:
+        legend.set_in_layout(True)
+
+
 def _add_plotly_footnote(fig, footnote, base_height):
     if not footnote:
         return base_height
@@ -603,7 +624,7 @@ def _create_peak_60_chart(
             ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Min: {abs_min:,.0f}")
         ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Max: {abs_max:,.0f}")
 
-    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
+    _outside_legend(ax)
     ax.grid(which="major", axis="both", linestyle="--")
 
     # Format title with peak period time range (using adjusted chart times)
@@ -638,7 +659,7 @@ def _create_peak_60_chart(
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     output_name = column_name.replace("/", "_")
-    plt.tight_layout()
+    _tight_layout()
     _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_peak60.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
@@ -734,7 +755,7 @@ def _create_business_hours_peak_chart(
             ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Min: {abs_min:,.0f}")
         ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Max: {abs_max:,.0f}")
 
-    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
+    _outside_legend(ax)
     ax.grid(which="major", axis="both", linestyle="--")
 
     chart_start_str = peak_start_time.strftime("%H:%M")
@@ -766,7 +787,7 @@ def _create_business_hours_peak_chart(
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     output_name = column_name.replace("/", "_")
-    plt.tight_layout()
+    _tight_layout()
     _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_bh_peak.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
@@ -815,7 +836,7 @@ def _create_daily_summary_chart(png_data, column_name, title, max_y, filepath, o
     plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
 
     output_name = column_name.replace("/", "_")
-    plt.tight_layout()
+    _tight_layout()
     _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_daily_summary.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
@@ -851,7 +872,7 @@ def _create_heatmap_chart(png_data, column_name, title, filepath, output_prefix,
     ax.set_xlabel("Hour of day", fontsize=12)
 
     output_name = column_name.replace("/", "_")
-    plt.tight_layout()
+    _tight_layout()
     _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_heatmap.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
@@ -921,11 +942,11 @@ def _create_5min_avg_chart(png_data, column_name, title, max_y, filepath, output
     ax.tick_params(axis="x", which="major", labelsize=6)
     ax.grid(which="major", axis="y", linestyle="--")
     ax.xaxis.grid(False)
-    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
+    _outside_legend(ax)
     plt.subplots_adjust(bottom=0.2)
 
     output_name = column_name.replace("/", "_")
-    plt.tight_layout()
+    _tight_layout()
     _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_{avg_minutes}min_avg.png",
                 format="png", dpi=150, bbox_inches="tight")
@@ -985,10 +1006,10 @@ def _create_day_overlay_chart(png_data, column_name, title, max_y, filepath, out
     ax.set_xlabel("Time of day", fontsize=12)
     ax.tick_params(labelsize=13)
     ax.grid(which="major", axis="both", linestyle="--")
-    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
+    _outside_legend(ax)
 
     output_name = column_name.replace("/", "_")
-    plt.tight_layout()
+    _tight_layout()
     _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_day_overlay.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
@@ -1212,7 +1233,7 @@ def _create_glorefs_peak_chart(
             ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Min: {abs_min:,.0f}")
         ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Max: {abs_max:,.0f}")
 
-    ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
+    _outside_legend(ax)
     ax.grid(which="major", axis="both", linestyle="--")
 
     # Format title with Glorefs peak period time range (using adjusted times)
@@ -1247,7 +1268,7 @@ def _create_glorefs_peak_chart(
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     output_name = column_name.replace("/", "_")
-    plt.tight_layout()
+    _tight_layout()
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}_glorefs_peak.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
 
@@ -1851,7 +1872,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
                 ax.axhline(y=abs_min, color="red", linestyle="--", alpha=0.7, label=f"Min: {abs_min:,.0f}")
             ax.axhline(y=abs_max, color="green", linestyle="--", alpha=0.7, label=f"Max: {abs_max:,.0f}")
 
-        ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
+        _outside_legend(ax)
 
     ax.grid(which="major", axis="both", linestyle="--")
 
@@ -1922,7 +1943,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         ax.axhline(y=thresh_val, color=color, linestyle=_PNG_THRESHOLD_STYLES[i % 3], linewidth=1.5, alpha=0.8,
                    label=thresh_label)
     if thresholds:
-        ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0, fontsize=11)
+        _outside_legend(ax)
 
     output_name = column_name.replace("/", "_")
     if chart_label:
@@ -1930,7 +1951,7 @@ def simple_chart(data, column_name, title, max_y, filepath, output_prefix, **kwa
         fig.text(1.01, 0.0, label_text, transform=ax.transAxes,
                  fontsize=10, va="bottom", ha="left",
                  bbox=dict(boxstyle="round,pad=0.3", facecolor="#f0f0f0", edgecolor="gray", alpha=0.8))
-    plt.tight_layout()
+    _tight_layout()
     _add_png_footnote(fig, footnote)
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150, bbox_inches="tight")
     plt.close("all")
@@ -2034,7 +2055,7 @@ def simple_chart_no_time(data, column_name, title, max_y, filepath, output_prefi
 
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
-    plt.tight_layout()
+    _tight_layout()
 
     output_name = column_name.replace("/", "_per_").replace(" ", "_")
     plt.savefig(f"{filepath}{output_prefix}{file_prefix}z_{output_name}.png", format="png", dpi=150)
@@ -2194,7 +2215,7 @@ def simple_chart_histogram_iostat(png_data, columns_to_histogram, device, title,
     plt.style.use("seaborn-v0_8-whitegrid")
 
     plt.figure(num=None, figsize=(16, 6))
-    plt.tight_layout()
+    _tight_layout()
 
     palette = plt.get_cmap(colormap_name)
 
