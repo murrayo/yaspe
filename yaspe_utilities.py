@@ -55,6 +55,9 @@ def get_aix_wacky_numbers(s):
         elif "M" in s:
             value = s.split("M")[0]
             return int(float(value) * 1000000)
+        elif "G" in s:
+            value = s.split("G")[0]
+            return int(float(value) * 1_000_000_000)
         elif "S" in s:
             value = s.split("S")[0]
             return int(float(value) * 1000)
