@@ -1355,6 +1355,13 @@ gd.appendChild(btn);
 })();
 """
 
+# Same as _OVERVIEW_ZOOM_JS but for charts that have a secondary y-axis on row 1
+# (make_subplots secondary_y=True).  The overview row's y domain is y3, not y2.
+_OVERVIEW_ZOOM_JS_DUAL_Y = _OVERVIEW_ZOOM_JS.replace(
+    "xref: 'x2', yref: 'y2 domain'",
+    "xref: 'x2', yref: 'y3 domain'",
+)
+
 
 def _maybe_day_overlay_html(data, column_name, title, max_y, filepath, output_prefix, file_prefix, day_overlay=False, footnote=""):
     """Emit a day-overlay HTML chart when data spans more than 25 hours.
@@ -2529,7 +2536,7 @@ def linked_chart_dual_axis_glorefs_cpu(data, title, filepath, output_prefix, **k
     fig.write_html(
         f"{filepath}{output_prefix}_Glorefs_and_Total_CPU.html",
         include_plotlyjs="cdn",
-        post_script=_OVERVIEW_ZOOM_JS,
+        post_script=_OVERVIEW_ZOOM_JS_DUAL_Y,
         full_html=True,
     )
 
@@ -2708,6 +2715,71 @@ def linked_chart_glorefs_remgrefs(data, title, filepath, output_prefix, **kwargs
         post_script=_OVERVIEW_ZOOM_JS,
         full_html=True,
     )
+
+
+def chart_glorefs_cpu_windows(
+    connection, filepath, output_prefix, png_out, png_html_out, subtitle="",
+):
+    try:
+        mg_df = pd.read_sql_query("SELECT RunDate, RunTime, Glorefs FROM mgstat", connection)
+    except DatabaseError as e:
+        if "no such table" in str(e) or "no such column" in str(e):
+            return
+        raise
+
+    try:
+        pm_df = pd.read_sql_query("SELECT * FROM perfmon", connection)
+    except DatabaseError as e:
+        if "no such table" in str(e):
+            return
+        raise
+
+    # Find the processor time column — column name varies by sanitisation rules
+    cpu_col = next(
+        (c for c in pm_df.columns if "ProcessorTotal" in c and "Processor_Time" in c),
+        None,
+    )
+    if cpu_col is None:
+        return
+
+    if mg_df.empty or pm_df.empty:
+        return
+
+    mg_df["datetime"] = mg_df["RunDate"] + " " + mg_df["RunTime"]
+    mg_df["datetime_parsed"] = pd.to_datetime(
+        mg_df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S", errors="coerce"
+    )
+    pm_df["datetime_parsed"] = pd.to_datetime(
+        pm_df["datetime"].apply(guess_datetime_format), format="%m/%d/%Y %H:%M:%S", errors="coerce"
+    )
+    pm_df["Total CPU"] = pd.to_numeric(pm_df[cpu_col], errors="coerce")
+
+    mg_df = mg_df.dropna(subset=["datetime_parsed", "Glorefs"]).sort_values("datetime_parsed")
+    pm_df = pm_df.dropna(subset=["datetime_parsed", "Total CPU"]).sort_values("datetime_parsed")
+
+    merged = pd.merge_asof(
+        mg_df[["datetime_parsed", "Glorefs"]],
+        pm_df[["datetime_parsed", "Total CPU"]],
+        on="datetime_parsed",
+        tolerance=pd.Timedelta("30S"),
+        direction="nearest",
+    )
+    merged.dropna(inplace=True)
+    if merged.empty:
+        return
+
+    customer = get_chart_title_base(connection)
+    title = f"Glorefs and Total CPU - {customer}"
+    _, cpu_footnote = cpu_topology_text(get_overview_dict(connection))
+
+    png_filepath, html_filepath = _split_filepath(filepath, png_html_out)
+
+    if png_out or png_html_out:
+        simple_chart_dual_axis_glorefs_cpu(merged, title, png_filepath, output_prefix, subtitle=subtitle, footnote=cpu_footnote)
+        if png_html_out:
+            linked_chart_dual_axis_glorefs_cpu(merged, title, html_filepath, output_prefix, subtitle=subtitle, footnote=cpu_footnote)
+    else:
+        linked_chart_dual_axis_glorefs_cpu(merged, title, filepath, output_prefix, subtitle=subtitle, footnote=cpu_footnote)
 
 
 def chart_glorefs_remgrefs(
@@ -4007,6 +4079,12 @@ def mainline(
                 chart_perfmon(
                     connection, _make_chart_dir(output_file_path_base, "perfmon"),
                     output_prefix, png_out, png_html_out, peak_chart, glorefs_peak_window, line_chart, day_overlay,
+                    subtitle=subtitle,
+                )
+
+                chart_glorefs_cpu_windows(
+                    connection, _make_chart_dir(output_file_path_base, "mgstat"),
+                    output_prefix, png_out, png_html_out,
                     subtitle=subtitle,
                 )
 
