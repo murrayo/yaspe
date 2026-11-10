@@ -122,7 +122,7 @@ def chart_multi_line(df, extra_title, field_names, site_survey_input, **kwargs):
 
     if user_subtitle:
         ax1.text(0.5, 1.0, user_subtitle, transform=ax1.transAxes,
-                 ha="center", va="bottom", fontsize=ax1.title.get_fontsize() - 2, color="dimgray")
+                 ha="center", va="bottom", fontsize=max(1, ax1.title.get_fontsize() - 2), color="dimgray")
 
     max_max_y = left_y_axis_max
     for field_name in field_names:
