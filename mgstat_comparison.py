@@ -85,8 +85,8 @@ class MgstatAnalyzer:
                 "column": "RouLaS",
                 "transform": None,
                 "unit": "loads/s",
-                "title": "Routine Loads (RouLaS)",
-                "description": "Routine loads per second",
+                "title": "Routine Loads and Saves (RouLaS)",
+                "description": "Routine loads and saves per second",
             },
             "physical_writes": {
                 "column": "PhyWrs",

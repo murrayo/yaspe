@@ -148,7 +148,8 @@ Single-day captures: baselines derive from quiet periods of that day — say so 
 | PhyWrs | baseline | > 2x norm | > 1.6x norm |
 | WDQsz | see note | growing cycle-over-cycle (not bounded oscillation) | frequently hits GWDQMax |
 | Jrnwrts | ~17/s | > 2x norm | > 1.6x norm |
-| RouLaS | ~0 warm | sustained high (routine buffer undersized) | persistently > 0 |
+| RouLaS | ~0 warm | sustained high (check shared routine buffers and code changes) | persistently > 0 |
+| RouCMs | ~0 warm | sustained high (check routine-vector sizing, frequent CSP/WQM job starts; compare with RouLaS) | persistently > 0 |
 
 **WDQsz** — not reaching zero between write-daemon cycles is normal on a busy system, not a fault.
 Judge the **trend, not the floor**. Investigate only if:

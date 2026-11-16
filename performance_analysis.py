@@ -666,11 +666,11 @@ def _analyse_mgstat(df: pd.DataFrame, baselines: dict) -> list:
             start, end, count = primary
             recurrence = f" Occurred {n_events} time(s) during business hours." if n_events > 1 else ""
             findings.append(Finding(
-                metric="RouLaS (routine cache misses)",
+                metric="RouLaS (routine loads and saves)",
                 severity="Yellow",
                 observation=f"RouLaS was non-zero during business hours for {count} consecutive samples "
                             f"(max {_fmt_n(bh_vals.max())}).{recurrence} "
-                            f"Routine buffer load/save active — routine buffer size may be undersized for the working set.",
+                            f"Sustained routine loading — check shared routine buffer sizing and recent code changes.",
                 when=when,
                 hypotheses=["hypothesis: routine buffer (routines= in CPF) too small for working set during peak"],
                 next_step="Check ^IRIS.Temp.RoutineMgr and consider increasing routine buffer size. "
